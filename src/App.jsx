@@ -12,6 +12,7 @@ import {
   LogOut,
   Shield,
   ChevronDown,
+  Check,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -38,7 +39,7 @@ function Dashboard() {
           text: "text-purple-700",
           dot: "bg-purple-600",
         };
-      case "IC1": // Standard -> Indigo Soft (The style you liked)
+      case "IC1": // Standard -> Indigo Soft
         return {
           container: "bg-indigo-100 border-indigo-200",
           text: "text-indigo-700",
@@ -74,6 +75,123 @@ function Dashboard() {
   const style = getDutyStyle(selectedDuty);
   const dutyNumber = selectedDuty.replace(/\D/g, "").padStart(2, "0");
 
+  // --- 1. EXPANDED FORM STATE ---
+  const [formData, setFormData] = useState({
+    loginId: "",
+    memberId: "",
+    providerAccount: "", // Required for PG Soft
+    provider: "PG Soft",
+    trackingId: "",
+    timeRange: "",
+    merchant: "", // Auto-detected
+  });
+
+  const [copied, setCopied] = useState(false);
+  const [merchantData, setMerchantData] = useState([]);
+  const [dutyError, setDutyError] = useState("");
+
+  // --- 2. GOOGLE SHEET DATA FETCHING ---
+  useEffect(() => {
+    const fetchMerchantData = async () => {
+      try {
+        const response = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vThVavZpC7lo28kw_pvAFHD1ADyiSSfVyRDQgXrQGqzm20zaeBuorjEVGD-fYUGyYkpJtfv7a7UfQxR/pub?output=csv");
+        const csvText = await response.text();
+        
+        // We skip the first 2 rows because your sheet has merged headers
+        const rows = csvText.split('\n').slice(2); 
+        
+        const parsed = rows.flatMap(row => {
+          const cols = row.split(',');
+          return [
+            { id: cols[0]?.trim(), name: cols[1]?.trim(), duty: 'IC1' },
+            { id: cols[3]?.trim(), name: cols[4]?.trim(), duty: 'IC2' },
+            { id: cols[6]?.trim(), name: cols[7]?.trim(), duty: 'IC3' },
+            { id: cols[9]?.trim(), name: cols[10]?.trim(), duty: 'IC5' }
+          ];
+        }).filter(item => item.id && item.name && item.id !== "ID"); // Clean up
+
+        setMerchantData(parsed);
+      } catch (err) {
+        console.error("Failed to sync with Google Sheets", err);
+      }
+    };
+    fetchMerchantData();
+  }, []);
+
+  // --- 3. DYNAMIC MERCHANT LOOKUP ---
+  useEffect(() => {
+    const parts = formData.memberId.split('@');
+    
+    if (parts.length > 1) {
+      const suffix = parts[1].trim();
+      // Logic: suffix '017' -> search for '10017'
+      const idToSearch = `10${suffix.padStart(3, '0')}`;
+
+      const match = merchantData.find(m => m.id === idToSearch);
+      
+      if (match) {
+        setFormData(prev => ({ ...prev, merchant: match.name }));
+        
+        // Access Denied Check
+        if (selectedDuty !== 'IC0' && match.duty !== selectedDuty) {
+          setDutyError(`Access Denied: ${match.name} is under ${match.duty}.`);
+        } else {
+          setDutyError("");
+        }
+      } else {
+        setFormData(prev => ({ ...prev, merchant: "" }));
+        setDutyError("");
+      }
+    } else {
+      setFormData(prev => ({ ...prev, merchant: "" }));
+      setDutyError("");
+    }
+  }, [formData.memberId, merchantData, selectedDuty]);
+
+  // --- 4. PROVIDER SPECIFIC SCRIPT LOGIC ---
+  const workName = user?.email?.split("@")[0] || "RiskOps";
+
+  const getGeneratedScript = () => {
+    switch (formData.provider) {
+      case "PG Soft":
+        if (
+          formData.memberId &&
+          formData.providerAccount &&
+          formData.timeRange
+        ) {
+          return (
+            `Hello sir this is ${workName},\n` +
+            `Please help us check member betting normal or not. Thank you.\n\n` +
+            `Agent Name：QQ288\n` +
+            `Member ID：${formData.providerAccount}\n` +
+            `Time period：${formData.timeRange}`
+          );
+        }
+        return "// Waiting for MemberID, Provider Account, and Time...";
+
+      default:
+        return "// Select a provider to generate script";
+    }
+  };
+
+  const generatedScript = getGeneratedScript();
+
+  const isFormValid = () => {
+    if (!formData.memberId || dutyError) return false;
+    if (formData.provider === "PG Soft") {
+      return formData.providerAccount && formData.timeRange;
+    }
+    return true;
+  };
+
+  const handleCopy = () => {
+    if (!generatedScript.startsWith("//")) {
+      navigator.clipboard.writeText(generatedScript);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const getGreeting = () => {
     const hour = currentTime.getHours();
     if (hour < 12) return "Good Morning";
@@ -98,9 +216,7 @@ function Dashboard() {
     <div className="h-screen bg-slate-50 text-slate-900 font-sans flex flex-col overflow-hidden">
       {/* --- HEADER --- */}
       <header className="bg-white border-b border-slate-200 px-6 h-16 flex items-center justify-between shrink-0 z-50 shadow-sm">
-        {/* LEFT: Branding with DYNAMIC SOFT LOGO */}
         <div className="flex items-center gap-3">
-          {/* Soft Background + Colored Icon */}
           <div
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-300 ${style.container} ${style.text}`}
           >
@@ -116,7 +232,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* RIGHT: Header Elements */}
         <div className="flex items-center gap-4">
           <div className="text-xs font-medium text-slate-500 hidden md:block">
             {getGreeting()},{" "}
@@ -132,7 +247,6 @@ function Dashboard() {
                 {activeUsers.length} Online
               </span>
             </div>
-            {/* Tooltip */}
             <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-slate-100 shadow-xl rounded-xl p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
               <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 Team Activity
@@ -184,84 +298,183 @@ function Dashboard() {
 
       {/* --- MAIN CONTENT --- */}
       <div className="flex flex-1 overflow-hidden p-6 gap-6">
-        {/* LEFT PANEL */}
         <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden">
           <div className="p-6 border-b border-slate-50">
             <h2 className="text-lg font-bold text-slate-900">
               New Investigation
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Configure parameters to generate script.
+              Provider: <span className="font-bold">{formData.provider}</span>
             </p>
           </div>
 
-          <div className="p-6 space-y-5 flex-1 overflow-y-auto">
+          <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+            {/* PROVIDER SELECT */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Merchant Group
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Provider Source
               </label>
               <div className="relative">
-                <select className="w-full pl-3 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-all outline-none text-slate-900 text-sm appearance-none">
-                  <option>Select Merchant...</option>
-                  <option>GrandRoyal</option>
-                  <option>Bet365</option>
+                <select
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm text-slate-900 font-semibold"
+                  value={formData.provider}
+                  onChange={(e) =>
+                    setFormData({ ...formData, provider: e.target.value })
+                  }
+                >
+                  <option value="PG Soft">PG Soft</option>
+                  <option value="Evolution">Evolution</option>
                 </select>
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown size={16} />
+                  <ChevronDown size={14} />
                 </div>
               </div>
             </div>
 
+            {/* MEMBER ID (Connected) */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Member ID
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Member ID <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g. user@129"
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-slate-900 transition-all outline-none text-slate-900 placeholder-slate-400 text-sm"
+                placeholder="e.g. user@017"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                value={formData.memberId}
+                onChange={(e) =>
+                  setFormData({ ...formData, memberId: e.target.value })
+                }
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* PROVIDER ACCOUNT (Connected) */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Provider Account ID{" "}
+                {formData.provider === "PG Soft" && (
+                  <span className="text-red-500">*</span>
+                )}
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. gapi_12345"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                value={formData.providerAccount}
+                onChange={(e) =>
+                  setFormData({ ...formData, providerAccount: e.target.value })
+                }
+              />
+            </div>
+
+            {/* MERCHANT GROUP (Auto-detected) */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Merchant Group
+              </label>
+              <input
+                type="text"
+                readOnly
+                placeholder="Auto-detected..."
+                className={`w-full px-3 py-2 border rounded-lg text-sm italic cursor-not-allowed transition-all ${
+                  dutyError 
+                    ? "bg-red-50 border-red-200 text-red-600" 
+                    : "bg-slate-100 border-slate-200 text-slate-500"
+                }`}
+                value={formData.merchant}
+              />
+              {dutyError && (
+                <p className="text-[10px] font-bold text-red-500 mt-1">
+                  ⚠️ {dutyError}
+                </p>
+              )}
+            </div>
+
+            {/* TIME PERIOD (Connected) */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Time Period{" "}
+                {formData.provider === "PG Soft" && (
+                  <span className="text-red-500">*</span>
+                )}
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 10:00 - 12:00"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                value={formData.timeRange}
+                onChange={(e) =>
+                  setFormData({ ...formData, timeRange: e.target.value })
+                }
+              />
+            </div>
+
+            {/* EXTRA FIELDS (Connected) */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Provider
-                </label>
-                <select className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm text-slate-900">
-                  <option>PG Soft</option>
-                  <option>Evolution</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Time Range
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Login ID
                 </label>
                 <input
                   type="text"
-                  placeholder="HH:MM"
-                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                  value={formData.loginId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, loginId: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Tracking ID
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-900 outline-none text-sm"
+                  value={formData.trackingId}
+                  onChange={(e) =>
+                    setFormData({ ...formData, trackingId: e.target.value })
+                  }
                 />
               </div>
             </div>
 
-            {/* BUTTON: Solid Black (Consistent) */}
-            <button className="w-full py-2.5 bg-black hover:bg-slate-800 text-white font-semibold rounded-lg shadow-sm transition-all duration-200 flex items-center justify-center gap-2 mt-4">
+            <button
+              disabled={!isFormValid()}
+              className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all duration-200 flex items-center justify-center gap-2 mt-4 
+                ${
+                  isFormValid()
+                    ? "bg-black hover:bg-slate-800 text-white"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+            >
               <Plus size={18} /> Create Ticket
             </button>
           </div>
 
+          {/* SCRIPT PREVIEW */}
           <div className="p-6 bg-slate-50/50 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">
                 Script Preview
               </span>
-              <button className="text-xs font-semibold text-slate-900 hover:text-black flex items-center gap-1">
-                <Copy size={12} /> Copy
+              <button
+                onClick={handleCopy}
+                className="text-xs font-semibold text-slate-900 hover:text-black flex items-center gap-1 transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check size={12} className="text-emerald-500" />
+                    <span className="text-emerald-500">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} /> Copy
+                  </>
+                )}
               </button>
             </div>
-            <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-500 min-h-[100px] shadow-sm leading-relaxed">
-              // Generated script will appear here...
+            <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-500 min-h-[120px] shadow-sm leading-relaxed overflow-x-auto whitespace-pre">
+              {generatedScript}
             </div>
           </div>
         </aside>
@@ -269,14 +482,12 @@ function Dashboard() {
         {/* RIGHT PANEL */}
         <main className="flex-1 bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between shrink-0">
-            {/* HEADER TITLE: Uniform Text Color */}
             <div>
               <h2 className="text-lg font-bold text-slate-900">
                 Active Investigations for IC-Duty {dutyNumber}
               </h2>
             </div>
 
-            {/* Search & Filter (No Changes) */}
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Search
@@ -301,9 +512,10 @@ function Dashboard() {
                 <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   <th className="px-6 py-4 w-16 text-center">#</th>
                   <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Ticket ID</th>
+                  <th className="px-6 py-4">Tracking ID</th>
                   <th className="px-6 py-4">Member ID</th>
                   <th className="px-6 py-4">Provider</th>
+                  <th className="px-6 py-4">Merchant</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -319,12 +531,13 @@ function Dashboard() {
                     </span>
                   </td>
                   <td className="px-6 py-4 font-mono text-slate-500 text-xs">
-                    #CS-30908
+                    #TRK-9982
                   </td>
                   <td className="px-6 py-4 font-semibold text-slate-700">
-                    user_7721@129
+                    user_7721
                   </td>
                   <td className="px-6 py-4 text-slate-600">PG Soft</td>
+                  <td className="px-6 py-4 text-slate-500">GrandRoyal</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button className="p-2 text-slate-400 hover:text-black hover:bg-slate-100 rounded-lg transition-all">
