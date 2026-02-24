@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, Shield, ChevronRight, LogOut, LayoutDashboard } from 'lucide-react';
 
 export default function Login() {
-  const { user, setDuty, loading } = useDuty();
+  // --- NEW: Added userRole from context ---
+  const { user, userRole, setDuty, loading } = useDuty();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -13,12 +14,13 @@ export default function Login() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // Monitor user state changes to ensure UI updates on login
+  // --- NEW: Auto-redirect Admins/Leaders immediately ---
   useEffect(() => {
-    if (user) {
-      console.log("Login component detected user:", user.email);
+    if (user && (userRole === 'Admin' || userRole === 'Leader')) {
+      console.log(`Auto-redirecting ${userRole} to dashboard...`);
+      navigate('/dashboard');
     }
-  }, [user]);
+  }, [user, userRole, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -47,7 +49,7 @@ export default function Login() {
   };
 
   // Prevent flicker by showing a loader while checking initial session
-  if (loading) {
+  if (loading || (user && (userRole === 'Admin' || userRole === 'Leader'))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
@@ -137,7 +139,7 @@ export default function Login() {
     );
   }
 
-  // 2. Modern Duty Selection
+  // 2. Modern Duty Selection (ONLY for standard 'User' role)
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
       
@@ -151,19 +153,20 @@ export default function Login() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-3xl">
-        {['IC0', 'IC1', 'IC2', 'IC3', 'IC5'].map((role) => (
+        {/* Note: Removed 'IC0' from this list since Admins auto-skip this screen, and standard users shouldn't see IC0 */}
+        {['IC1', 'IC2', 'IC3', 'IC5'].map((role) => (
           <button
             key={role}
             onClick={() => handleDutySelect(role)}
             className="group relative flex flex-col items-center justify-center p-8 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 hover:-translate-y-1 transition-all duration-200"
           >
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors ${role === 'IC0' ? 'bg-purple-100 text-purple-600' : 'bg-blue-50 text-blue-600 group-hover:bg-indigo-100 group-hover:text-indigo-600'}`}>
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors bg-blue-50 text-blue-600 group-hover:bg-indigo-100 group-hover:text-indigo-600`}>
               <LayoutDashboard size={24} />
             </div>
             
             <span className="text-xl font-bold text-slate-800">{role}</span>
             <span className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">
-                {role === 'IC0' ? 'Super Admin' : 'Duty Officer'}
+                Duty Officer
             </span>
 
             {/* Hover Indicator */}
