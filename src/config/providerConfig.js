@@ -31,7 +31,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nAgent Name：QQ288\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -56,7 +56,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nCategory：Casino\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -227,7 +227,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -254,7 +254,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -481,7 +481,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -506,7 +506,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -535,7 +535,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -586,7 +586,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -643,7 +643,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -818,7 +818,7 @@ export const PROVIDER_CONFIG = {
 Please help us check member betting normal or not. Thank you
 Time period：${timeRange} (GMT+8)`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -850,7 +850,7 @@ Time period：${timeRange} (GMT+8)`;
       if (providerAccount && timeRange) {
         return `Please help us check member betting normal or not. Thank you.\nPlayer：${providerAccount}\nTime period：${timeRange} (GMT+8)`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -893,7 +893,7 @@ Time period：${timeRange} (GMT+8)`;
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -917,7 +917,7 @@ Time period：${timeRange} (GMT+8)`;
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1082,7 +1082,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1174,7 +1174,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1297,7 +1297,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1476,7 +1476,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：A1_${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1519,7 +1519,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1639,7 +1639,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1668,7 +1668,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1697,7 +1697,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   },
 
@@ -1726,7 +1726,7 @@ Please help us check member betting normal or not. Thank you.
 Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
-      return "// Waiting for Provider Account and Time Range...";
+      return "// fill in the required input feilds..";
     },
   }, // <-- Make sure to close the final object properly without a trailing comma!
 };
