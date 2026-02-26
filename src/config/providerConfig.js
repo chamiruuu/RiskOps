@@ -1033,19 +1033,19 @@ ${betInfo}`;
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
-      "The specific Game Name is required for this provider."
+      "The specific Game Name is required for this provider.",
     ],
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: 🟡*Evo Support - Skyline E_QG| NLC",
-      "Ensure you include the specific Game Name where the betting occurred."
+      "Ensure you include the specific Game Name where the betting occurred.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'gameName', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, gameName, timeRange } = data;
-      
+
       if (providerAccount && gameName && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1055,7 +1055,7 @@ Time period：${timeRange}
 Game name：${gameName}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Range...";
-    }
+    },
   },
 
   // --- 36. OG Slots ---
@@ -1063,18 +1063,18 @@ Game name：${gameName}`;
     channel: "东方-mog858-QQ288-OG Slots-[tw]v2",
     sla: "Standard",
     conditions: [
-      "Ensure member has betting records in the specified time period."
+      "Ensure member has betting records in the specified time period.",
     ],
     process: [
       "Check member details in BO.",
-      "Submit query to the Teams Group: 东方-mog858-QQ288-OG Slots-[tw]v2"
+      "Submit query to the Teams Group: 东方-mog858-QQ288-OG Slots-[tw]v2",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1083,7 +1083,7 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 37. Relax Gaming ---
@@ -1092,19 +1092,19 @@ Time period：${timeRange}`;
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
-      "Game Name is a mandatory field for Relax Gaming queries."
+      "Game Name is a mandatory field for Relax Gaming queries.",
     ],
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: [TG068/ QQ288/ YG/ DC/ AUX/ HS/ RG/ OP] CS",
-      "Ensure the 'Provider name' is explicitly mentioned as Relax Gaming."
+      "Ensure the 'Provider name' is explicitly mentioned as Relax Gaming.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'gameName', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, gameName, timeRange } = data;
-      
+
       if (providerAccount && gameName && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1115,28 +1115,28 @@ Game name：${gameName}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Range...";
-    }
+    },
   },
 
   // --- 38. Hacksaw ---
-  "Hacksaw": {
+  Hacksaw: {
     channel: "[TG068/ Zapport (QQ288)/ YGG/ RG/ HS/ OP/ DC] CS",
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
-      "Game Name must be provided for Hacksaw investigation requests."
+      "Game Name must be provided for Hacksaw investigation requests.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the query to the Teams Group: [TG068/ Zapport (QQ288)/ YGG/ RG/ HS/ OP/ DC] CS",
-      "Confirm that 'Provider name: Hacksaw' is included in the message."
+      "Confirm that 'Provider name: Hacksaw' is included in the message.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'gameName', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, gameName, timeRange } = data;
-      
+
       if (providerAccount && gameName && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1147,26 +1147,26 @@ Game name：${gameName}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Range...";
-    }
+    },
   },
 
   // --- 39. YGR ---
-  "YGR": {
+  YGR: {
     channel: "QQ288 - YGR API (transfer)",
     sla: "Standard",
     conditions: [
-      "Ensure member has betting records in the specified time period."
+      "Ensure member has betting records in the specified time period.",
     ],
     process: [
       "Check member details in BO.",
-      "Submit query to the Teams Group: QQ288 - YGR API (transfer)"
+      "Submit query to the Teams Group: QQ288 - YGR API (transfer)",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1175,29 +1175,29 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 40. AdvantPlay ---
-  "AdvantPlay": {
+  AdvantPlay: {
     channel: "AdvantPlay x QQ288 ( Technical support )",
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
-      "Provide either the Time Period OR a Bet Ticket Number."
+      "Provide either the Time Period OR a Bet Ticket Number.",
     ],
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: AdvantPlay x QQ288 ( Technical support )",
-      "If you fill in the 'Bet Ticket Number', the script label will automatically update."
+      "If you fill in the 'Bet Ticket Number', the script label will automatically update.",
     ],
-    
+
     // UI shows both; validation passes if either is filled
-    requiredFields: ['memberId', 'providerAccount', 'timeRange', 'betTicket'],
-    
+    requiredFields: ["memberId", "providerAccount", "timeRange", "betTicket"],
+
     generateScript: (data, workName) => {
       const { providerAccount, betTicket, timeRange } = data;
-      
+
       if (providerAccount && (betTicket || timeRange)) {
         // DYNAMIC LABEL LOGIC
         const hasTicket = betTicket && betTicket.trim() !== "";
@@ -1211,28 +1211,28 @@ Member ID：${providerAccount}
 ${label}：${value}`;
       }
       return "// Waiting for Provider Account and either Time Period or Bet Ticket...";
-    }
+    },
   },
 
   // --- 41. Octoplay ---
-  "Octoplay": {
+  Octoplay: {
     channel: "[TG068/ Zapport (QQ288)/ YGG/ RG/ HS/ OP/ DC] CS",
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
-      "Providing the Game Name is mandatory for Octoplay queries."
+      "Providing the Game Name is mandatory for Octoplay queries.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the query to the Teams Group: [TG068/ Zapport (QQ288)/ YGG/ RG/ HS/ OP/ DC] CS",
-      "Ensure the 'Provider name' is explicitly listed as Octoplay."
+      "Ensure the 'Provider name' is explicitly listed as Octoplay.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'gameName', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, gameName, timeRange } = data;
-      
+
       if (providerAccount && gameName && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1243,27 +1243,25 @@ Game name：${gameName}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Range...";
-    }
+    },
   },
 
   // --- 42. FatPanda ---
-  "FatPanda": {
+  FatPanda: {
     channel: "[T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS",
     sla: "Standard",
-    conditions: [
-      "Ensure member has betting records in the specified period."
-    ],
+    conditions: ["Ensure member has betting records in the specified period."],
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: [T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS",
-      "Wait for provider feedback in the group."
+      "Wait for provider feedback in the group.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hi team, this is ${workName} ，Please help us check member betting normal or not.Thank you.
 
@@ -1272,7 +1270,7 @@ Period：${timeRange}
 Provider name：FatPanda`;
       }
       return "// Waiting for Provider Account and Period...";
-    }
+    },
   },
 
   // --- 43. 2J ---
@@ -1280,18 +1278,18 @@ Provider name：FatPanda`;
     channel: "2J Games & 288 技术对接群",
     sla: "Standard",
     conditions: [
-      "Ensure member has betting records in the specified time period."
+      "Ensure member has betting records in the specified time period.",
     ],
     process: [
       "Check member details in BO.",
-      "Submit query to the Teams Group: 2J Games & 288 技术对接群"
+      "Submit query to the Teams Group: 2J Games & 288 技术对接群",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1300,29 +1298,29 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 44. GGSoft ---
-  "GGSoft": {
+  GGSoft: {
     channel: "GGSoft - QQ",
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified period.",
-      "You can provide either the Time Period or a specific Round ID."
+      "You can provide either the Time Period or a specific Round ID.",
     ],
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: GGSoft - QQ",
-      "If you fill in the 'Round ID', the script label will automatically update."
+      "If you fill in the 'Round ID', the script label will automatically update.",
     ],
-    
+
     // UI shows all relevant boxes
-    requiredFields: ['memberId', 'providerAccount', 'timeRange', 'roundId'],
-    
+    requiredFields: ["memberId", "providerAccount", "timeRange", "roundId"],
+
     generateScript: (data, workName) => {
       const { providerAccount, roundId, timeRange } = data;
-      
+
       if (providerAccount && (roundId || timeRange)) {
         // DYNAMIC LABEL LOGIC
         const hasRoundId = roundId && roundId.trim() !== "";
@@ -1336,7 +1334,7 @@ Member ID：${providerAccount}
 ${label}：${value}`;
       }
       return "// Waiting for Provider Account and either Time Period or Round ID...";
-    }
+    },
   },
 
   // --- 45. C-Sports ---
@@ -1345,7 +1343,7 @@ ${label}：${value}`;
     sla: "N/A",
     conditions: [
       "No external provider query is needed.",
-      "Verification is based entirely on the 【Risk Level】 found in the C-Sports Back Office."
+      "Verification is based entirely on the 【Risk Level】 found in the C-Sports Back Office.",
     ],
     process: [
       "Log in to the C-Sports BO.",
@@ -1353,10 +1351,10 @@ ${label}：${value}`;
       "Check the member's 【Risk Level】.",
       "If the Risk Level is 'Uncategorized', 'New', 'Healthy', or 'Moderate', directly notify the merchant that betting is normal.",
       "If the Risk Level is anything else, use the standard 'Notifying merchants about abnormal betting members' script.",
-      { image: "https://snipboard.io/7uPU6H.jpg" }
+      { image: "https://snipboard.io/7uPU6H.jpg" },
     ],
-    
-    requiredFields: [], 
+
+    requiredFields: [],
     isManualCheckOnly: true, // This hides the inputs and disables the ticket button
 
     generateScript: () => {
@@ -1368,38 +1366,38 @@ ACTION REQUIRED:
 
 ➔ NORMAL: Uncategorized, New, Healthy, Moderate
 ➔ ABNORMAL: Any other level (Use Abnormal Betting macro for merchant)`;
-    }
+    },
   },
 
   // --- 46. SBO ---
-  "SBO": {
+  SBO: {
     channel: "QQ288 [1190] x SBO (NS1) API SW Tech. 新系統",
     sla: "Standard",
     conditions: [
       "Records within 7 days: Must be checked manually in the SBO Back Office.",
       "Records 8 to 30 days old: Submit inquiry directly to the provider group chat.",
-      "Max Limit: The provider can ONLY query records from the past month."
+      "Max Limit: The provider can ONLY query records from the past month.",
     ],
     process: [
       "Determine the age of the bet record.",
       "IF WITHIN 7 DAYS: Go to SBO BO > Search Member > Click 'Betting Profile' on the right > Click 'Check Abnormal Bets in 3 days' or '7 days'.",
       "IF OLDER THAN 7 DAYS: Submit the generated script below to the Teams group.",
-      "Do not send requests to the provider for bets placed within the last 7 days."
+      "Do not send requests to the provider for bets placed within the last 7 days.",
     ],
     // The reminder field puts a bright yellow warning box in your UI!
-    reminder: "STOP: Is the bet less than 7 days old? If YES, check the Back Office manually. Only use this script for bets older than 7 days!",
-    
+    reminder:
+      "STOP: Is the bet less than 7 days old? If YES, check the Back Office manually. Only use this script for bets older than 7 days!",
+
     // UI displays both; logic handles the swap
-    requiredFields: ['memberId', 'providerAccount', 'timeRange', 'betTicket'],
-    
+    requiredFields: ["memberId", "providerAccount", "timeRange", "betTicket"],
+
     generateScript: (data, workName) => {
       const { providerAccount, betTicket, timeRange } = data;
-      
+
       if (providerAccount && (betTicket || timeRange)) {
         // Dynamic label logic: use Ticket if provided, otherwise Time Range
-        const betOrTime = (betTicket && betTicket.trim() !== "") 
-          ? betTicket 
-          : timeRange;
+        const betOrTime =
+          betTicket && betTicket.trim() !== "" ? betTicket : timeRange;
 
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1408,7 +1406,7 @@ Member ID：${providerAccount}
 Time period/Bet Ticket Number：${betOrTime}`;
       }
       return "// Waiting for Provider Account and either Time Period or Bet Ticket...";
-    }
+    },
   },
 
   // --- 47. I-sports ---
@@ -1417,17 +1415,18 @@ Time period/Bet Ticket Number：${betOrTime}`;
     sla: "N/A",
     conditions: [
       "No external provider query is needed.",
-      "Verification is based entirely on the 【Risk Level】 found in the I-sports Back Office."
+      "Verification is based entirely on the 【Risk Level】 found in the I-sports Back Office.",
     ],
     process: [
       "Log in to the I-sports BO.",
       "Navigate to: 【Customer Management】 > 【Player Administration】.",
       "Enter the member's Account to view their Risk Level.",
-      "If the Risk Level is 'Uncategorized', 'New', 'Healthy', or 'Moderate', directly notify the merchant that betting is normal.",{ image: "https://snipboard.io/eiH0uE.jpg" },
-      "If the Risk Level is anything else, use the standard 'Notifying merchants about abnormal betting members' macro to notify the merchant."
+      "If the Risk Level is 'Uncategorized', 'New', 'Healthy', or 'Moderate', directly notify the merchant that betting is normal.",
+      { image: "https://snipboard.io/eiH0uE.jpg" },
+      "If the Risk Level is anything else, use the standard 'Notifying merchants about abnormal betting members' macro to notify the merchant.",
     ],
-    
-    requiredFields: [], 
+
+    requiredFields: [],
     isManualCheckOnly: true, // Hides the inputs and disables the ticket button
 
     generateScript: () => {
@@ -1439,7 +1438,7 @@ ACTION REQUIRED:
 
 ➔ NORMAL: Uncategorized, New, Healthy, Moderate
 ➔ ABNORMAL: Any other level (Use Abnormal Betting macro for merchant)`;
-    }
+    },
   },
 
   // --- 48. OPUS SPORT ---
@@ -1450,25 +1449,25 @@ ACTION REQUIRED:
       "Submit queries via the Teams group normally.",
       "If TEAMS is unavailable, you MUST use Email or a Ticket to inquire.",
       "Email queries are only serviced on weekdays.",
-      "Note: The script automatically adds the required 'A1_' prefix to the Provider Account."
+      "Note: The script automatically adds the required 'A1_' prefix to the Provider Account.",
     ],
     process: [
       "Check member details in BO.",
       "Submit the generated script to the Teams Group: Zapport + Opus + SB2(new)",
       "IF TEAMS IS DOWN: Send an email using the details below (Email is suggested over Tickets).",
-      { 
+      {
         text: "Email Fallback Details:",
         copyText: `Title: Check if the member is normal  [O-Sport]
 To: ic.csduty@368media.com
-BCC: support@opus-gaming.com` 
-      }
+BCC: support@opus-gaming.com`,
+      },
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         // Automatically appending the A1_ prefix as requested
         return `Hello sir this is ${workName},
@@ -1478,18 +1477,18 @@ Member ID：A1_${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 49. BTi ---
-  "BTi": {
+  BTi: {
     channel: "[368Cash] QQ288 x BTi(WLT) Support",
     sla: "Standard",
     conditions: [
       "CS does NOT need to pre-verify the following criteria before inquiring:",
       "1. >5 bets within 30 days AND average amount > 900 CNY.",
       "2. Net profit within 30 days > 9,000 CNY.",
-      "If the provider refuses the check based on these rules, use the Query Condition script to notify the merchant."
+      "If the provider refuses the check based on these rules, use the Query Condition script to notify the merchant.",
     ],
     // This creates the dedicated Copy button at the top of the SOP tab, just like PKQ!
     conditionScript: (workName) => {
@@ -1502,16 +1501,17 @@ Since the player does not meet the above criteria, Bti does not provide the quer
     process: [
       "Submit the generated script to the Teams Group: [368Cash] QQ288 x BTi(WLT) Support",
       "Wait for the provider's response.",
-      "IF REJECTED BY PROVIDER: Use the 'Copy Script' button under Query Conditions to notify the merchant."
+      "IF REJECTED BY PROVIDER: Use the 'Copy Script' button under Query Conditions to notify the merchant.",
     ],
     // Adds the yellow warning box for extra clarity
-    reminder: "Reminder: You do NOT need to pre-verify the criteria before sending to the provider. Only send the rejection script to the merchant if the provider kicks it back.",
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+    reminder:
+      "Reminder: You do NOT need to pre-verify the criteria before sending to the provider. Only send the rejection script to the merchant if the provider kicks it back.",
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1520,33 +1520,34 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 50. IMSB ---
-  "IMSB": {
+  IMSB: {
     channel: "Internal Ticket / Manual BO Check",
     sla: "N/A",
     conditions: [
       "No external provider query script is needed.",
-      "Please refer to the OwnCloud CSIP Documentation > IC > Provider BO Manual > IMSB Investigating List Module (EN)."
+      "Please refer to the OwnCloud CSIP Documentation > IC > Provider BO Manual > IMSB Investigating List Module (EN).",
     ],
     process: [
       "Log in to the IMSB Back Office.",
       "Refer to the IMSB Investigating List Module documentation.",
       { image: "https://snipboard.io/dUy1YL.jpg" },
       "Fill out the required fields on the left.",
-      "Click 'Create Ticket' to log this investigation. (Note: 'im3b1' will automatically be attached to the Provider ID)."
+      "Click 'Create Ticket' to log this investigation. (Note: 'im3b1' will automatically be attached to the Provider ID).",
     ],
-    reminder: "No Teams script is required for IMSB. Just check the BO, fill out the info, and create the ticket.",
-    
+    reminder:
+      "No Teams script is required for IMSB. Just check the BO, fill out the info, and create the ticket.",
+
     // We only ask for Member ID and Provider Account
-    requiredFields: ['memberId', 'providerAccount'], 
-    
+    requiredFields: ["memberId", "providerAccount"],
+
     // We repurpose the script generator to show a Ticket Summary instead!
     generateScript: (data, workName) => {
       const { providerAccount, memberId } = data;
-      
+
       if (providerAccount && memberId) {
         return `// INTERNAL TICKET LOGGING //
 
@@ -1559,35 +1560,36 @@ Member ID: ${memberId}
 Provider Account: im3b1${providerAccount}`;
       }
       return "// Waiting for Member ID and Provider Account...";
-    }
+    },
   },
 
   // --- 51. Wbet ---
-  "Wbet": {
+  Wbet: {
     channel: "WBET - QQ CS support",
     sla: "Standard",
     conditions: [
       "The provider will only handle queries for members who have placed a bet on at least 8 different matches.",
-      "CS does NOT need to pre-verify this condition; submit it directly to the provider for confirmation."
+      "CS does NOT need to pre-verify this condition; submit it directly to the provider for confirmation.",
     ],
     process: [
       "Check member details in BO.",
       "Generate the script below. (Note: The required currency suffix like '_DRQ' or '_CNQ' is added automatically).",
-      "Submit the query directly to the Teams Group: WBET - QQ CS support"
+      "Submit the query directly to the Teams Group: WBET - QQ CS support",
     ],
     // The yellow warning box to save agents time!
-    reminder: "Reminder: You do NOT need to pre-verify the 8-match condition. Just generate the script and send it directly to the provider!",
-    
-    requiredFields: ['memberId', 'providerAccount', 'currency', 'timeRange'],
-    
+    reminder:
+      "Reminder: You do NOT need to pre-verify the 8-match condition. Just generate the script and send it directly to the provider!",
+
+    requiredFields: ["memberId", "providerAccount", "currency", "timeRange"],
+
     // Explicitly listing the supported currencies for Wbet
     options: {
-      currencies: ['IDR', 'CNY', 'VND', 'THB', 'MYR', 'USD', 'KRW']
+      currencies: ["IDR", "CNY", "VND", "THB", "MYR", "USD", "KRW"],
     },
-    
+
     generateScript: (data, workName) => {
       const { providerAccount, currency, timeRange } = data;
-      
+
       // The automatic suffix mapping logic
       const currencyMap = {
         IDR: "DRQ",
@@ -1600,7 +1602,7 @@ Provider Account: im3b1${providerAccount}`;
       };
 
       const mappedCur = currencyMap[currency] || "";
-      
+
       if (providerAccount && currency && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1609,27 +1611,27 @@ Member ID：${providerAccount}_${mappedCur}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account, Currency, and Time Range...";
-    }
+    },
   },
 
   // --- 52. QQKENO ---
-  "QQKENO": {
+  QQKENO: {
     channel: "C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
     sla: "Standard",
     conditions: [
-      "Ensure the member has betting records in the specified time period."
+      "Ensure the member has betting records in the specified time period.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the generated script to the Teams Group: C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
-      "Wait for provider feedback."
+      "Wait for provider feedback.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1638,27 +1640,27 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 53. QQThai ---
-  "QQThai": {
+  QQThai: {
     channel: "C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
     sla: "Standard",
     conditions: [
-      "Ensure the member has betting records in the specified time period."
+      "Ensure the member has betting records in the specified time period.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the generated script to the Teams Group: C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
-      "Wait for provider feedback."
+      "Wait for provider feedback.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1667,27 +1669,27 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 54. QQViet ---
-  "QQViet": {
+  QQViet: {
     channel: "C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
     sla: "Standard",
     conditions: [
-      "Ensure the member has betting records in the specified time period."
+      "Ensure the member has betting records in the specified time period.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the generated script to the Teams Group: C_C _QQ288(368CASH)_ QQLottery( KN/ TH / VT)",
-      "Wait for provider feedback."
+      "Wait for provider feedback.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1696,27 +1698,27 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
+    },
   },
 
   // --- 55. QQ4D ---
-  "QQ4D": {
+  QQ4D: {
     channel: "QQ4D - QQ288 Integration Group",
     sla: "Standard",
     conditions: [
-      "Ensure the member has betting records in the specified time period."
+      "Ensure the member has betting records in the specified time period.",
     ],
     process: [
       "Verify member betting activity in the Back Office.",
       "Submit the generated script to the Teams Group: QQ4D - QQ288 Integration Group",
-      "Wait for provider feedback."
+      "Wait for provider feedback.",
     ],
-    
-    requiredFields: ['memberId', 'providerAccount', 'timeRange'],
-    
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
     generateScript: (data, workName) => {
       const { providerAccount, timeRange } = data;
-      
+
       if (providerAccount && timeRange) {
         return `Hello sir this is ${workName},
 Please help us check member betting normal or not. Thank you.
@@ -1725,6 +1727,6 @@ Member ID：${providerAccount}
 Time period：${timeRange}`;
       }
       return "// Waiting for Provider Account and Time Range...";
-    }
-  } // <-- Make sure to close the final object properly without a trailing comma!
+    },
+  }, // <-- Make sure to close the final object properly without a trailing comma!
 };

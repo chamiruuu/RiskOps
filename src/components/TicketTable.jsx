@@ -56,14 +56,14 @@ const TrackingCell = ({ ticket, onUpdateTicket }) => {
 
   return value ? (
     <div
-      onClick={() => setIsEditing(true)}
-      className="cursor-pointer group flex items-center gap-2 py-1"
-      title="Click to edit Tracking ID"
+      className="group flex items-center gap-2 py-1"
     >
       <span className="font-mono text-slate-700 font-medium">{value}</span>
       <Edit2
         size={12}
-        className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={() => setIsEditing(true)}
+        title="Click to edit Tracking ID"
+        className="cursor-pointer text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"
       />
     </div>
   ) : (
@@ -103,14 +103,11 @@ export default function TicketTable({
     if (!searchTerm) return true; // Show all if search is empty
     
     const lowerSearch = searchTerm.toLowerCase();
+    // Restricted search to ONLY Player ID (member_id), Provider Account, and Tracking No.
     return (
-      (ticket.merchant_name && ticket.merchant_name.toLowerCase().includes(lowerSearch)) ||
-      (ticket.login_id && ticket.login_id.toLowerCase().includes(lowerSearch)) ||
       (ticket.member_id && ticket.member_id.toLowerCase().includes(lowerSearch)) ||
-      (ticket.provider && ticket.provider.toLowerCase().includes(lowerSearch)) ||
       (ticket.provider_account && ticket.provider_account.toLowerCase().includes(lowerSearch)) ||
-      (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch)) ||
-      (ticket.ic_account && ticket.ic_account.toLowerCase().includes(lowerSearch))
+      (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch))
     );
   });
 
@@ -126,7 +123,6 @@ export default function TicketTable({
               size={16}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
-            {/* --- NEW: Wired up the input to update searchTerm --- */}
             <input
               type="text"
               placeholder="Search tickets..."
@@ -134,7 +130,6 @@ export default function TicketTable({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm w-64 outline-none focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
             />
-            {/* --- NEW: Clear Search Button (appears when typing) --- */}
             {searchTerm && (
               <button 
                 onClick={() => setSearchTerm("")}
@@ -165,7 +160,6 @@ export default function TicketTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 text-xs bg-white">
-            {/* --- NEW: Check if filtered list is empty, display appropriate message --- */}
             {filteredTickets.length === 0 ? (
               <tr>
                 <td
@@ -178,7 +172,6 @@ export default function TicketTable({
                 </td>
               </tr>
             ) : (
-              // --- NEW: Map over filteredTickets instead of tickets ---
               filteredTickets.map((ticket) => (
                 <tr
                   key={ticket.id}
@@ -200,7 +193,8 @@ export default function TicketTable({
                       month: "short",
                     })}
                   </td>
-                  <td className="px-4 py-3 font-mono font-semibold text-indigo-600">
+                  {/* --- NEW: Changed from text-indigo-600 to text-slate-700 --- */}
+                  <td className="px-4 py-3 font-mono font-semibold text-slate-700">
                     {ticket.merchant_name}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
