@@ -5,16 +5,13 @@ const DutyContext = createContext();
 
 export const DutyProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  // --- NEW: Store the user's role from the database ---
   const [userRole, setUserRole] = useState(null); 
   const [loading, setLoading] = useState(true);
   
-  // Load duty from localStorage to persist on refresh
   const [selectedDuty, setSelectedDuty] = useState(() => {
     return localStorage.getItem('riskops_duty_role') || null;
   });
 
-  // --- NEW: Fetch role and auto-assign IC0 for management ---
   const fetchUserProfile = async (userId) => {
     try {
       const { data, error } = await supabase
@@ -25,7 +22,6 @@ export const DutyProvider = ({ children }) => {
         
       if (data) {
         setUserRole(data.role);
-        // If Admin or Leader, instantly grant them the master IC0 view
         if (data.role === 'Admin' || data.role === 'Leader') {
           setSelectedDuty('IC0');
           localStorage.setItem('riskops_duty_role', 'IC0');
@@ -50,6 +46,12 @@ export const DutyProvider = ({ children }) => {
     // 2. Listen for auth changes (Login, Logout, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log("Auth Event Triggered:", _event);
+      
+      // --- FIX: Force loading state when a user first signs in ---
+      if (_event === 'SIGNED_IN') {
+        setLoading(true);
+      }
+
       setUser(session?.user ?? null);
       
       if (session?.user) {
@@ -66,7 +68,6 @@ export const DutyProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Update localStorage whenever selectedDuty changes
   useEffect(() => {
     if (selectedDuty) {
       localStorage.setItem('riskops_duty_role', selectedDuty);
@@ -79,7 +80,6 @@ export const DutyProvider = ({ children }) => {
     setSelectedDuty(duty);
   };
 
-  // Expose userRole to the rest of the app!
   return (
     <DutyContext.Provider value={{ user, userRole, selectedDuty, setDuty, loading }}>
       {children}

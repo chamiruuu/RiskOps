@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, LogOut, Shield, Users, X, UserPlus, Mail, Lock, RefreshCw, Copy, Check, Trash2, Edit2, Eye } from "lucide-react";
+import { Calendar, Clock, LogOut, Shield, Users, X, UserPlus, Mail, Lock, RefreshCw, Copy, Check, Trash2, Edit2, Eye, EyeOff } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 
@@ -16,6 +16,10 @@ export default function Header() {
   const [editingId, setEditingId] = useState(null);
   const [tempWorkName, setTempWorkName] = useState("");
   const [tempRole, setTempRole] = useState("");
+
+  // --- NEW: Password List States ---
+  const [revealedPasswords, setRevealedPasswords] = useState({});
+  const [copiedRowId, setCopiedRowId] = useState(null);
 
   // --- Create User States ---
   const [newEmail, setNewEmail] = useState("");
@@ -55,7 +59,7 @@ export default function Header() {
     if (data) setTeamMembers(data);
   };
 
-  // --- NEW: Locked Inline Editing Logic ---
+  // --- Inline Editing Logic ---
   const startEditing = (member) => {
     setEditingId(member.id);
     setTempWorkName(member.work_name || "");
@@ -67,13 +71,11 @@ export default function Header() {
   };
 
   const saveEdit = async (userId) => {
-    // Update local state instantly
     setTeamMembers(teamMembers.map(member => 
       member.id === userId ? { ...member, work_name: tempWorkName, role: tempRole } : member
     ));
     setEditingId(null);
     
-    // Update database
     await supabase.from('profiles').update({ 
       work_name: tempWorkName, 
       role: tempRole 
@@ -82,8 +84,29 @@ export default function Header() {
 
   const handleDeleteUser = async (userId) => {
     if (!window.confirm("Are you sure you want to delete this user? This will instantly revoke their access.")) return;
+    
+    // Instantly remove from the UI
     setTeamMembers(teamMembers.filter(member => member.id !== userId));
-    await supabase.from('profiles').delete().eq('id', userId);
+    
+    // NEW: Call the secure database function to delete from BOTH auth.users and public.profiles
+    const { error } = await supabase.rpc('delete_user_by_admin', { target_user_id: userId });
+
+    if (error) {
+      console.error("Error deleting user:", error);
+      alert("Error: Could not delete user from Authentication. Please check database permissions.");
+    }
+  };
+
+  // --- NEW: Toggle & Copy List Passwords ---
+  const togglePasswordVisibility = (id) => {
+    setRevealedPasswords(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const copyRowPassword = (password, id) => {
+    if (!password) return;
+    navigator.clipboard.writeText(password);
+    setCopiedRowId(id);
+    setTimeout(() => setCopiedRowId(null), 2000);
   };
 
   // --- Password Generator Logic ---
@@ -108,7 +131,7 @@ export default function Header() {
     setIsCreating(true);
     setCreateMsg({ text: "", type: "" });
 
-    // --- THE MAGIC TRICK: Step 1. Save your current Admin session ---
+    // Step 1. Save your current Admin session
     const { data: { session: adminSession } } = await supabase.auth.getSession();
 
     // Step 2. Create the new user
@@ -123,8 +146,7 @@ export default function Header() {
       return;
     }
 
-    // --- THE MAGIC TRICK: Step 3. Instantly restore your Admin session ---
-    // This forcefully kicks out the new user's session and logs you back in as Admin
+    // Step 3. Instantly restore your Admin session
     if (adminSession) {
       await supabase.auth.setSession({
         access_token: adminSession.access_token,
@@ -136,7 +158,8 @@ export default function Header() {
     if (data?.user) {
       await supabase.from('profiles').update({ 
         role: newRole,
-        work_name: newWorkName
+        work_name: newWorkName,
+        visible_password: newPassword // <-- NEW: Saves the plain text password to the database
       }).eq('id', data.user.id);
     }
 
@@ -148,7 +171,6 @@ export default function Header() {
     setNewRole("User");
     setIsCreating(false);
     
-    // Refresh the table so the new user is sitting there when we switch tabs
     fetchTeam();
 
     setTimeout(() => {
@@ -197,7 +219,6 @@ export default function Header() {
 
         <div className="flex items-center gap-4">
           
-          {/* --- ONLY THIS BUTTON WAS CHANGED (Icon Only, Light Grey) --- */}
           {isAdminOrLeader && (
             <button 
               onClick={() => setShowAdminModal(true)} 
@@ -321,10 +342,30 @@ export default function Header() {
                           
                           {/* Password */}
                           <td className="px-5 py-4">
-                            <div className="flex items-center gap-3 text-slate-400">
-                              <span className="font-mono text-xs tracking-widest text-slate-800">••••••••</span>
-                              <button className="hover:text-slate-700 transition-colors" title="Encrypted"><Eye size={14}/></button>
-                              <button className="hover:text-slate-700 transition-colors" title="Encrypted"><Copy size={14}/></button>
+                            <div className="flex items-center gap-2 text-slate-400">
+                              {member.visible_password ? (
+                                <>
+                                  <span className="font-mono text-xs tracking-widest text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md min-w-[90px] text-center">
+                                    {revealedPasswords[member.id] ? member.visible_password : '••••••••'}
+                                  </span>
+                                  <button 
+                                    onClick={() => togglePasswordVisibility(member.id)}
+                                    className="p-1 hover:text-slate-700 transition-colors" 
+                                    title={revealedPasswords[member.id] ? "Hide Password" : "Show Password"}
+                                  >
+                                    {revealedPasswords[member.id] ? <EyeOff size={14} /> : <Eye size={14}/>}
+                                  </button>
+                                  <button 
+                                    onClick={() => copyRowPassword(member.visible_password, member.id)}
+                                    className="text-white bg-slate-900 p-1.5 rounded-md hover:bg-slate-800 transition-colors" 
+                                    title="Copy Password"
+                                  >
+                                    {copiedRowId === member.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12}/>}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic font-medium px-2 py-1 bg-slate-50 rounded">Hidden</span>
+                              )}
                             </div>
                           </td>
 
@@ -405,7 +446,7 @@ export default function Header() {
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Role</label>
                       <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 cursor-pointer transition-all text-slate-700 font-medium appearance-none">
-                        <option value="User">Normal User</option>
+                        <option value="User">Normal</option>
                         <option value="Leader">Leader</option>
                         <option value="Admin">Admin</option>
                       </select>
