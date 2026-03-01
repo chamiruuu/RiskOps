@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Calendar, Clock, LogOut, Shield, Users, X, UserPlus, Mail, Lock, RefreshCw, Copy, Check, Trash2, Edit2, Eye, EyeOff } from "lucide-react";
+import { Calendar, Clock, LogOut, Shield, Users, X, UserPlus, Mail, Lock, RefreshCw, Copy, Check, Trash2, Edit2, Eye, EyeOff, Bell } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 
@@ -33,6 +33,10 @@ export default function Header() {
   const [createMsg, setCreateMsg] = useState({ text: "", type: "" });
   const [copiedPwd, setCopiedPwd] = useState(false);
 
+  // --- NEW: Emergency Handover States ---
+  const [emergencyRequests, setEmergencyRequests] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
   const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
 
   const getDutyTextColorOnly = (dutyName) => {
@@ -56,6 +60,34 @@ export default function Header() {
       fetchTeam();
     }
   }, [showAdminModal, activeTab]);
+
+  // --- NEW: Fetch & Listen to Emergency Requests ---
+  useEffect(() => {
+    if (!isAdminOrLeader) return;
+
+    const fetchRequests = async () => {
+      const { data } = await supabase
+        .from('handover_requests')
+        .select('*')
+        .eq('status', 'Pending')
+        .order('created_at', { ascending: false });
+      if (data) setEmergencyRequests(data);
+    };
+
+    fetchRequests();
+
+    const sub = supabase.channel('handover_admin_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'handover_requests' }, () => {
+        fetchRequests(); // Refresh when a new request comes in or changes
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [isAdminOrLeader]);
+
+  const handleApproveRequest = async (id, status) => {
+    await supabase.from('handover_requests').update({ status }).eq('id', id);
+  };
 
   const fetchTeam = async () => {
     const { data, error } = await supabase
@@ -229,17 +261,59 @@ export default function Header() {
 
         <div className="flex items-center gap-4">
           
+          {/* --- ADMIN NOTIFICATION BELL --- */}
+          {isAdminOrLeader && (
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2 ${emergencyRequests.length > 0 ? "bg-rose-50 text-rose-600 hover:bg-rose-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                title="Notifications"
+              >
+                <Bell size={16} strokeWidth={2.5} />
+                {emergencyRequests.length > 0 && (
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full animate-pulse"></span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute top-full right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Emergency Approvals</span>
+                    <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-2 rounded-full">{emergencyRequests.length} Pending</span>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto p-2">
+                    {emergencyRequests.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-4 italic">No pending requests.</p>
+                    ) : (
+                      emergencyRequests.map(req => (
+                        <div key={req.id} className="p-3 mb-2 bg-white border border-slate-100 shadow-sm rounded-lg hover:border-slate-300 transition-all">
+                          <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                            <span className="font-bold text-slate-900">{req.requester_name}</span> requested an emergency handover for duties: <span className="font-bold text-indigo-600">{req.duties?.join(", ")}</span>.
+                          </p>
+                          <div className="flex items-center gap-2 mt-3">
+                            <button onClick={() => handleApproveRequest(req.id, 'Approved')} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded transition-colors">Approve</button>
+                            <button onClick={() => handleApproveRequest(req.id, 'Rejected')} className="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded transition-colors">Reject</button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {isAdminOrLeader && (
             <button 
               onClick={() => setShowAdminModal(true)} 
-              className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors ml-2"
+              className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors ml-1"
               title="User Management"
             >
               <Users size={16} strokeWidth={2.5} />
             </button>
           )}
 
-          <div className="text-xs font-medium text-slate-500 hidden md:block">
+          <div className="text-xs font-medium text-slate-500 hidden md:block border-l border-slate-200 pl-4 ml-1">
             {getGreeting()}, <span className="text-slate-900 font-bold">{workName || user?.email?.split("@")[0]}</span>
           </div>
 

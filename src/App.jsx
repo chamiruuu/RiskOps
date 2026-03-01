@@ -23,6 +23,7 @@ function Dashboard() {
     let query = supabase
       .from("tickets")
       .select("*")
+      .eq('is_archived', false)
       .order("created_at", { ascending: false });
 
     // --- MODIFIED: Handle array of duties ---

@@ -10,7 +10,11 @@ import {
   Trash2,
   Copy,
   AlertTriangle,
+  ArrowRightLeft, // <-- NEW
+  ShieldAlert, // <-- NEW
 } from "lucide-react";
+import { supabase } from "../lib/supabase"; // <-- NEW
+import { useDuty } from "../context/DutyContext"; // <-- NEW
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
@@ -82,6 +86,13 @@ const getDutyHeaderBg = (dutyName) => {
   }
 };
 
+// --- HELPER: Get Current GMT+8 Time ---
+const getGMT8Time = () => {
+  const d = new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
 // --- Reusable Click-to-Edit Component ---
 const EditableField = ({
   ticket,
@@ -150,6 +161,7 @@ export default function TicketTable({
   dutyNumber,
   shortWorkName,
 }) {
+  const { user, workName } = useDuty(); // <-- NEW: Grab user details for emergency requests
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
   const [newNoteText, setNewNoteText] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -165,6 +177,164 @@ export default function TicketTable({
     type: "",
     abnormalType: "",
   });
+
+  // --- NEW: Handover States & Auto-Sweeper Lock ---
+  const hasSweptForShift = useRef(false);
+  const [handoverModal, setHandoverModal] = useState({
+    isOpen: false,
+    step: "", // 'check', 'emergency', 'waiting', 'success'
+    missingTickets: [],
+    requestId: null,
+  });
+
+  // --- NEW: Auto-Sweeper Logic (Fires exactly at 14:30, 22:30, 07:00) ---
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const timeStr = `${h}:${m}`;
+
+      // Check if it is EXACTLY the sweep time
+      if (timeStr === "14:30" || timeStr === "22:30" || timeStr === "7:0") {
+        if (!hasSweptForShift.current) {
+          hasSweptForShift.current = true;
+          archiveCompletedTickets();
+        }
+      } else {
+        // Reset the lock when the minute passes
+        if (timeStr !== "14:30" && timeStr !== "22:30" && timeStr !== "7:0") {
+          hasSweptForShift.current = false;
+        }
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(timer);
+  }, [tickets]);
+
+  const archiveCompletedTickets = async () => {
+    // A ticket is considered completed if its status is NOT "Pending"
+    const completedIdsToArchive = tickets
+      .filter((t) => t.status !== "Pending")
+      .map((t) => t.id);
+
+    if (completedIdsToArchive.length > 0) {
+      await supabase
+        .from("tickets")
+        .update({ is_archived: true })
+        .in("id", completedIdsToArchive);
+    }
+  };
+
+  // --- NEW: Handover Logic ---
+  const checkHandoverEligibility = () => {
+    const pendingTix = tickets.filter((t) => t.status === "Pending");
+    const missing = pendingTix.filter(
+      (t) => !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === ""
+    );
+
+    if (missing.length > 0) {
+      setHandoverModal({
+        isOpen: true,
+        step: "check",
+        missingTickets: missing,
+        requestId: null,
+      });
+    } else {
+      processHandoverTimeCheck();
+    }
+  };
+
+  const processHandoverTimeCheck = () => {
+    const now = getGMT8Time();
+    const h = now.getHours();
+    const m = now.getMinutes();
+
+    // Valid Windows: 14:15-14:30 | 22:15-22:30 | 06:45-07:00
+    const isValidWindow =
+      (h === 14 && m >= 15 && m < 30) ||
+      (h === 22 && m >= 15 && m < 30) ||
+      (h === 6 && m >= 45 && m <= 59);
+
+    if (isValidWindow) {
+      setHandoverModal({
+        isOpen: true,
+        step: "success",
+        missingTickets: [],
+        requestId: null,
+      });
+      generateHandoverReport();
+    } else {
+      setHandoverModal({
+        isOpen: true,
+        step: "emergency",
+        missingTickets: [],
+        requestId: null,
+      });
+    }
+  };
+
+  const requestEmergencyHandover = async () => {
+    setHandoverModal({ ...handoverModal, step: "waiting" });
+
+    const { data, error } = await supabase
+      .from("handover_requests")
+      .insert([
+        { requester_id: user.id, requester_name: workName, duties: dutyNumber },
+      ])
+      .select()
+      .single();
+
+    if (!error && data) {
+      setHandoverModal({ ...handoverModal, step: "waiting", requestId: data.id });
+
+      // Start listening for Admin approval
+      const sub = supabase
+        .channel(`handover_wait_${data.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "handover_requests",
+            filter: `id=eq.${data.id}`,
+          },
+          (payload) => {
+            if (payload.new.status === "Approved") {
+              setHandoverModal({
+                isOpen: true,
+                step: "success",
+                missingTickets: [],
+                requestId: null,
+              });
+              generateHandoverReport();
+              supabase.removeChannel(sub);
+            } else if (payload.new.status === "Rejected") {
+              alert("Your emergency handover request was rejected by an Admin.");
+              setHandoverModal({
+                isOpen: false,
+                step: "",
+                missingTickets: [],
+                requestId: null,
+              });
+              supabase.removeChannel(sub);
+            }
+          }
+        )
+        .subscribe();
+    }
+  };
+
+  const generateHandoverReport = () => {
+    const pendingTix = tickets.filter((t) => t.status === "Pending");
+    const ids = pendingTix.map((t) => t.member_id).join(", ");
+    const script = `Shift Handover [${dutyNumber.join(
+      " & "
+    )}] | Pending Tickets: ${pendingTix.length}\n${
+      ids ? `Players pending: ${ids}` : "No pending tickets."
+    }\n- ${shortWorkName}`;
+    navigator.clipboard.writeText(script);
+  };
 
   const handleSendNote = () => {
     if (newNoteText.trim() === "") return;
@@ -203,10 +373,11 @@ export default function TicketTable({
     const script = getGeneratedScript();
     navigator.clipboard.writeText(script);
 
-    // FIX: Save "Normal" or the custom Abnormal Risk Type directly into the status column!
-    const finalStatus = completeModal.type === "Normal" 
-      ? "Normal" 
-      : completeModal.abnormalType.toUpperCase();
+    // Save "Normal" or the custom Abnormal Risk Type directly into the status column!
+    const finalStatus =
+      completeModal.type === "Normal"
+        ? "Normal"
+        : completeModal.abnormalType.toUpperCase();
 
     onUpdateTicket(completeModal.ticket.id, "status", finalStatus);
 
@@ -220,7 +391,6 @@ export default function TicketTable({
     });
   };
 
-  // --- NEW: Helper to format the title grammatically & determine Duty column ---
   let displayTitle = "Active Investigations for IC Duty";
   const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
 
@@ -233,13 +403,13 @@ export default function TicketTable({
     } else if (nums.length === 2) {
       formattedNums = nums.join(" & ");
     } else {
-      // Joins all but the last with a comma, then adds " & " before the last one
-      formattedNums = `${nums.slice(0, -1).join(", ")} & ${nums[nums.length - 1]}`;
+      formattedNums = `${nums.slice(0, -1).join(", ")} & ${
+        nums[nums.length - 1]
+      }`;
     }
     displayTitle = `Active Investigations for IC Duty ${formattedNums}`;
   }
 
-  // Decide if we should show the Duty column (Show if Admin OR if viewing multiple duties)
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
 
   return (
@@ -247,6 +417,17 @@ export default function TicketTable({
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
         <div className="flex items-center gap-3">
+          
+          {/* --- NEW HANDOVER BUTTON --- */}
+          {!dutyArray.includes("IC0") && (
+            <button
+              onClick={checkHandoverEligibility}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+            >
+              <ArrowRightLeft size={14} /> Handover Shift
+            </button>
+          )}
+
           <div className="relative">
             <Search
               size={16}
@@ -303,7 +484,6 @@ export default function TicketTable({
               </tr>
             ) : (
               filteredTickets.map((ticket) => {
-                // FIX: A ticket is completed as long as it is no longer "Pending"
                 const isCompleted = ticket.status !== "Pending";
 
                 return (
@@ -388,7 +568,6 @@ export default function TicketTable({
                       </button>
                     </td>
 
-                    {/* FIX: Dynamic Status Badge displays exactly what was saved */}
                     <td className="px-4 py-2 text-center">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider
@@ -396,7 +575,7 @@ export default function TicketTable({
                             ? "bg-amber-50 text-amber-700 border-amber-200" 
                             : ticket.status === "Normal" || ticket.status === "NORMAL"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                              : "bg-rose-50 text-rose-700 border-rose-200" // Abnormal types show up as red!
+                              : "bg-rose-50 text-rose-700 border-rose-200"
                           }`}
                       >
                         {!isCompleted ? "Wait for provider" : ticket.status}
@@ -469,6 +648,77 @@ export default function TicketTable({
           </tbody>
         </table>
       </div>
+
+      {/* --- HANDOVER MODALS --- */}
+      {handoverModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            
+            {/* Missing Tracking Numbers Alert */}
+            {handoverModal.step === 'check' && (
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4 text-amber-600">
+                  <AlertTriangle size={24} />
+                  <h3 className="text-lg font-bold text-slate-800">Missing Information</h3>
+                </div>
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                  You have pending tickets missing a Tracking Number. It is highly recommended to fill these before handing over the shift:
+                </p>
+                <div className="max-h-32 overflow-y-auto bg-slate-50 rounded-lg p-3 border border-slate-200 mb-6 space-y-2">
+                  {handoverModal.missingTickets.map(t => (
+                    <div key={t.id} className="text-xs font-mono text-slate-700 flex items-center justify-between">
+                      <span>Player: <span className="font-bold text-indigo-600">{t.member_id}</span></span>
+                      <span className="text-slate-400">{t.provider}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Go Back to Fix</button>
+                  <button onClick={processHandoverTimeCheck} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors">Handover Anyway</button>
+                </div>
+              </div>
+            )}
+
+            {/* Emergency Approval Request */}
+            {handoverModal.step === 'emergency' && (
+              <div className="p-6 text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-100 text-rose-600 mb-4"><ShieldAlert size={24} /></div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Out of Handover Window</h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                  You are attempting to handover outside the designated shift change times. This requires Admin or Leader approval.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Cancel</button>
+                  <button onClick={requestEmergencyHandover} className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg transition-colors">Request Override</button>
+                </div>
+              </div>
+            )}
+
+            {/* Waiting for Admin */}
+            {handoverModal.step === 'waiting' && (
+              <div className="p-8 text-center">
+                <div className="inline-block relative w-12 h-12 mb-4">
+                  <span className="animate-ping absolute inset-0 rounded-full bg-indigo-200 opacity-75"></span>
+                  <div className="relative bg-indigo-100 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center"><ShieldAlert size={20} /></div>
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Awaiting Approval</h3>
+                <p className="text-sm text-slate-500">Your emergency handover request was sent to the Admins. Please wait for them to approve it.</p>
+                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="mt-6 text-xs font-bold text-slate-400 hover:text-slate-600 underline">Cancel Request</button>
+              </div>
+            )}
+
+            {/* Success and Copy */}
+            {handoverModal.step === 'success' && (
+              <div className="p-8 text-center animate-in zoom-in-95">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 mb-4"><CheckCircle2 size={32} /></div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Handover Ready!</h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">Your handover text has been automatically copied to your clipboard. Completed tickets will automatically clear out at the end of the shift time.</p>
+                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors">Done</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* --- NOTES POPUP MODAL --- */}
       {selectedTicketForNotes && (
@@ -667,7 +917,7 @@ export default function TicketTable({
                         abnormalType: e.target.value,
                       })
                     }
-                    placeholder="Risky, Dangerous, Etc.."
+                    placeholder="e.g., fraudulent betting, multi-accounting"
                     className="w-full px-3 py-2.5 bg-white border-2 border-indigo-200 rounded-lg text-sm outline-none focus:border-indigo-500 shadow-sm uppercase" 
                     onKeyDown={(e) => {
                       if (
