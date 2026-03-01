@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDuty } from '../context/DutyContext';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Shield, ChevronRight, LogOut, LayoutDashboard } from 'lucide-react';
+import { Lock, Mail, Shield, ChevronRight, LogOut, LayoutDashboard, Check } from 'lucide-react';
 
 export default function Login() {
-  // --- NEW: Added userRole from context ---
   const { user, userRole, setDuty, loading } = useDuty();
   const navigate = useNavigate();
   
@@ -14,7 +13,9 @@ export default function Login() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // --- NEW: Auto-redirect Admins/Leaders immediately ---
+  // --- NEW: Local state to hold multiple selections ---
+  const [localDutySelection, setLocalDutySelection] = useState([]);
+
   useEffect(() => {
     if (user && (userRole === 'Admin' || userRole === 'Leader')) {
       console.log(`Auto-redirecting ${userRole} to dashboard...`);
@@ -43,12 +44,23 @@ export default function Login() {
     }
   };
 
-  const handleDutySelect = (duty) => {
-    setDuty(duty);
-    navigate('/dashboard'); 
+  // --- MODIFIED: Toggle duty selection instead of instantly routing ---
+  const toggleDutySelect = (role) => {
+    setLocalDutySelection(prev => 
+      prev.includes(role) 
+        ? prev.filter(d => d !== role) // Remove if already selected
+        : [...prev, role]              // Add if not selected
+    );
   };
 
-  // Prevent flicker by showing a loader while checking initial session
+  // --- NEW: Submit selections to context ---
+  const handleSubmitDuties = () => {
+    if (localDutySelection.length > 0) {
+      setDuty(localDutySelection);
+      navigate('/dashboard');
+    }
+  };
+
   if (loading || (user && (userRole === 'Admin' || userRole === 'Leader'))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -139,7 +151,7 @@ export default function Login() {
     );
   }
 
-  // 2. Modern Duty Selection (ONLY for standard 'User' role)
+  // 2. Modern Duty Selection (Multi-Select)
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
       
@@ -148,36 +160,66 @@ export default function Login() {
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           Authenticated as {user.email}
         </div>
-        <h2 className="text-3xl font-bold text-slate-900">Select Duty Profile</h2>
-        <p className="text-slate-500 mt-2">Choose your active role for this session to load relevant tickets.</p>
+        <h2 className="text-3xl font-bold text-slate-900">Select Duty Profiles</h2>
+        <p className="text-slate-500 mt-2">Choose one or more active roles for this session.</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-3xl">
-        {/* Note: Removed 'IC0' from this list since Admins auto-skip this screen, and standard users shouldn't see IC0 */}
-        {['IC1', 'IC2', 'IC3', 'IC5'].map((role) => (
-          <button
-            key={role}
-            onClick={() => handleDutySelect(role)}
-            className="group relative flex flex-col items-center justify-center p-8 bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 hover:-translate-y-1 transition-all duration-200"
-          >
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors bg-blue-50 text-blue-600 group-hover:bg-indigo-100 group-hover:text-indigo-600`}>
-              <LayoutDashboard size={24} />
-            </div>
-            
-            <span className="text-xl font-bold text-slate-800">{role}</span>
-            <span className="text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider">
-                Duty Officer
-            </span>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
+        {['IC1', 'IC2', 'IC3', 'IC5'].map((role) => {
+          const isSelected = localDutySelection.includes(role);
+          
+          return (
+            <button
+              key={role}
+              onClick={() => toggleDutySelect(role)}
+              className={`group relative flex flex-col items-center justify-center p-8 rounded-xl border-2 shadow-sm transition-all duration-200 
+                ${isSelected 
+                  ? "bg-indigo-50 border-indigo-500 shadow-md transform -translate-y-1" 
+                  : "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md hover:-translate-y-1"}`}
+            >
+              {/* Checkmark Icon in corner for selected state */}
+              {isSelected && (
+                <div className="absolute top-3 right-3 bg-indigo-500 text-white p-1 rounded-full animate-in zoom-in duration-200">
+                  <Check size={14} strokeWidth={3} />
+                </div>
+              )}
 
-            {/* Hover Indicator */}
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-500 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 rounded-b-xl" />
+              <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors 
+                ${isSelected ? "bg-indigo-600 text-white" : "bg-blue-50 text-blue-600 group-hover:bg-indigo-100 group-hover:text-indigo-600"}`}>
+                <LayoutDashboard size={24} />
+              </div>
+              
+              <span className={`text-xl font-bold ${isSelected ? "text-indigo-900" : "text-slate-800"}`}>{role}</span>
+              <span className={`text-xs font-medium mt-1 uppercase tracking-wider ${isSelected ? "text-indigo-500" : "text-slate-400"}`}>
+                  Duty Officer
+              </span>
+
+              {/* Hover Indicator (Only shows if NOT selected) */}
+              {!isSelected && (
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-300 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 rounded-b-xl" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* --- NEW: Continue Button --- */}
+      <div className="mt-10 h-16 flex items-center justify-center">
+        {localDutySelection.length > 0 ? (
+          <button 
+            onClick={handleSubmitDuties}
+            className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 hover:bg-black text-white rounded-full font-bold shadow-lg shadow-slate-900/20 transition-all hover:scale-105 animate-in slide-in-from-bottom-4 duration-300"
+          >
+            Continue to Dashboard ({localDutySelection.length} selected) <ChevronRight size={18} />
           </button>
-        ))}
+        ) : (
+          <span className="text-sm font-medium text-slate-400 animate-in fade-in">Please select at least one duty</span>
+        )}
       </div>
 
       <button 
         onClick={() => supabase.auth.signOut()} 
-        className="mt-12 flex items-center gap-2 text-slate-500 hover:text-red-600 transition-colors text-sm font-medium"
+        className="mt-8 flex items-center gap-2 text-slate-400 hover:text-red-600 transition-colors text-sm font-medium"
       >
         <LogOut size={16} />
         Sign Out

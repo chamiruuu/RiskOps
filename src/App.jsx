@@ -9,9 +9,12 @@ import TicketForm from "./components/TicketForm";
 import TicketTable from "./components/TicketTable";
 
 function Dashboard() {
-  const { selectedDuty, user } = useDuty();
-  const dutyNumber = selectedDuty ? selectedDuty.replace(/\D/g, "").padStart(2, "0") : "00";
-  const workName = user?.email?.split("@")[0] || "RiskOps";
+  // FIX: Grab workName from Context
+  const { selectedDuty, user, workName } = useDuty();
+  const dutyNumber = selectedDuty || []; 
+  
+  // FIX: This takes "Fernando IPCS" and just keeps "Fernando" for your scripts
+  const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
   const [tickets, setTickets] = useState([]);
 
@@ -22,9 +25,10 @@ function Dashboard() {
       .select("*")
       .order("created_at", { ascending: false });
 
-    // Filter by duty unless it is IC0 (IC0 sees everything)
-    if (selectedDuty !== "IC0") {
-      query = query.eq("ic_account", selectedDuty);
+    // --- MODIFIED: Handle array of duties ---
+    if (!selectedDuty.includes("IC0")) {
+      // If they are not IC0, fetch tickets where the ic_account is IN their selected array
+      query = query.in("ic_account", selectedDuty);
     }
 
     const { data, error } = await query;
@@ -59,7 +63,8 @@ function Dashboard() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [selectedDuty]);
+  // FIX: Use JSON.stringify so React knows the duties haven't actually changed!
+  }, [JSON.stringify(selectedDuty)]);
 
   // 2. Insert new ticket to Supabase
   // 2. Insert new ticket to Supabase
@@ -198,6 +203,7 @@ function Dashboard() {
           onAddNote={handleAddNote}
           onDeleteTicket={handleDeleteTicket} // <-- NEW: Passed the delete function here!
           dutyNumber={dutyNumber} 
+          shortWorkName={shortWorkName} // <-- NEW PROP
         />
       </div>
     </div>
@@ -206,13 +212,19 @@ function Dashboard() {
 
 function ProtectedRoute({ children }) {
   const { user, loading, selectedDuty } = useDuty();
+  
   if (loading)
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
-  if (!user || !selectedDuty) return <Navigate to="/login" />;
+    
+  // --- MODIFIED: Added check for empty array ---
+  if (!user || !selectedDuty || selectedDuty.length === 0) {
+    return <Navigate to="/login" />;
+  }
+  
   return children;
 }
 

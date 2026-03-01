@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 
 export default function Header() {
-  const { selectedDuty, user, userRole } = useDuty();
+  const { selectedDuty, user, userRole, workName, onlineUsers } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // --- Admin Modal States ---
@@ -35,10 +35,16 @@ export default function Header() {
 
   const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
 
-  const activeUsers = [
-    { name: "Fernando IPCS", duty: "IC1" },
-    { name: "Chamiru", duty: "IC0" },
-  ];
+  const getDutyTextColorOnly = (dutyName) => {
+    switch (dutyName) {
+      case "IC0": return "text-purple-600";
+      case "IC1": return "text-indigo-600";
+      case "IC2": return "text-emerald-600";
+      case "IC3": return "text-amber-600";
+      case "IC5": return "text-rose-600";
+      default: return "text-slate-600";
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -88,7 +94,7 @@ export default function Header() {
     // Instantly remove from the UI
     setTeamMembers(teamMembers.filter(member => member.id !== userId));
     
-    // NEW: Call the secure database function to delete from BOTH auth.users and public.profiles
+    // Call the secure database function to delete from BOTH auth.users and public.profiles
     const { error } = await supabase.rpc('delete_user_by_admin', { target_user_id: userId });
 
     if (error) {
@@ -97,7 +103,7 @@ export default function Header() {
     }
   };
 
-  // --- NEW: Toggle & Copy List Passwords ---
+  // --- Toggle & Copy List Passwords ---
   const togglePasswordVisibility = (id) => {
     setRevealedPasswords(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -159,7 +165,7 @@ export default function Header() {
       await supabase.from('profiles').update({ 
         role: newRole,
         work_name: newWorkName,
-        visible_password: newPassword // <-- NEW: Saves the plain text password to the database
+        visible_password: newPassword 
       }).eq('id', data.user.id);
     }
 
@@ -190,7 +196,11 @@ export default function Header() {
     }
   };
 
-  const style = getDutyStyle(selectedDuty);
+  // --- Ensure style works with arrays ---
+  const safeDutyArray = Array.isArray(selectedDuty) ? selectedDuty : [];
+  const primaryDutyTheme = safeDutyArray.includes("IC0") ? "IC0" : safeDutyArray[0];
+  const style = getDutyStyle(primaryDutyTheme);
+
   const formattedDate = currentTime.toLocaleDateString("en-US", { timeZone: "Asia/Singapore", weekday: "short", month: "short", day: "numeric" });
   const formattedTime = currentTime.toLocaleTimeString("en-US", { timeZone: "Asia/Singapore", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   
@@ -230,15 +240,63 @@ export default function Header() {
           )}
 
           <div className="text-xs font-medium text-slate-500 hidden md:block">
-            {getGreeting()}, <span className="text-slate-900 font-bold">{user?.email?.split("@")[0]}</span>
+            {getGreeting()}, <span className="text-slate-900 font-bold">{workName || user?.email?.split("@")[0]}</span>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/50 rounded-full cursor-default">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-slate-600">{activeUsers.length} Online</span>
+          {/* --- Subdued Hoverable Online Users Dropdown --- */}
+          <div className="relative group z-50">
+            
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white text-slate-600 rounded-full text-xs font-bold border border-slate-200 cursor-default shadow-sm transition-all group-hover:bg-slate-50">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              {onlineUsers?.length || 0} Online
+            </div>
+            
+            <div className="absolute top-full right-0 mt-2 w-max min-w-[160px] bg-white border border-slate-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 overflow-hidden flex flex-col">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                Active Duty Staff
+              </div>
+              
+              {/* Tighter Scrollable Area */}
+              <div className="max-h-48 overflow-y-auto p-1">
+                {!onlineUsers || onlineUsers.length === 0 ? (
+                  <div className="px-2 py-3 text-xs text-slate-400 text-center italic">Connecting...</div>
+                ) : (
+                  onlineUsers.map((activeUser, idx) => {
+                    const isMaster = activeUser.duties?.includes("IC0");
+                    
+                    return (
+                      <div key={idx} className="flex items-baseline px-2 py-1.5 hover:bg-slate-50 rounded-md transition-colors">
+                        <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
+                          {activeUser.workName} 
+                        </span>
+                        
+                        <span className="text-slate-300 font-medium mx-1.5">-</span>
+                        
+                        <div className="flex gap-1 flex-wrap items-center">
+                          {isMaster ? (
+                            <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">
+                              {activeUser.role || "ADMIN"}
+                            </span>
+                          ) : activeUser.duties && activeUser.duties.length > 0 ? (
+                            activeUser.duties.map((d, index) => (
+                              <span key={d} className="text-[11px] font-bold">
+                                <span className={getDutyTextColorOnly(d)}>{d}</span>
+                                {index < activeUser.duties.length - 1 && <span className="text-slate-300">, </span>}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-400 italic">None</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-slate-50 rounded-full cursor-default">

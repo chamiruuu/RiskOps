@@ -5,10 +5,13 @@ import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
 
 export default function TicketForm({ onAddTicket }) {
-  const { selectedDuty, user } = useDuty();
+  const { selectedDuty, user, workName } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
+  
+  // FIX: Create short name for scripts (e.g. "Fernando IPCS" -> "Fernando")
+  const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
   // Quick Reply States
   const [copiedLoss, setCopiedLoss] = useState(false);
@@ -57,9 +60,9 @@ export default function TicketForm({ onAddTicket }) {
 
   const { name: merchantName, error: dutyError } = useMerchantData(formData.memberId, selectedDuty);
   const currentConfig = PROVIDER_CONFIG[formData.provider];
-  const workName = user?.email?.split("@")[0] || "RiskOps";
 
-  const generatedScript = currentConfig ? currentConfig.generateScript(formData, workName) : "// Waiting for provider selection...";
+  // FIX: Pass shortWorkName to the script generator (Removed the bugged email override line)
+  const generatedScript = currentConfig ? currentConfig.generateScript(formData, shortWorkName) : "// Waiting for provider selection...";
 
   const isFormValid = () => {
     if (!currentConfig) return false; 
@@ -96,21 +99,24 @@ export default function TicketForm({ onAddTicket }) {
 
   const handleCopySop = () => {
     if (currentConfig?.conditionScript) {
-      navigator.clipboard.writeText(currentConfig.conditionScript(workName));
+      // FIX: Use shortWorkName here too
+      navigator.clipboard.writeText(currentConfig.conditionScript(shortWorkName));
       setCopiedSop(true);
       setTimeout(() => setCopiedSop(false), 2000);
     }
   };
 
   const handleCopyLoss = () => {
-    const script = `Hello team, this is ${workName}. As we confirmed the member has no profit from the provider during this period. Do you still need to check member bet normal or not?`;
+    // FIX: Use shortWorkName
+    const script = `Hello team, this is ${shortWorkName}. As we confirmed the member has no profit from the provider during this period. Do you still need to check member bet normal or not?`;
     navigator.clipboard.writeText(script);
     setCopiedLoss(true);
     setTimeout(() => setCopiedLoss(false), 2000);
   };
 
   const handleCopyHold = () => {
-    const script = `This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You. - ${workName}`;
+    // FIX: Use shortWorkName
+    const script = `This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You. - ${shortWorkName}`;
     navigator.clipboard.writeText(script);
     setCopiedHold(true);
     setTimeout(() => setCopiedHold(false), 2000);
@@ -129,7 +135,8 @@ export default function TicketForm({ onAddTicket }) {
       provider: formData.provider,
       time_range: formData.timeRange || "-", 
       tracking_no: "",
-      recorder: workName,
+      // FIX: Save the FULL workName to the database, but fallback to "RiskOps" if missing
+      recorder: workName || "RiskOps",
       status: "Pending",
       notes: [] 
     };
@@ -322,7 +329,8 @@ export default function TicketForm({ onAddTicket }) {
                       </button>
                     )}
                   </div>
-                  {currentConfig.conditionScript && <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono text-slate-600 whitespace-pre-wrap leading-relaxed">{currentConfig.conditionScript(workName)}</div>}
+                  {/* FIX: Passed shortWorkName to conditionScript */}
+                  {currentConfig.conditionScript && <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono text-slate-600 whitespace-pre-wrap leading-relaxed">{currentConfig.conditionScript(shortWorkName)}</div>}
                   <ul className="space-y-2 mt-2">
                     {currentConfig.conditions.map((item, i) => (
                       <li key={i} className="text-xs text-slate-600 flex gap-2 items-start"><span className="w-1.5 h-1.5 bg-slate-300 rounded-full mt-1.5 shrink-0"></span>{item}</li>
@@ -343,8 +351,10 @@ export default function TicketForm({ onAddTicket }) {
                           <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{typeof step === "string" ? step : step.text}</p>
                           {typeof step === "object" && step.copyText && (
                             <div className="mt-2 mb-3 relative group">
-                              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-[11px] text-slate-700 font-mono whitespace-pre-wrap pr-10">{step.copyText.replace("[Your Name]", workName)}</div>
-                              <button onClick={() => navigator.clipboard.writeText(step.copyText.replace("[Your Name]", workName))} className="absolute top-2 right-2 p-1.5 bg-white border border-slate-200 rounded-md shadow-sm text-slate-400 hover:text-blue-500 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all" title="Copy script"><Copy size={14} /></button>
+                              {/* FIX: Passed shortWorkName to the UI display */}
+                              <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-[11px] text-slate-700 font-mono whitespace-pre-wrap pr-10">{step.copyText.replace("[Your Name]", shortWorkName)}</div>
+                              {/* FIX: Passed shortWorkName to the copy button */}
+                              <button onClick={() => navigator.clipboard.writeText(step.copyText.replace("[Your Name]", shortWorkName))} className="absolute top-2 right-2 p-1.5 bg-white border border-slate-200 rounded-md shadow-sm text-slate-400 hover:text-blue-500 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all" title="Copy script"><Copy size={14} /></button>
                             </div>
                           )}
                           {typeof step === "object" && step.image && (

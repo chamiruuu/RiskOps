@@ -41,6 +41,10 @@ export function useMerchantData(memberId, selectedDuty) {
       return;
     }
 
+    // --- NEW: Safely handle the multi-select duty array ---
+    const dutyArray = Array.isArray(selectedDuty) ? selectedDuty : [];
+    const isAdmin = dutyArray.includes('IC0');
+
     const parts = memberId.split('@');
     
     // Logic A: Specific Lookup (Has @ suffix)
@@ -52,10 +56,13 @@ export function useMerchantData(memberId, selectedDuty) {
 
       if (match) {
         let error = "";
-        // Gatekeeper Logic
-        if (selectedDuty !== 'IC0' && match.duty !== selectedDuty) {
+        
+        // --- MODIFIED: Gatekeeper Logic for Arrays ---
+        // Block if NOT Admin AND the match duty is NOT inside their selected duties
+        if (!isAdmin && !dutyArray.includes(match.duty)) {
           error = `Access Denied: ${match.name} is under ${match.duty}.`;
         }
+        
         setResult({ name: match.name, error });
       } else {
         setResult({ name: '', error: '' });
@@ -66,10 +73,11 @@ export function useMerchantData(memberId, selectedDuty) {
       const defaultMatch = merchantData.find(m => m.name === "QQ288");
       let error = "";
       
-      // Check if QQ288 is allowed for this user
-      if (defaultMatch && selectedDuty !== 'IC0' && defaultMatch.duty !== selectedDuty) {
+      // --- MODIFIED: Gatekeeper Logic for Arrays ---
+      if (defaultMatch && !isAdmin && !dutyArray.includes(defaultMatch.duty)) {
         error = `Access Denied: QQ288 is under ${defaultMatch.duty}.`;
       }
+      
       setResult({ name: "QQ288", error });
     }
   }, [memberId, merchantData, selectedDuty]);
