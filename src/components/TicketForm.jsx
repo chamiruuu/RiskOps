@@ -1,11 +1,29 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand } from "lucide-react";
+import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand, Lock } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
 
+// --- HELPER: Get Current GMT+8 Time ---
+const getGMT8Time = () => {
+  const d = new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
+// HELPER: Check if time is currently inside the handover window
+const checkIsHandoverWindow = () => {
+  const now = getGMT8Time();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  return (h === 14 && m >= 15 && m <= 45) || 
+         (h === 22 && m >= 15 && m <= 45) || 
+         (h === 6 && m >= 45) || (h === 7 && m <= 15);
+};
+
 export default function TicketForm({ onAddTicket }) {
-  const { selectedDuty, user, workName } = useDuty();
+  // Destructure the new Master Key variables from context!
+  const { selectedDuty, user, workName, isMyShiftActive, userRole } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
@@ -21,6 +39,21 @@ export default function TicketForm({ onAddTicket }) {
   const [isProviderOpen, setIsProviderOpen] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
   const providerRef = useRef(null);
+
+  // --- SHIFT LOCKOUT STATE ---
+  const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
+  
+  // Check the clock every minute to see if handover window opened
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIsInHandoverWindow(checkIsHandoverWindow());
+    }, 60000); 
+    return () => clearInterval(timer);
+  }, []);
+
+  // Form is unlocked IF: You are on shift OR You are an Admin OR The handover window just opened!
+  const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
+  const canCreate = isMyShiftActive || isAdminOrLeader || isInHandoverWindow;
 
   const [formData, setFormData] = useState({
     loginId: "",
@@ -152,7 +185,14 @@ export default function TicketForm({ onAddTicket }) {
   return (
     <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden">
       <div className="px-6 pt-6 pb-2 border-b border-slate-50">
-        <h2 className="text-lg font-bold text-slate-900 mb-4">New Investigation</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-900">New Investigation</h2>
+          {!canCreate && (
+            <span className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm" title="You cannot create tickets until the handover window opens">
+              <Lock size={10} /> Shift Locked
+            </span>
+          )}
+        </div>
         <div className="flex p-1 bg-slate-100 rounded-lg mb-2">
           <button onClick={() => setActiveTab("form")} className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "form" ? "bg-white shadow-sm" : "text-slate-500 hover:text-slate-700"}`}><FileText size={14} /> Generator</button>
           <button onClick={() => setActiveTab("sop")} className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "sop" ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}><BookOpen size={14} /> SOP Guide</button>
@@ -299,8 +339,15 @@ export default function TicketForm({ onAddTicket }) {
                   </>
                 )}
 
-                <button disabled={!isFormValid()} onClick={handleCreateClick} className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 ${isFormValid() ? "bg-black hover:bg-slate-800 text-white" : "bg-slate-200 text-slate-400 cursor-not-allowed"}`}>
-                  <Plus size={18} /> Create Ticket
+                <button 
+                  disabled={!isFormValid() || !canCreate} 
+                  onClick={handleCreateClick} 
+                  className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 
+                    ${!canCreate ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed" : 
+                      isFormValid() ? "bg-black hover:bg-slate-800 text-white" : "bg-slate-200 text-slate-400 cursor-not-allowed"}`}
+                >
+                  {!canCreate ? <Lock size={16} /> : <Plus size={18} />} 
+                  {!canCreate ? "Locked until Handover" : "Create Ticket"}
                 </button>
               </>
             )}

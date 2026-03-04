@@ -10,10 +10,8 @@ import {
   Trash2,
   Copy,
   AlertTriangle,
-  ArrowRightLeft, 
-  ShieldAlert, 
-  ArrowRight, 
-  Users 
+  ArrowRightLeft,
+  Info
 } from "lucide-react";
 import { supabase } from "../lib/supabase"; 
 import { useDuty } from "../context/DutyContext"; 
@@ -71,14 +69,37 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
-// NEW HELPER: Check if time is currently inside the :15 to :38 window
+// HELPER: Determine the LAST shift change threshold (For Auto-Sweeper)
+const getLastShiftChangeTime = () => {
+  const now = getGMT8Time();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const timeInHours = h + (m / 60);
+
+  const lastChange = new Date(now);
+  lastChange.setSeconds(0, 0);
+
+  if (timeInHours >= 7 && timeInHours < 14.5) {
+    lastChange.setHours(7, 0); 
+  } else if (timeInHours >= 14.5 && timeInHours < 22.5) {
+    lastChange.setHours(14, 30); 
+  } else if (timeInHours >= 22.5) {
+    lastChange.setHours(22, 30); 
+  } else {
+    lastChange.setDate(lastChange.getDate() - 1);
+    lastChange.setHours(22, 30);
+  }
+  return lastChange;
+};
+
+// HELPER: Check if time is currently inside the handover window
 const checkIsHandoverWindow = () => {
   const now = getGMT8Time();
   const h = now.getHours();
   const m = now.getMinutes();
-  return (h === 14 && m >= 15 && m <= 38) || 
-         (h === 22 && m >= 15 && m <= 38) || 
-         (h === 6 && m >= 45) || (h === 7 && m <= 8);
+  return (h === 14 && m >= 15 && m <= 45) || 
+         (h === 22 && m >= 15 && m <= 45) || 
+         (h === 6 && m >= 45) || (h === 7 && m <= 15);
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -149,7 +170,7 @@ export default function TicketTable({
   dutyNumber,
   shortWorkName,
 }) {
-  const { user, workName, userRole, onlineUsers } = useDuty(); 
+  const { workName, userRole, onlineUsers, isMyShiftActive, currentActiveShift, activeRoster } = useDuty(); 
   const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
   
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
@@ -166,289 +187,82 @@ export default function TicketTable({
     abnormalType: "",
   });
 
-  const hasSweptForShift = useRef(false);
   const [handoverModal, setHandoverModal] = useState({
     isOpen: false,
     step: "", 
     missingTickets: [],
-    requestId: null,
   });
 
-  const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState([]);
-
-  const [dutyStates, setDutyStates] = useState({});
-  const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
   const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
+  const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
 
-  // --- NEW: SCHEDULE ENFORCER STATES ---
-  const [myAssignedShift, setMyAssignedShift] = useState(null);
-  const [currentActiveShift, setCurrentActiveShift] = useState(null);
-
-  // 1. Clock checker (Determine Morning, Afternoon, or Night based on GMT+8)
-  useEffect(() => {
-    const checkShiftPeriod = () => {
-      const now = getGMT8Time();
-      const h = now.getHours();
-      const m = now.getMinutes();
-      const timeInHours = h + (m / 60);
-
-      if (timeInHours >= 7 && timeInHours < 14.5) setCurrentActiveShift("Morning");
-      else if (timeInHours >= 14.5 && timeInHours < 22.5) setCurrentActiveShift("Afternoon");
-      else setCurrentActiveShift("Night");
-    };
-    checkShiftPeriod();
-    const timer = setInterval(checkShiftPeriod, 60000); 
-    return () => clearInterval(timer);
-  }, []);
-
-  // 2. Fetch User's Assigned Shift from Planner
-  useEffect(() => {
-    const fetchMySchedule = async () => {
-      if (!user) return;
-      const { data: sys } = await supabase.from('system_settings').select('active_cycle').eq('id', 1).single();
-      if (sys && sys.active_cycle && sys.active_cycle !== 'None') {
-        const { data: assignment } = await supabase.from('shift_assignments')
-          .select('shift_type')
-          .eq('user_id', user.id)
-          .eq('cycle_period', sys.active_cycle)
-          .single();
-        if (assignment) setMyAssignedShift(assignment.shift_type);
-      }
-    };
-    fetchMySchedule();
-  }, [user]);
-
-  // 3. Fetch Real-time Duty Locks
-  useEffect(() => {
-    const fetchDutyStates = async () => {
-      const { data } = await supabase.from('duty_state').select('*');
-      if (data) {
-        const stateMap = {};
-        data.forEach(d => stateMap[d.duty] = d);
-        setDutyStates(stateMap);
-      }
-    };
-    fetchDutyStates();
-
-    const sub = supabase.channel('duty_state_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_state' }, fetchDutyStates)
-      .subscribe();
-
-    return () => supabase.removeChannel(sub);
-  }, []);
-
-  // 4. THE GATEKEEPER: Strict Auto-Claim Logic
-  useEffect(() => {
-    if (!user || dutyArray.length === 0 || dutyArray.includes("IC0") || Object.keys(dutyStates).length === 0 || !currentActiveShift) return;
-
-    dutyArray.forEach(async (d) => {
-      const state = dutyStates[d];
-      if (state && state.locked_by === null) {
-        // ONLY GRAB THE BATON IF: I am an Admin OR My assigned shift matches the clock right now!
-        if (isAdminOrLeader || myAssignedShift === currentActiveShift) {
-          await supabase.from('duty_state').update({
-            locked_by: user.id,
-            locked_by_name: shortWorkName,
-            updated_at: new Date().toISOString()
-          }).eq('duty', d);
-        }
-      }
-    });
-  }, [dutyArray, dutyStates, user, shortWorkName, myAssignedShift, currentActiveShift, isAdminOrLeader]);
-
-  // 5. Build the Lockout UI State
-  const lockoutStatuses = dutyArray.map(d => {
-    if (d === "IC0" || isAdminOrLeader) return null;
-    const state = dutyStates[d];
-    
-    // If I successfully claimed it, or someone transferred it to me, I am clear!
-    if (!state || state.locked_by === user?.id) return null;
-
-    // Reason 1: It is actively locked by the previous shift
-    if (state.locked_by !== null) {
-      return { duty: d, type: 'handover', owner: state.locked_by_name };
-    }
-
-    // Reason 2: The lock is empty, but I am out of shift!
-    if (myAssignedShift && currentActiveShift && myAssignedShift !== currentActiveShift && myAssignedShift !== 'Off') {
-      return { duty: d, type: 'schedule', expectedShift: currentActiveShift };
-    }
-
-    return null;
-  }).filter(Boolean);
-
-  const lockedOutDuties = lockoutStatuses.map(s => s.duty);
-  const iOwnSomeDuties = dutyArray.some(d => dutyStates[d]?.locked_by === user?.id);
-
-  // Admin Force Unlock Function
-  const forceUnlockDuty = async (duties) => {
-    if (!window.confirm(`Are you sure you want to force unlock: ${duties.join(", ")}?`)) return;
-    await supabase.from('duty_state').update({ locked_by: null, locked_by_name: null }).in('duty', duties);
-  };
-
-  // --- 8-MINUTE AUTO-SWEEPER & REAL-TIME WINDOW CHECKER ---
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = getGMT8Time();
-      const h = now.getHours();
-      const m = now.getMinutes();
-      const s = now.getSeconds();
-      
-      const timeStr = `${h}:${m}:${s}`;
-
       setIsInHandoverWindow(checkIsHandoverWindow());
-
-      if (timeStr === "14:38:0" || timeStr === "22:38:0" || timeStr === "7:8:0") {
-        if (!hasSweptForShift.current) {
-          hasSweptForShift.current = true;
-          archiveCompletedTickets();
-          releaseDutyLocks(); 
-        }
-      } else {
-        if (timeStr !== "14:38:0" && timeStr !== "22:38:0" && timeStr !== "7:8:0") {
-          hasSweptForShift.current = false;
-        }
-      }
-    }, 1000); 
-
+    }, 60000); 
     return () => clearInterval(timer);
-  }, [tickets, dutyArray]);
+  }, []);
 
-  const archiveCompletedTickets = async () => {
-    const completedIdsToArchive = tickets
-      .filter((t) => t.status !== "Pending")
-      .map((t) => t.id);
+  // --- THE "LAZY" AUTO-SWEEPER ---
+  useEffect(() => {
+    const performLazySweep = async () => {
+      if (!tickets || tickets.length === 0) return;
+      const lastShiftStart = getLastShiftChangeTime();
+      
+      const oldCompletedTickets = tickets.filter(t => 
+        t.status !== "Pending" && new Date(t.created_at) < lastShiftStart
+      );
 
-    if (completedIdsToArchive.length > 0) {
-      await supabase
-        .from("tickets")
-        .update({ is_archived: true })
-        .in("id", completedIdsToArchive);
-    }
-  };
+      if (oldCompletedTickets.length > 0) {
+        const idsToArchive = oldCompletedTickets.map(t => t.id);
+        await supabase.from("tickets").update({ is_archived: true }).in("id", idsToArchive);
+      }
+    };
+    
+    performLazySweep();
+    const interval = setInterval(performLazySweep, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [tickets]);
 
-  const releaseDutyLocks = async () => {
-    if (dutyArray.length > 0 && !dutyArray.includes("IC0")) {
-      await supabase.from('duty_state').update({ locked_by: null, locked_by_name: null }).in('duty', dutyArray);
-    }
-  };
 
+  // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
   const checkHandoverEligibility = () => {
-    if (!isInHandoverWindow) return; 
-
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const missing = pendingTix.filter(
       (t) => !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === ""
     );
 
     if (missing.length > 0) {
-      setHandoverModal({
-        isOpen: true,
-        step: "check",
-        missingTickets: missing,
-        requestId: null,
-      });
+      setHandoverModal({ isOpen: true, step: "check", missingTickets: missing });
     } else {
-      processHandoverTimeCheck();
+      processHandover();
     }
   };
 
-  const processHandoverTimeCheck = () => {
-    if (isInHandoverWindow) {
-      setHandoverModal({
-        isOpen: true,
-        step: "success",
-        missingTickets: [],
-        requestId: null,
-      });
-      generateHandoverReport();
-      releaseDutyLocks(); 
-    } 
-  };
-
-  const handleOpenTransfer = async () => {
-    const { data } = await supabase.from('profiles').select('id, work_name, email');
-    
-    const onlineProfileData = data.filter(p => 
-      p.id !== user.id && 
-      onlineUsers.some(ou => ou.workName === p.work_name || ou.email === p.email)
-    );
-    
-    setAvailableUsers(onlineProfileData);
-    setTransferModalOpen(true);
-  };
-
-  const processMidShiftTransfer = async (targetUserId, targetUserName) => {
-    if (!window.confirm(`Pass ${dutyArray.join(" & ")} duty to ${targetUserName}?`)) return;
-    
-    await supabase.from('duty_state').update({ 
-      locked_by: targetUserId, 
-      locked_by_name: targetUserName 
-    }).in('duty', dutyArray);
-    
-    setTransferModalOpen(false);
-  };
-
-  const requestEmergencyHandover = async () => {
-    setHandoverModal({ ...handoverModal, step: "waiting" });
-
-    const { data, error } = await supabase
-      .from("handover_requests")
-      .insert([
-        { requester_id: user.id, requester_name: workName, duties: dutyNumber },
-      ])
-      .select()
-      .single();
-
-    if (!error && data) {
-      setHandoverModal({ ...handoverModal, step: "waiting", requestId: data.id });
-
-      const sub = supabase
-        .channel(`handover_wait_${data.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "handover_requests",
-            filter: `id=eq.${data.id}`,
-          },
-          (payload) => {
-            if (payload.new.status === "Approved") {
-              setHandoverModal({
-                isOpen: true,
-                step: "success",
-                missingTickets: [],
-                requestId: null,
-              });
-              generateHandoverReport();
-              releaseDutyLocks(); 
-              supabase.removeChannel(sub);
-            } else if (payload.new.status === "Rejected") {
-              alert("Your emergency handover request was rejected by an Admin.");
-              setHandoverModal({
-                isOpen: false,
-                step: "",
-                missingTickets: [],
-                requestId: null,
-              });
-              supabase.removeChannel(sub);
-            }
-          }
-        )
-        .subscribe();
+  const processHandover = async () => {
+    const isWindow = checkIsHandoverWindow();
+    if (!isWindow) {
+      setHandoverModal({ isOpen: true, step: "early_warning", missingTickets: [] });
+    } else {
+      executeHandover();
     }
+  };
+
+  const executeHandover = async () => {
+    generateHandoverReport();
+    
+    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
+    if (completedIds.length > 0) {
+      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
+    }
+    
+    setHandoverModal({ isOpen: true, step: "success", missingTickets: [] });
   };
 
   const generateHandoverReport = () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const ids = pendingTix.map((t) => t.member_id).join(", ");
-    const script = `Shift Handover [${dutyNumber.join(
-      " & "
-    )}] | Pending Tickets: ${pendingTix.length}\n${
-      ids ? `Players pending: ${ids}` : "No pending tickets."
-    }\n- ${shortWorkName}`;
+    const script = `Shift Handover [${dutyArray.join(" & ")}] | Pending Tickets: ${pendingTix.length}\n${ids ? `Players pending: ${ids}` : "No pending tickets."}\n- ${shortWorkName}`;
     navigator.clipboard.writeText(script);
   };
 
@@ -468,14 +282,7 @@ export default function TicketTable({
       const matches = (ticket.member_id && ticket.member_id.toLowerCase().includes(lowerSearch)) || (ticket.provider_account && ticket.provider_account.toLowerCase().includes(lowerSearch)) || (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch));
       if (!matches) return false;
     }
-
-    if (lockedOutDuties.includes(ticket.ic_account)) {
-      if (ticket.recorder !== workName) {
-        return false; 
-      }
-    }
-
-    return true;
+    return true; 
   });
 
   const getGeneratedScript = () => {
@@ -507,6 +314,50 @@ export default function TicketTable({
     });
   };
 
+  // --- DYNAMIC BANNER ENGINE ---
+  const getDynamicBannerText = () => {
+    if (!currentActiveShift || dutyArray.includes("IC0")) return null;
+
+    const dutyStatus = [];
+    const userDutyMap = {};
+
+    // Group the active users by the duties they hold
+    dutyArray.forEach(duty => {
+      const activeUser = onlineUsers.find(ou => 
+        ou.duties?.includes(duty) && 
+        activeRoster[ou.workName] === currentActiveShift
+      );
+
+      if (activeUser) {
+        if (!userDutyMap[activeUser.workName]) {
+          userDutyMap[activeUser.workName] = [];
+        }
+        userDutyMap[activeUser.workName].push(duty);
+      }
+    });
+
+    Object.keys(userDutyMap).forEach(userName => {
+      const duties = userDutyMap[userName];
+      const dutyStr = duties.length > 1 ? duties.join(" and ") : duties[0];
+      dutyStatus.push(`${userName} is working on ${dutyStr}`);
+    });
+
+    let statusText = "";
+    if (dutyStatus.length === 1) {
+      statusText = dutyStatus[0];
+    } else if (dutyStatus.length === 2) {
+      statusText = `${dutyStatus[0]}, and ${dutyStatus[1]}`;
+    } else if (dutyStatus.length > 2) {
+      statusText = dutyStatus.slice(0, -1).join(", ") + ", and " + dutyStatus[dutyStatus.length - 1];
+    }
+
+    if (statusText) {
+      return `It is currently the ${currentActiveShift} shift. ${statusText}. Please wait for them to handover.`;
+    } else {
+      return `It is currently the ${currentActiveShift} shift. Please wait for the assigned shift workers to handover.`;
+    }
+  };
+
   let displayTitle = "Active Investigations for IC Duty";
 
   if (!dutyArray.includes("IC0") && dutyArray.length > 0) {
@@ -518,40 +369,41 @@ export default function TicketTable({
     } else if (nums.length === 2) {
       formattedNums = nums.join(" & ");
     } else {
-      formattedNums = `${nums.slice(0, -1).join(", ")} & ${
-        nums[nums.length - 1]
-      }`;
+      formattedNums = `${nums.slice(0, -1).join(", ")} & ${nums[nums.length - 1]}`;
     }
     displayTitle = `Active Investigations for IC Duty ${formattedNums}`;
   }
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
 
+  // Logic to determine Handover button state
+  const isHandoverDisabled = (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
+  
+  let handoverTooltip = "Handover Shift";
+  if (!isMyShiftActive && !isAdminOrLeader) {
+    handoverTooltip = "You can only handover during your assigned shift time.";
+  } else if (!isInHandoverWindow) {
+    handoverTooltip = "Only available during shift handover time's (:15 to :45)";
+  }
+
   return (
     <main className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
+        
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
+        </div>
+
         <div className="flex items-center gap-3">
           
-          {/* --- Transfer Duty Button --- */}
-          {!dutyArray.includes("IC0") && iOwnSomeDuties && (
-            <button
-              onClick={handleOpenTransfer}
-              className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition-colors"
-              title="Pass your duty to an online teammate"
-            >
-              <ArrowRight size={14} /> Transfer Duty
-            </button>
-          )}
-
-          {/* --- Handover Button --- */}
-          {!dutyArray.includes("IC0") && iOwnSomeDuties && (
+          {/* --- Soft Handover Button (Protected by Shift Guardrails) --- */}
+          {!dutyArray.includes("IC0") && (
             <button
               onClick={checkHandoverEligibility}
-              disabled={!isInHandoverWindow}
+              disabled={isHandoverDisabled}
               className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-sm transition-colors
-                ${isInHandoverWindow ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 opacity-50 cursor-not-allowed'}`}
-              title={!isInHandoverWindow ? "Only available during shift handover time's" : "Handover Shift"}
+                ${!isHandoverDisabled ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={handoverTooltip}
             >
               <ArrowRightLeft size={14} /> Handover Shift
             </button>
@@ -581,36 +433,17 @@ export default function TicketTable({
         </div>
       </div>
 
-      {/* --- DYNAMIC LOCKOUT BANNERS --- */}
-      {lockoutStatuses.map((lock, idx) => (
-        <div key={idx} className={`mx-6 mt-4 p-3.5 border rounded-xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 ${lock.type === 'handover' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-          <div className="flex items-center gap-3">
-            <AlertTriangle size={20} className="shrink-0" />
-            <div>
-              {lock.type === 'handover' ? (
-                <>
-                  <p className="text-sm font-bold">Waiting for Handover: <span className="uppercase tracking-wider">{lock.duty}</span></p>
-                  <p className="text-xs font-medium mt-0.5 opacity-80">
-                    The previous shift (<span className="font-bold">{lock.owner || 'your teammate'}</span>) is finalizing their tickets. This duty will unlock once they handover.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-bold">Out of Shift: <span className="uppercase tracking-wider">{lock.duty}</span></p>
-                  <p className="text-xs font-medium mt-0.5 opacity-80">
-                    You are scheduled for the <strong>{myAssignedShift}</strong> shift, but it is currently the <strong>{lock.expectedShift}</strong> shift. You cannot claim this duty.
-                  </p>
-                </>
-              )}
-            </div>
+      {/* --- EARLY LOGIN BANNER (Dynamic Option B Logic) --- */}
+      {!dutyArray.includes("IC0") && !isMyShiftActive && currentActiveShift && !isAdminOrLeader && (
+        <div className="mx-6 mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-indigo-700">
+          <Info size={18} className="shrink-0" />
+          <div>
+            <p className="text-[13px] font-medium leading-relaxed">
+              {getDynamicBannerText()}
+            </p>
           </div>
-          {isAdminOrLeader && lock.type === 'handover' && (
-            <button onClick={() => forceUnlockDuty([lock.duty])} className="shrink-0 ml-4 px-4 py-2 bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 text-xs font-bold rounded-lg shadow-sm transition-colors">
-              Force Unlock
-            </button>
-          )}
         </div>
-      ))}
+      )}
 
       <div className="flex-1 overflow-auto bg-slate-50 mt-4">
         <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -639,9 +472,7 @@ export default function TicketTable({
                 >
                   {searchTerm
                     ? `No tickets found matching "${searchTerm}"`
-                    : lockedOutDuties.length > 0 
-                      ? "You have no active tickets. Check your shift schedule..." 
-                      : "No active investigations found in database."}
+                    : "No active investigations found."}
                 </td>
               </tr>
             ) : (
@@ -811,57 +642,6 @@ export default function TicketTable({
         </table>
       </div>
 
-      {/* --- MID-SHIFT TRANSFER MODAL --- */}
-      {transferModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
-          <div className="bg-white w-[400px] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Users size={18} className="text-indigo-600" /> Transfer Duty
-              </h3>
-              <button 
-                onClick={() => setTransferModalOpen(false)} 
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-                Select an online teammate to pass your active duty to. This will instantly give them control of your tickets.
-              </p>
-              
-              <div className="max-h-48 overflow-y-auto space-y-2 mb-6">
-                {availableUsers.length === 0 ? (
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-xs text-slate-500 font-medium">
-                    No other users are currently online to receive the transfer.
-                  </div>
-                ) : (
-                  availableUsers.map(u => (
-                    <button 
-                      key={u.id} 
-                      onClick={() => processMidShiftTransfer(u.id, u.work_name || u.email)}
-                      className="w-full flex items-center justify-between p-3 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl transition-all group shadow-sm"
-                    >
-                      <span className="font-bold text-slate-700 group-hover:text-indigo-800">{u.work_name || u.email}</span>
-                      <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-600" />
-                    </button>
-                  ))
-                )}
-              </div>
-
-              <button 
-                onClick={() => setTransferModalOpen(false)} 
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* --- HANDOVER MODALS --- */}
       {handoverModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
@@ -886,37 +666,24 @@ export default function TicketTable({
                   ))}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Go Back to Fix</button>
-                  <button onClick={processHandoverTimeCheck} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors">Handover Anyway</button>
+                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Go Back to Fix</button>
+                  <button onClick={processHandover} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors">Handover Anyway</button>
                 </div>
               </div>
             )}
 
-            {/* Emergency Approval Request */}
-            {handoverModal.step === 'emergency' && (
+            {/* Early Warning Request (Replacing Admin Block) */}
+            {handoverModal.step === 'early_warning' && (
               <div className="p-6 text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-100 text-rose-600 mb-4"><ShieldAlert size={24} /></div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Out of Handover Window</h3>
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 mb-4"><ArrowRightLeft size={24} /></div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">Early Handover</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  You are attempting to handover outside the designated shift change times. This requires Admin or Leader approval.
+                  You are generating a handover report outside the standard shift change times. Are you sure you want to proceed?
                 </p>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Cancel</button>
-                  <button onClick={requestEmergencyHandover} className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg transition-colors">Request Override</button>
+                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Cancel</button>
+                  <button onClick={executeHandover} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors">Proceed</button>
                 </div>
-              </div>
-            )}
-
-            {/* Waiting for Admin */}
-            {handoverModal.step === 'waiting' && (
-              <div className="p-8 text-center">
-                <div className="inline-block relative w-12 h-12 mb-4">
-                  <span className="animate-ping absolute inset-0 rounded-full bg-indigo-200 opacity-75"></span>
-                  <div className="relative bg-indigo-100 text-indigo-600 w-12 h-12 rounded-full flex items-center justify-center"><ShieldAlert size={20} /></div>
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Awaiting Approval</h3>
-                <p className="text-sm text-slate-500">Your emergency handover request was sent to the Admins. Please wait for them to approve it.</p>
-                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="mt-6 text-xs font-bold text-slate-400 hover:text-slate-600 underline">Cancel Request</button>
               </div>
             )}
 
@@ -925,8 +692,8 @@ export default function TicketTable({
               <div className="p-8 text-center animate-in zoom-in-95">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 mb-4"><CheckCircle2 size={32} /></div>
                 <h3 className="text-xl font-bold text-slate-800 mb-2">Handover Ready!</h3>
-                <p className="text-sm text-slate-600 mb-6 leading-relaxed">Your handover text has been automatically copied to your clipboard. Completed tickets will automatically clear out at the end of the shift time.</p>
-                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [], requestId: null })} className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors">Done</button>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">Your handover text has been automatically copied to your clipboard. Completed tickets have been instantly archived to clear your screen.</p>
+                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors">Done</button>
               </div>
             )}
           </div>

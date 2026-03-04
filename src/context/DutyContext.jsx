@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
+// --- HELPER: Get Current GMT+8 Time ---
+const getGMT8Time = () => {
+  const d = new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
 const DutyContext = createContext();
 
 export const DutyProvider = ({ children }) => {
@@ -9,6 +16,11 @@ export const DutyProvider = ({ children }) => {
   const [workName, setWorkName] = useState(""); 
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  
+  // --- NEW MASTER KEY STATES ---
+  const [currentActiveShift, setCurrentActiveShift] = useState(null);
+  const [myAssignedShift, setMyAssignedShift] = useState("Off");
+  const [activeRoster, setActiveRoster] = useState({});
   
   const currentUserTracker = useRef(null);
   
@@ -48,6 +60,92 @@ export const DutyProvider = ({ children }) => {
       console.error("Error fetching user profile:", error);
     }
   };
+
+  // --- 1. CLOCK CHECKER (Master Timekeeper) ---
+  useEffect(() => {
+    const checkShiftPeriod = () => {
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const timeInHours = h + (m / 60);
+
+      if (timeInHours >= 7 && timeInHours < 14.5) setCurrentActiveShift("Morning");
+      else if (timeInHours >= 14.5 && timeInHours < 22.5) setCurrentActiveShift("Afternoon");
+      else setCurrentActiveShift("Night");
+    };
+    checkShiftPeriod();
+    const timer = setInterval(checkShiftPeriod, 60000); 
+    return () => clearInterval(timer);
+  }, []);
+
+  // --- 2. FETCH SCHEDULE & ROSTER (Option B Logic) ---
+  useEffect(() => {
+    const fetchScheduleAndRoster = async () => {
+      if (!user) {
+        setActiveRoster({});
+        setMyAssignedShift("Off");
+        return;
+      }
+
+      const { data: allCycles } = await supabase.from('shift_assignments').select('cycle_period');
+      let currentLiveCycle = null;
+
+      if (allCycles) {
+        const uniqueCycles = [...new Set(allCycles.map(d => d.cycle_period))].filter(Boolean);
+        const today = getGMT8Time();
+        if (today.getHours() < 7) today.setDate(today.getDate() - 1);
+        today.setHours(0, 0, 0, 0);
+
+        for (const c of uniqueCycles) {
+          const parts = c.split(" - ");
+          if (parts.length === 2) {
+            const start = new Date(parts[0]);
+            const end = new Date(parts[1]);
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+            if (today >= start && today <= end) {
+              currentLiveCycle = c;
+              break;
+            }
+          }
+        }
+      }
+
+      if (currentLiveCycle) {
+        const { data: assignments } = await supabase
+          .from('shift_assignments')
+          .select('user_id, shift_type')
+          .eq('cycle_period', currentLiveCycle);
+
+        const { data: profiles } = await supabase.from('profiles').select('id, work_name');
+
+        if (assignments && profiles) {
+          const rosterMap = {};
+          let myShift = "Off";
+
+          assignments.forEach(a => {
+            const prof = profiles.find(p => p.id === a.user_id);
+            if (prof && prof.work_name) {
+              rosterMap[prof.work_name] = a.shift_type;
+            }
+            if (a.user_id === user.id) {
+              myShift = a.shift_type;
+            }
+          });
+
+          setActiveRoster(rosterMap);
+          setMyAssignedShift(myShift);
+        }
+      } else {
+        setActiveRoster({});
+        setMyAssignedShift("Off");
+      }
+    };
+
+    fetchScheduleAndRoster();
+  }, [user]);
+
+  const isMyShiftActive = myAssignedShift === currentActiveShift;
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -103,9 +201,7 @@ export const DutyProvider = ({ children }) => {
 
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
-        // Clear any existing timer
         clearTimeout(debounceTimer);
-        // Wait 800ms before updating the UI to hide tab-switch dropouts
         debounceTimer = setTimeout(() => {
           const newState = presenceChannel.presenceState();
           const activeUsers = Object.keys(newState).map(key => newState[key][0]);
@@ -117,7 +213,7 @@ export const DutyProvider = ({ children }) => {
           await presenceChannel.track({
             workName: workName,
             duties: selectedDuty || [],
-            role: userRole // <-- FIX: Broadcast the role so the dropdown knows who is Admin
+            role: userRole 
           });
         }
       });
@@ -133,7 +229,10 @@ export const DutyProvider = ({ children }) => {
   };
 
   return (
-    <DutyContext.Provider value={{ user, userRole, workName, selectedDuty, setDuty, onlineUsers, loading }}>
+    <DutyContext.Provider value={{ 
+      user, userRole, workName, selectedDuty, setDuty, onlineUsers, loading, 
+      isMyShiftActive, currentActiveShift, activeRoster 
+    }}>
       {children}
     </DutyContext.Provider>
   );
