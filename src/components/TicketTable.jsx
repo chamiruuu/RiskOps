@@ -10,79 +10,57 @@ import {
   Trash2,
   Copy,
   AlertTriangle,
-  ArrowRightLeft, // <-- NEW
-  ShieldAlert, // <-- NEW
+  ArrowRightLeft, 
+  ShieldAlert, 
+  ArrowRight, 
+  Users 
 } from "lucide-react";
-import { supabase } from "../lib/supabase"; // <-- NEW
-import { useDuty } from "../context/DutyContext"; // <-- NEW
+import { supabase } from "../lib/supabase"; 
+import { useDuty } from "../context/DutyContext"; 
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
   switch (dutyName) {
-    case "IC0":
-      return "text-purple-700";
-    case "IC1":
-      return "text-indigo-700";
-    case "IC2":
-      return "text-emerald-700";
-    case "IC3":
-      return "text-amber-700";
-    case "IC5":
-      return "text-rose-700";
-    default:
-      return "text-slate-700";
+    case "IC0": return "text-purple-700";
+    case "IC1": return "text-indigo-700";
+    case "IC2": return "text-emerald-700";
+    case "IC3": return "text-amber-700";
+    case "IC5": return "text-rose-700";
+    default: return "text-slate-700";
   }
 };
 
 // --- Duty Theme Mappings for Notes Modal ---
 const getDutyBorderRing = (dutyName) => {
   switch (dutyName) {
-    case "IC0":
-      return "focus:border-purple-400 focus:ring-purple-50";
-    case "IC1":
-      return "focus:border-indigo-400 focus:ring-indigo-50";
-    case "IC2":
-      return "focus:border-emerald-400 focus:ring-emerald-50";
-    case "IC3":
-      return "focus:border-amber-400 focus:ring-amber-50";
-    case "IC5":
-      return "focus:border-rose-400 focus:ring-rose-50";
-    default:
-      return "focus:border-slate-400 focus:ring-slate-50";
+    case "IC0": return "focus:border-purple-400 focus:ring-purple-50";
+    case "IC1": return "focus:border-indigo-400 focus:ring-indigo-50";
+    case "IC2": return "focus:border-emerald-400 focus:ring-emerald-50";
+    case "IC3": return "focus:border-amber-400 focus:ring-amber-50";
+    case "IC5": return "focus:border-rose-400 focus:ring-rose-50";
+    default: return "focus:border-slate-400 focus:ring-slate-50";
   }
 };
 
 const getDutyButton = (dutyName) => {
   switch (dutyName) {
-    case "IC0":
-      return "bg-purple-600 hover:bg-purple-700";
-    case "IC1":
-      return "bg-indigo-600 hover:bg-indigo-700";
-    case "IC2":
-      return "bg-emerald-600 hover:bg-emerald-700";
-    case "IC3":
-      return "bg-amber-600 hover:bg-amber-700";
-    case "IC5":
-      return "bg-rose-600 hover:bg-rose-700";
-    default:
-      return "bg-slate-600 hover:bg-slate-700";
+    case "IC0": return "bg-purple-600 hover:bg-purple-700";
+    case "IC1": return "bg-indigo-600 hover:bg-indigo-700";
+    case "IC2": return "bg-emerald-600 hover:bg-emerald-700";
+    case "IC3": return "bg-amber-600 hover:bg-amber-700";
+    case "IC5": return "bg-rose-600 hover:bg-rose-700";
+    default: return "bg-slate-600 hover:bg-slate-700";
   }
 };
 
 const getDutyHeaderBg = (dutyName) => {
   switch (dutyName) {
-    case "IC0":
-      return "bg-purple-600";
-    case "IC1":
-      return "bg-indigo-600";
-    case "IC2":
-      return "bg-emerald-600";
-    case "IC3":
-      return "bg-amber-600";
-    case "IC5":
-      return "bg-rose-600";
-    default:
-      return "bg-slate-600";
+    case "IC0": return "bg-purple-600";
+    case "IC1": return "bg-indigo-600";
+    case "IC2": return "bg-emerald-600";
+    case "IC3": return "bg-amber-600";
+    case "IC5": return "bg-rose-600";
+    default: return "bg-slate-600";
   }
 };
 
@@ -91,6 +69,16 @@ const getGMT8Time = () => {
   const d = new Date();
   const utc = d.getTime() + d.getTimezoneOffset() * 60000;
   return new Date(utc + 3600000 * 8);
+};
+
+// NEW HELPER: Check if time is currently inside the :15 to :38 window
+const checkIsHandoverWindow = () => {
+  const now = getGMT8Time();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  return (h === 14 && m >= 15 && m <= 38) || 
+         (h === 22 && m >= 15 && m <= 38) || 
+         (h === 6 && m >= 45) || (h === 7 && m <= 8);
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -161,15 +149,15 @@ export default function TicketTable({
   dutyNumber,
   shortWorkName,
 }) {
-  const { user, workName } = useDuty(); // <-- NEW: Grab user details for emergency requests
+  const { user, workName, userRole, onlineUsers } = useDuty(); 
+  const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
+  
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
   const [newNoteText, setNewNoteText] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Action prompts
   const [deletingRowId, setDeletingRowId] = useState(null);
 
-  // --- Modal State for Completion Workflow ---
   const [completeModal, setCompleteModal] = useState({
     isOpen: false,
     ticket: null,
@@ -178,42 +166,156 @@ export default function TicketTable({
     abnormalType: "",
   });
 
-  // --- NEW: Handover States & Auto-Sweeper Lock ---
   const hasSweptForShift = useRef(false);
   const [handoverModal, setHandoverModal] = useState({
     isOpen: false,
-    step: "", // 'check', 'emergency', 'waiting', 'success'
+    step: "", 
     missingTickets: [],
     requestId: null,
   });
 
-  // --- NEW: Auto-Sweeper Logic (Fires exactly at 14:30, 22:30, 07:00) ---
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState([]);
+
+  const [dutyStates, setDutyStates] = useState({});
+  const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
+  const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
+
+  // --- NEW: SCHEDULE ENFORCER STATES ---
+  const [myAssignedShift, setMyAssignedShift] = useState(null);
+  const [currentActiveShift, setCurrentActiveShift] = useState(null);
+
+  // 1. Clock checker (Determine Morning, Afternoon, or Night based on GMT+8)
+  useEffect(() => {
+    const checkShiftPeriod = () => {
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const timeInHours = h + (m / 60);
+
+      if (timeInHours >= 7 && timeInHours < 14.5) setCurrentActiveShift("Morning");
+      else if (timeInHours >= 14.5 && timeInHours < 22.5) setCurrentActiveShift("Afternoon");
+      else setCurrentActiveShift("Night");
+    };
+    checkShiftPeriod();
+    const timer = setInterval(checkShiftPeriod, 60000); 
+    return () => clearInterval(timer);
+  }, []);
+
+  // 2. Fetch User's Assigned Shift from Planner
+  useEffect(() => {
+    const fetchMySchedule = async () => {
+      if (!user) return;
+      const { data: sys } = await supabase.from('system_settings').select('active_cycle').eq('id', 1).single();
+      if (sys && sys.active_cycle && sys.active_cycle !== 'None') {
+        const { data: assignment } = await supabase.from('shift_assignments')
+          .select('shift_type')
+          .eq('user_id', user.id)
+          .eq('cycle_period', sys.active_cycle)
+          .single();
+        if (assignment) setMyAssignedShift(assignment.shift_type);
+      }
+    };
+    fetchMySchedule();
+  }, [user]);
+
+  // 3. Fetch Real-time Duty Locks
+  useEffect(() => {
+    const fetchDutyStates = async () => {
+      const { data } = await supabase.from('duty_state').select('*');
+      if (data) {
+        const stateMap = {};
+        data.forEach(d => stateMap[d.duty] = d);
+        setDutyStates(stateMap);
+      }
+    };
+    fetchDutyStates();
+
+    const sub = supabase.channel('duty_state_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'duty_state' }, fetchDutyStates)
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, []);
+
+  // 4. THE GATEKEEPER: Strict Auto-Claim Logic
+  useEffect(() => {
+    if (!user || dutyArray.length === 0 || dutyArray.includes("IC0") || Object.keys(dutyStates).length === 0 || !currentActiveShift) return;
+
+    dutyArray.forEach(async (d) => {
+      const state = dutyStates[d];
+      if (state && state.locked_by === null) {
+        // ONLY GRAB THE BATON IF: I am an Admin OR My assigned shift matches the clock right now!
+        if (isAdminOrLeader || myAssignedShift === currentActiveShift) {
+          await supabase.from('duty_state').update({
+            locked_by: user.id,
+            locked_by_name: shortWorkName,
+            updated_at: new Date().toISOString()
+          }).eq('duty', d);
+        }
+      }
+    });
+  }, [dutyArray, dutyStates, user, shortWorkName, myAssignedShift, currentActiveShift, isAdminOrLeader]);
+
+  // 5. Build the Lockout UI State
+  const lockoutStatuses = dutyArray.map(d => {
+    if (d === "IC0" || isAdminOrLeader) return null;
+    const state = dutyStates[d];
+    
+    // If I successfully claimed it, or someone transferred it to me, I am clear!
+    if (!state || state.locked_by === user?.id) return null;
+
+    // Reason 1: It is actively locked by the previous shift
+    if (state.locked_by !== null) {
+      return { duty: d, type: 'handover', owner: state.locked_by_name };
+    }
+
+    // Reason 2: The lock is empty, but I am out of shift!
+    if (myAssignedShift && currentActiveShift && myAssignedShift !== currentActiveShift && myAssignedShift !== 'Off') {
+      return { duty: d, type: 'schedule', expectedShift: currentActiveShift };
+    }
+
+    return null;
+  }).filter(Boolean);
+
+  const lockedOutDuties = lockoutStatuses.map(s => s.duty);
+  const iOwnSomeDuties = dutyArray.some(d => dutyStates[d]?.locked_by === user?.id);
+
+  // Admin Force Unlock Function
+  const forceUnlockDuty = async (duties) => {
+    if (!window.confirm(`Are you sure you want to force unlock: ${duties.join(", ")}?`)) return;
+    await supabase.from('duty_state').update({ locked_by: null, locked_by_name: null }).in('duty', duties);
+  };
+
+  // --- 8-MINUTE AUTO-SWEEPER & REAL-TIME WINDOW CHECKER ---
   useEffect(() => {
     const timer = setInterval(() => {
       const now = getGMT8Time();
       const h = now.getHours();
       const m = now.getMinutes();
-      const timeStr = `${h}:${m}`;
+      const s = now.getSeconds();
+      
+      const timeStr = `${h}:${m}:${s}`;
 
-      // Check if it is EXACTLY the sweep time
-      if (timeStr === "14:30" || timeStr === "22:30" || timeStr === "7:0") {
+      setIsInHandoverWindow(checkIsHandoverWindow());
+
+      if (timeStr === "14:38:0" || timeStr === "22:38:0" || timeStr === "7:8:0") {
         if (!hasSweptForShift.current) {
           hasSweptForShift.current = true;
           archiveCompletedTickets();
+          releaseDutyLocks(); 
         }
       } else {
-        // Reset the lock when the minute passes
-        if (timeStr !== "14:30" && timeStr !== "22:30" && timeStr !== "7:0") {
+        if (timeStr !== "14:38:0" && timeStr !== "22:38:0" && timeStr !== "7:8:0") {
           hasSweptForShift.current = false;
         }
       }
-    }, 1000); // Check every second
+    }, 1000); 
 
     return () => clearInterval(timer);
-  }, [tickets]);
+  }, [tickets, dutyArray]);
 
   const archiveCompletedTickets = async () => {
-    // A ticket is considered completed if its status is NOT "Pending"
     const completedIdsToArchive = tickets
       .filter((t) => t.status !== "Pending")
       .map((t) => t.id);
@@ -226,8 +328,15 @@ export default function TicketTable({
     }
   };
 
-  // --- NEW: Handover Logic ---
+  const releaseDutyLocks = async () => {
+    if (dutyArray.length > 0 && !dutyArray.includes("IC0")) {
+      await supabase.from('duty_state').update({ locked_by: null, locked_by_name: null }).in('duty', dutyArray);
+    }
+  };
+
   const checkHandoverEligibility = () => {
+    if (!isInHandoverWindow) return; 
+
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const missing = pendingTix.filter(
       (t) => !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === ""
@@ -246,17 +355,7 @@ export default function TicketTable({
   };
 
   const processHandoverTimeCheck = () => {
-    const now = getGMT8Time();
-    const h = now.getHours();
-    const m = now.getMinutes();
-
-    // Valid Windows: 14:15-14:30 | 22:15-22:30 | 06:45-07:00
-    const isValidWindow =
-      (h === 14 && m >= 15 && m < 30) ||
-      (h === 22 && m >= 15 && m < 30) ||
-      (h === 6 && m >= 45 && m <= 59);
-
-    if (isValidWindow) {
+    if (isInHandoverWindow) {
       setHandoverModal({
         isOpen: true,
         step: "success",
@@ -264,14 +363,31 @@ export default function TicketTable({
         requestId: null,
       });
       generateHandoverReport();
-    } else {
-      setHandoverModal({
-        isOpen: true,
-        step: "emergency",
-        missingTickets: [],
-        requestId: null,
-      });
-    }
+      releaseDutyLocks(); 
+    } 
+  };
+
+  const handleOpenTransfer = async () => {
+    const { data } = await supabase.from('profiles').select('id, work_name, email');
+    
+    const onlineProfileData = data.filter(p => 
+      p.id !== user.id && 
+      onlineUsers.some(ou => ou.workName === p.work_name || ou.email === p.email)
+    );
+    
+    setAvailableUsers(onlineProfileData);
+    setTransferModalOpen(true);
+  };
+
+  const processMidShiftTransfer = async (targetUserId, targetUserName) => {
+    if (!window.confirm(`Pass ${dutyArray.join(" & ")} duty to ${targetUserName}?`)) return;
+    
+    await supabase.from('duty_state').update({ 
+      locked_by: targetUserId, 
+      locked_by_name: targetUserName 
+    }).in('duty', dutyArray);
+    
+    setTransferModalOpen(false);
   };
 
   const requestEmergencyHandover = async () => {
@@ -288,7 +404,6 @@ export default function TicketTable({
     if (!error && data) {
       setHandoverModal({ ...handoverModal, step: "waiting", requestId: data.id });
 
-      // Start listening for Admin approval
       const sub = supabase
         .channel(`handover_wait_${data.id}`)
         .on(
@@ -308,6 +423,7 @@ export default function TicketTable({
                 requestId: null,
               });
               generateHandoverReport();
+              releaseDutyLocks(); 
               supabase.removeChannel(sub);
             } else if (payload.new.status === "Rejected") {
               alert("Your emergency handover request was rejected by an Admin.");
@@ -347,16 +463,19 @@ export default function TicketTable({
     : [];
 
   const filteredTickets = tickets.filter((ticket) => {
-    if (!searchTerm) return true;
-    const lowerSearch = searchTerm.toLowerCase();
-    return (
-      (ticket.member_id &&
-        ticket.member_id.toLowerCase().includes(lowerSearch)) ||
-      (ticket.provider_account &&
-        ticket.provider_account.toLowerCase().includes(lowerSearch)) ||
-      (ticket.tracking_no &&
-        ticket.tracking_no.toLowerCase().includes(lowerSearch))
-    );
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      const matches = (ticket.member_id && ticket.member_id.toLowerCase().includes(lowerSearch)) || (ticket.provider_account && ticket.provider_account.toLowerCase().includes(lowerSearch)) || (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch));
+      if (!matches) return false;
+    }
+
+    if (lockedOutDuties.includes(ticket.ic_account)) {
+      if (ticket.recorder !== workName) {
+        return false; 
+      }
+    }
+
+    return true;
   });
 
   const getGeneratedScript = () => {
@@ -368,12 +487,10 @@ export default function TicketTable({
     }
   };
 
-  // --- Copy and Complete Logic ---
   const handleCopyAndComplete = () => {
     const script = getGeneratedScript();
     navigator.clipboard.writeText(script);
 
-    // Save "Normal" or the custom Abnormal Risk Type directly into the status column!
     const finalStatus =
       completeModal.type === "Normal"
         ? "Normal"
@@ -381,7 +498,6 @@ export default function TicketTable({
 
     onUpdateTicket(completeModal.ticket.id, "status", finalStatus);
 
-    // Close modal
     setCompleteModal({
       isOpen: false,
       ticket: null,
@@ -392,7 +508,6 @@ export default function TicketTable({
   };
 
   let displayTitle = "Active Investigations for IC Duty";
-  const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
 
   if (!dutyArray.includes("IC0") && dutyArray.length > 0) {
     const nums = dutyArray.map((d) => d.replace("IC", "").padStart(2, "0"));
@@ -418,17 +533,31 @@ export default function TicketTable({
         <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
         <div className="flex items-center gap-3">
           
-          {/* --- NEW HANDOVER BUTTON --- */}
-          {!dutyArray.includes("IC0") && (
+          {/* --- Transfer Duty Button --- */}
+          {!dutyArray.includes("IC0") && iOwnSomeDuties && (
+            <button
+              onClick={handleOpenTransfer}
+              className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition-colors"
+              title="Pass your duty to an online teammate"
+            >
+              <ArrowRight size={14} /> Transfer Duty
+            </button>
+          )}
+
+          {/* --- Handover Button --- */}
+          {!dutyArray.includes("IC0") && iOwnSomeDuties && (
             <button
               onClick={checkHandoverEligibility}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+              disabled={!isInHandoverWindow}
+              className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-sm transition-colors
+                ${isInHandoverWindow ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 opacity-50 cursor-not-allowed'}`}
+              title={!isInHandoverWindow ? "Only available during shift handover time's" : "Handover Shift"}
             >
               <ArrowRightLeft size={14} /> Handover Shift
             </button>
           )}
 
-          <div className="relative">
+          <div className="relative ml-2">
             <Search
               size={16}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -452,7 +581,38 @@ export default function TicketTable({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-slate-50">
+      {/* --- DYNAMIC LOCKOUT BANNERS --- */}
+      {lockoutStatuses.map((lock, idx) => (
+        <div key={idx} className={`mx-6 mt-4 p-3.5 border rounded-xl flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 ${lock.type === 'handover' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={20} className="shrink-0" />
+            <div>
+              {lock.type === 'handover' ? (
+                <>
+                  <p className="text-sm font-bold">Waiting for Handover: <span className="uppercase tracking-wider">{lock.duty}</span></p>
+                  <p className="text-xs font-medium mt-0.5 opacity-80">
+                    The previous shift (<span className="font-bold">{lock.owner || 'your teammate'}</span>) is finalizing their tickets. This duty will unlock once they handover.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold">Out of Shift: <span className="uppercase tracking-wider">{lock.duty}</span></p>
+                  <p className="text-xs font-medium mt-0.5 opacity-80">
+                    You are scheduled for the <strong>{myAssignedShift}</strong> shift, but it is currently the <strong>{lock.expectedShift}</strong> shift. You cannot claim this duty.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+          {isAdminOrLeader && lock.type === 'handover' && (
+            <button onClick={() => forceUnlockDuty([lock.duty])} className="shrink-0 ml-4 px-4 py-2 bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 text-xs font-bold rounded-lg shadow-sm transition-colors">
+              Force Unlock
+            </button>
+          )}
+        </div>
+      ))}
+
+      <div className="flex-1 overflow-auto bg-slate-50 mt-4">
         <table className="w-full text-left border-collapse whitespace-nowrap">
           <thead className="bg-white sticky top-0 z-10 font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
             <tr className="border-b border-slate-200">
@@ -479,7 +639,9 @@ export default function TicketTable({
                 >
                   {searchTerm
                     ? `No tickets found matching "${searchTerm}"`
-                    : "No active investigations found in database."}
+                    : lockedOutDuties.length > 0 
+                      ? "You have no active tickets. Check your shift schedule..." 
+                      : "No active investigations found in database."}
                 </td>
               </tr>
             ) : (
@@ -648,6 +810,57 @@ export default function TicketTable({
           </tbody>
         </table>
       </div>
+
+      {/* --- MID-SHIFT TRANSFER MODAL --- */}
+      {transferModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[400px] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Users size={18} className="text-indigo-600" /> Transfer Duty
+              </h3>
+              <button 
+                onClick={() => setTransferModalOpen(false)} 
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                Select an online teammate to pass your active duty to. This will instantly give them control of your tickets.
+              </p>
+              
+              <div className="max-h-48 overflow-y-auto space-y-2 mb-6">
+                {availableUsers.length === 0 ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-center text-xs text-slate-500 font-medium">
+                    No other users are currently online to receive the transfer.
+                  </div>
+                ) : (
+                  availableUsers.map(u => (
+                    <button 
+                      key={u.id} 
+                      onClick={() => processMidShiftTransfer(u.id, u.work_name || u.email)}
+                      className="w-full flex items-center justify-between p-3 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl transition-all group shadow-sm"
+                    >
+                      <span className="font-bold text-slate-700 group-hover:text-indigo-800">{u.work_name || u.email}</span>
+                      <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-600" />
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <button 
+                onClick={() => setTransferModalOpen(false)} 
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- HANDOVER MODALS --- */}
       {handoverModal.isOpen && (
