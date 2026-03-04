@@ -277,6 +277,12 @@ export default function TicketTable({
     : [];
 
   const filteredTickets = tickets.filter((ticket) => {
+    // --- APPROACH 2: THE CLEAN SLATE WALL ---
+    // If you are early (out of shift) and not an Admin, hide all tickets completely.
+    if (!isMyShiftActive && !isAdminOrLeader) {
+      return false;
+    }
+
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       const matches = (ticket.member_id && ticket.member_id.toLowerCase().includes(lowerSearch)) || (ticket.provider_account && ticket.provider_account.toLowerCase().includes(lowerSearch)) || (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch));
@@ -470,7 +476,10 @@ export default function TicketTable({
                   colSpan={showDutyColumn ? "12" : "11"}
                   className="px-6 py-12 text-center text-slate-400"
                 >
-                  {searchTerm
+                  {/* CLEAN SLATE MESSAGE */}
+                  {!isMyShiftActive && !isAdminOrLeader 
+                    ? "Waiting for the previous shift to handover..."
+                    : searchTerm
                     ? `No tickets found matching "${searchTerm}"`
                     : "No active investigations found."}
                 </td>

@@ -67,6 +67,7 @@ export default function TicketForm({ onAddTicket }) {
     gameName: "",
     betTicket: "",
     roundId: "",
+    ipAddress: "",
   });
 
   // Sync search text when formData.provider changes (like on form reset)
@@ -178,7 +179,7 @@ export default function TicketForm({ onAddTicket }) {
 
     setFormData({
       loginId: "", memberId: "", providerAccount: "", provider: "", 
-      trackingId: "", timeRange: "", currency: "", reasonToCheck: "", gameName: "", betTicket: "", roundId: "",
+      trackingId: "", timeRange: "", currency: "", reasonToCheck: "", gameName: "", betTicket: "", roundId: "", ipAddress: "",
     });
   };
 
@@ -327,6 +328,13 @@ export default function TicketForm({ onAddTicket }) {
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Round ID</label>
                         <input type="text" placeholder="Leave blank if using Time Period" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={formData.roundId || ""} onChange={(e) => setFormData({ ...formData, roundId: e.target.value })} />
+                      </div>
+                    )}
+
+                    {currentConfig?.requiredFields?.includes("ipAddress") && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">IP Address <span className="text-red-500">*</span></label>
+                        <input type="text" placeholder="e.g. 192.168.1.1" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={formData.ipAddress} onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })} />
                       </div>
                     )}
 

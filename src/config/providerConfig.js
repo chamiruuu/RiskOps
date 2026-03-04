@@ -1728,5 +1728,117 @@ Time period：${timeRange}`;
       }
       return "// fill in the required input feilds..";
     },
-  }, // <-- Make sure to close the final object properly without a trailing comma!
+  },
+  
+  // --- 56. DC ---
+  DC: {
+    channel: "[TG068/ QQ288/ YG/ DC/ AUX/ HS/ RG/ OP] CS",
+    sla: "Standard",
+    conditions: [
+      "Ensure member has betting records in the specified time period.",
+      "Game Name is a mandatory field for DC queries.",
+    ],
+    process: [
+      "Check member details in BO.",
+      "Submit query to the Teams Group: [TG068/ QQ288/ YG/ DC/ AUX/ HS/ RG/ OP] CS",
+      "Ensure the 'Provider name' is explicitly mentioned as DC.",
+    ],
+
+    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+
+    generateScript: (data, workName) => {
+      const { providerAccount, gameName, timeRange } = data;
+
+      if (providerAccount && gameName && timeRange) {
+        return `Hello sir this is ${workName},
+Please help us check member betting normal or not. Thank you.
+
+Provider name：DC
+Member ID：${providerAccount}
+Game name：${gameName}
+Time period：${timeRange}`;
+      }
+      return "// Waiting for Provider Account, Game Name, and Time Range...";
+    },
+  },
+
+  // --- 57. MG Live ---
+  "MG Live": {
+    channel: "MG Ticket System",
+    sla: "Standard",
+    conditions: [
+      "Submit an application via the provider link.",
+      "Requires MG Ticket System credentials from the on-duty tools.",
+    ],
+    process: [
+      "Submit an application via the provider link. Refer to the on-duty tools for the MG Ticket System (for checking bets) account and password to log in.",
+      {
+        text: "Select Playcheck / For Playcheck Query Only. Fill in the relevant information according to the fields (please refer to the picture below for details), and then submit.",
+        image: "https://snipboard.io/S5HhYW.jpg",
+      },
+    ],
+    reminder:
+      "Do not submit this query to a Teams group. It must go through the MG Ticket System.",
+
+    requiredFields: [], // Hides all inputs
+    isManualCheckOnly: true, // Disables the Create Ticket button
+
+    generateScript: () => {
+      return `// NO SCRIPT REQUIRED FOR MG LIVE.\n// \n// Please submit a ticket via the MG Ticket System.\n// Reference the SOP Guide tab for instructions and visual references.`;
+    },
+  },
+
+  // --- 58. ALLBET ---
+  ALLBET: {
+    channel: "Redmine (Assign to Carmen)",
+    sla: "Standard",
+    conditions: [
+      "CS creates a Redmine and assigns it to Carmen.",
+      "Wait for Carmen to confirm with the provider and add a note to the Redmine.",
+    ],
+    process: [
+      "Create a Redmine ticket and assign it to Carmen.",
+      "Once Carmen responds, notify the merchant.",
+      "Add a note to the Redmine and close it.",
+      "Update the IC-Redmine tab in the on-duty handover log.",
+      { image: "https://snipboard.io/XMJL5Q.jpg" }
+    ],
+    
+    // NEW: Added "ipAddress" to the required fields!
+    requiredFields: ["memberId", "providerAccount", "currency", "ipAddress", "timeRange"],
+    
+    options: {
+      currencies: ["THB", "IDR", "CNY", "MYR", "VND", "USD", "KRW"],
+    },
+
+    // NEW: Pulled ipAddress from the data to inject into the script
+    generateScript: (data, workName) => {
+      const { providerAccount, currency, timeRange, ipAddress } = data; 
+
+      if (providerAccount && currency && timeRange && ipAddress) {
+        const zapportMap = {
+          THB: "QQDUTYTHB／fsgwpy4",
+          IDR: "QQDUTYIDR／fsgwpyf",
+          CNY: "QQDUTYCNY／fsgwpy2",
+          MYR: "QQDUTYMYR／fsgwpy5",
+          VND: "QQDUTYVND／fsgwpyg",
+          USD: "QQDUTYUSD／fsgwpyb",
+          KRW: "QQDUTYKRW／fsgwpy6",
+        };
+
+        const zapportLogin = zapportMap[currency.toUpperCase()] || "N/A";
+
+        return `Hello sir this is ${workName},
+Please help us check member betting normal or not. Thank you.
+
+Zapport log-in : ${zapportLogin}
+Player's log-in : ${providerAccount}
+Currency: ${currency}
+Player's IP address : ${ipAddress}
+Duration of player's gaining : ${timeRange}
+Reason for request investigation : suspect member got cross bet activities`;
+      }
+      return "// Waiting for Provider Account, Currency, IP Address, and Time Range...";
+    },
+  }
 };
