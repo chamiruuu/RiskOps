@@ -275,43 +275,13 @@ export const PROVIDER_CONFIG = {
       },
       "Set Date Range: Select the query period.",
       "Set User ID: Enter the member's game account (q28 + BO1.13 Provider ID).",
-      "Set Repeat Rate: Set 50%, then click Search.",
+      "Set Repeat Rate: Set 90%, then click Search.",
       "Evaluate the search results based on the 50% Hedging/Repeat ratio.",
     ],
     reminder:
       "If BO is under maintenance, contact your leader. Late-night shift must fill out a handover for the morning shift leader.",
     requiredFields: [],
     isManualCheckOnly: true,
-    generateScript: () => {
-      return `// NO SCRIPT REQUIRED FOR SEXY CASINO.\n// \n// Please perform the check manually via the Provider Back Office.\n// Reference the SOP Guide tab for instructions.\n//\n// NOTE: If bet cancellation is requested, remember to create a Redmine.`;
-    },
-  },
-
-  // --- 9. SEXY CASINO ---
-  "Sexy Casino": {
-    channel: "Manual BO Check (No Teams Group)",
-    sla: "Immediate (Manual)",
-    conditions: [
-      "Maximum range for a single query is 7 days (only data from the last 14 days is retained).",
-      "A member is considered abnormal if the Hedging Round data accounts for at least 50% of the Repeat Round data.",
-      "Bet cancellation is offered (completely voided, stake refunded). If a merchant asks, it's acceptable, but CS MUST create a Redmine specifying if it's a full or partial cancellation.",
-    ],
-    process: [
-      {
-        text: "Log in to the provider's BO -> Fraud tools -> Sexy Hedging Detection -> Select [All Game].",
-        image: "https://snipboard.io/xwYg7X.jpg",
-      },
-      "Set Date Range: Select the query period.",
-      "Set User ID: Enter the member's game account (q28 + BO1.13 Provider ID).",
-      "Set Repeat Rate: Set 50%, then click Search.",
-      "Evaluate the search results based on the 50% Hedging/Repeat ratio.",
-    ],
-    reminder:
-      "If BO is under maintenance, contact your leader. Late-night shift must fill out a handover for the morning shift leader.",
-
-    requiredFields: [], // Completely empty!
-    isManualCheckOnly: true,
-
     generateScript: () => {
       return `// NO SCRIPT REQUIRED FOR SEXY CASINO.\n// \n// Please perform the check manually via the Provider Back Office.\n// Reference the SOP Guide tab for instructions.\n//\n// NOTE: If bet cancellation is requested, remember to create a Redmine.`;
     },
