@@ -198,59 +198,69 @@ export const DutyProvider = ({ children }) => {
   useEffect(() => {
     if (!user || !workName) return;
 
-    const presenceChannel = supabase.channel('online-users', {
-      config: { presence: { key: user.id } },
-    });
-
+    let presenceChannel;
     let debounceTimer;
     let keepAliveInterval;
+    let isMounted = true;
 
-    const trackPresence = async () => {
-      try {
-        await presenceChannel.track({
-          id: user.id,
-          workName: workName,
-          duties: selectedDuty || [],
-          role: userRole,
-          _ping: Date.now() // Forces a tiny state refresh to trick the browser into keeping the connection fully awake!
-        });
-      } catch (e) {
-        // Ignore if channel temporarily disconnected
-      }
-    };
+    // We delay the connection by 400ms to allow React to finish setting all the states.
+    // This perfectly prevents the "WebSocket closed before connection established" crash!
+    const connectionDelay = setTimeout(() => {
+      if (!isMounted) return;
 
-    presenceChannel
-      .on('presence', { event: 'sync' }, () => {
-        clearTimeout(debounceTimer);
-        // Reduced debounce to 300ms so background updates process almost instantly
-        debounceTimer = setTimeout(() => {
-          const newState = presenceChannel.presenceState();
-          const activeUsers = Object.keys(newState).map(key => newState[key][0]);
-          setOnlineUsers(activeUsers);
-        }, 300); 
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await trackPresence();
-          
-          // AGGRESSIVE PING: Fire every 20 seconds. Prevents Chrome's "Memory Saver" from sleeping the tab's WebSocket.
-          keepAliveInterval = setInterval(trackPresence, 20000);
-        }
+      presenceChannel = supabase.channel('online-users', {
+        config: { presence: { key: user.id } },
       });
 
-    // INSTANT WAKE-UP: If the OS forcefully suspended the tab (e.g. laptop closed or frozen), instantly resync the second they view the tab.
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        trackPresence();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+      const trackPresence = async () => {
+        try {
+          await presenceChannel.track({
+            id: user.id,
+            workName: workName,
+            duties: selectedDuty || [],
+            role: userRole,
+            _ping: Date.now() 
+          });
+        } catch (e) {
+          // Ignore temporary disconnects
+        }
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') trackPresence();
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            const newState = presenceChannel.presenceState();
+            const activeUsers = Object.keys(newState).map(key => newState[key][0]);
+            setOnlineUsers(activeUsers);
+          }, 300); 
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await trackPresence();
+            keepAliveInterval = setInterval(trackPresence, 20000);
+          }
+        });
+
+      // Attach cleanup to the window object for this specific effect run
+      window._cleanupPresence = () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+
+    }, 400);
 
     return () => {
+      isMounted = false;
+      clearTimeout(connectionDelay);
       clearTimeout(debounceTimer);
       clearInterval(keepAliveInterval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      supabase.removeChannel(presenceChannel);
+      if (window._cleanupPresence) window._cleanupPresence();
+      if (presenceChannel) supabase.removeChannel(presenceChannel);
     };
   }, [user, workName, userRole, JSON.stringify(selectedDuty)]); 
 
@@ -260,14 +270,12 @@ export const DutyProvider = ({ children }) => {
 
     const channel = supabase.channel('duty-transfers');
     
-    // Listen for incoming requests directed at me
     channel.on('broadcast', { event: 'transfer_request' }, ({ payload }) => {
       if (payload.targetId === user.id) {
         setPendingTransferRequest(payload);
       }
     });
 
-    // Listen for responses back to me after I send a request
     channel.on('broadcast', { event: 'transfer_response' }, ({ payload }) => {
       if (payload.targetId === user.id) {
         setTransferResponse({ ...payload, _ts: Date.now() }); 
@@ -295,9 +303,8 @@ export const DutyProvider = ({ children }) => {
       event: 'transfer_response',
       payload: { fromId: user.id, targetId, status, duties }
     });
-    setPendingTransferRequest(null); // Clear modal
+    setPendingTransferRequest(null); 
     
-    // If accepted, merge it into active duties automatically!
     if (status === 'accepted') {
       setSelectedDuty(prev => Array.from(new Set([...(prev || []), ...duties])));
     }
