@@ -11,54 +11,80 @@ import {
   Copy,
   AlertTriangle,
   ArrowRightLeft,
-  Info
+  Info,
+  ArrowRight,
+  Users,
 } from "lucide-react";
-import { supabase } from "../lib/supabase"; 
-import { useDuty } from "../context/DutyContext"; 
+import { supabase } from "../lib/supabase";
+import { useDuty } from "../context/DutyContext";
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
   switch (dutyName) {
-    case "IC0": return "text-purple-700";
-    case "IC1": return "text-indigo-700";
-    case "IC2": return "text-emerald-700";
-    case "IC3": return "text-amber-700";
-    case "IC5": return "text-rose-700";
-    default: return "text-slate-700";
+    case "IC0":
+      return "text-purple-700";
+    case "IC1":
+      return "text-indigo-700";
+    case "IC2":
+      return "text-emerald-700";
+    case "IC3":
+      return "text-amber-700";
+    case "IC5":
+      return "text-rose-700";
+    default:
+      return "text-slate-700";
   }
 };
 
 // --- Duty Theme Mappings for Notes Modal ---
 const getDutyBorderRing = (dutyName) => {
   switch (dutyName) {
-    case "IC0": return "focus:border-purple-400 focus:ring-purple-50";
-    case "IC1": return "focus:border-indigo-400 focus:ring-indigo-50";
-    case "IC2": return "focus:border-emerald-400 focus:ring-emerald-50";
-    case "IC3": return "focus:border-amber-400 focus:ring-amber-50";
-    case "IC5": return "focus:border-rose-400 focus:ring-rose-50";
-    default: return "focus:border-slate-400 focus:ring-slate-50";
+    case "IC0":
+      return "focus:border-purple-400 focus:ring-purple-50";
+    case "IC1":
+      return "focus:border-indigo-400 focus:ring-indigo-50";
+    case "IC2":
+      return "focus:border-emerald-400 focus:ring-emerald-50";
+    case "IC3":
+      return "focus:border-amber-400 focus:ring-amber-50";
+    case "IC5":
+      return "focus:border-rose-400 focus:ring-rose-50";
+    default:
+      return "focus:border-slate-400 focus:ring-slate-50";
   }
 };
 
 const getDutyButton = (dutyName) => {
   switch (dutyName) {
-    case "IC0": return "bg-purple-600 hover:bg-purple-700";
-    case "IC1": return "bg-indigo-600 hover:bg-indigo-700";
-    case "IC2": return "bg-emerald-600 hover:bg-emerald-700";
-    case "IC3": return "bg-amber-600 hover:bg-amber-700";
-    case "IC5": return "bg-rose-600 hover:bg-rose-700";
-    default: return "bg-slate-600 hover:bg-slate-700";
+    case "IC0":
+      return "bg-purple-600 hover:bg-purple-700";
+    case "IC1":
+      return "bg-indigo-600 hover:bg-indigo-700";
+    case "IC2":
+      return "bg-emerald-600 hover:bg-emerald-700";
+    case "IC3":
+      return "bg-amber-600 hover:bg-amber-700";
+    case "IC5":
+      return "bg-rose-600 hover:bg-rose-700";
+    default:
+      return "bg-slate-600 hover:bg-slate-700";
   }
 };
 
 const getDutyHeaderBg = (dutyName) => {
   switch (dutyName) {
-    case "IC0": return "bg-purple-600";
-    case "IC1": return "bg-indigo-600";
-    case "IC2": return "bg-emerald-600";
-    case "IC3": return "bg-amber-600";
-    case "IC5": return "bg-rose-600";
-    default: return "bg-slate-600";
+    case "IC0":
+      return "bg-purple-600";
+    case "IC1":
+      return "bg-indigo-600";
+    case "IC2":
+      return "bg-emerald-600";
+    case "IC3":
+      return "bg-amber-600";
+    case "IC5":
+      return "bg-rose-600";
+    default:
+      return "bg-slate-600";
   }
 };
 
@@ -69,22 +95,22 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
-// HELPER: Determine the LAST shift change threshold (For Auto-Sweeper)
+// HELPER: Determine the LAST shift change threshold
 const getLastShiftChangeTime = () => {
   const now = getGMT8Time();
   const h = now.getHours();
   const m = now.getMinutes();
-  const timeInHours = h + (m / 60);
+  const timeInHours = h + m / 60;
 
   const lastChange = new Date(now);
   lastChange.setSeconds(0, 0);
 
   if (timeInHours >= 7 && timeInHours < 14.5) {
-    lastChange.setHours(7, 0); 
+    lastChange.setHours(7, 0);
   } else if (timeInHours >= 14.5 && timeInHours < 22.5) {
-    lastChange.setHours(14, 30); 
+    lastChange.setHours(14, 30);
   } else if (timeInHours >= 22.5) {
-    lastChange.setHours(22, 30); 
+    lastChange.setHours(22, 30);
   } else {
     lastChange.setDate(lastChange.getDate() - 1);
     lastChange.setHours(22, 30);
@@ -97,9 +123,12 @@ const checkIsHandoverWindow = () => {
   const now = getGMT8Time();
   const h = now.getHours();
   const m = now.getMinutes();
-  return (h === 14 && m >= 15 && m <= 45) || 
-         (h === 22 && m >= 15 && m <= 45) || 
-         (h === 6 && m >= 45) || (h === 7 && m <= 15);
+  return (
+    (h === 14 && m >= 15 && m <= 45) ||
+    (h === 22 && m >= 15 && m <= 45) ||
+    (h === 6 && m >= 45) ||
+    (h === 7 && m <= 15)
+  );
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -170,9 +199,30 @@ export default function TicketTable({
   dutyNumber,
   shortWorkName,
 }) {
-  const { workName, userRole, onlineUsers, isMyShiftActive, currentActiveShift, activeRoster } = useDuty(); 
-  const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
-  
+  const {
+    user,
+    workName,
+    userRole,
+    onlineUsers,
+    isMyShiftActive,
+    currentActiveShift,
+    activeRoster,
+    sendTransferRequest,
+    transferResponse,
+    resetTransferResponse,
+    setDuty,
+    selectedDuty,
+  } = useDuty();
+  const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+
+  // --- SENDER TRANSFER MODAL STATES (MULTI-SEND) ---
+  const [transferModal, setTransferModal] = useState({
+    isOpen: false,
+    step: "select",
+  });
+  const [transferAssignments, setTransferAssignments] = useState({});
+  const [transferStatuses, setTransferStatuses] = useState({});
+
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
   const [newNoteText, setNewNoteText] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -189,17 +239,75 @@ export default function TicketTable({
 
   const [handoverModal, setHandoverModal] = useState({
     isOpen: false,
-    step: "", 
+    step: "",
     missingTickets: [],
   });
 
   const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
-  const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
+  const [isInHandoverWindow, setIsInHandoverWindow] = useState(
+    checkIsHandoverWindow(),
+  );
+
+  // --- LISTEN FOR TRANSFER HANDSHAKE RESPONSES (GLOBAL DASHBOARD SYNC) ---
+  useEffect(() => {
+    if (transferResponse) {
+      if (transferResponse.status === "accepted") {
+        // If Accepted, magically remove those duties from Malinda's screen instantly!
+        setDuty((prev) => {
+          if (!prev) return [];
+          return prev.filter((d) => !transferResponse.duties.includes(d));
+        });
+      }
+
+      // Update the local tracking dashboard statuses
+      setTransferStatuses((prev) => {
+        const next = { ...prev };
+        transferResponse.duties.forEach((d) => {
+          next[d] = transferResponse.status;
+        });
+        return next;
+      });
+    }
+  }, [transferResponse, setDuty]);
+
+  const handleOpenTransfer = () => {
+    resetTransferResponse();
+    setTransferAssignments({});
+    setTransferStatuses({});
+    setTransferModal({ isOpen: true, step: "select" });
+  };
+
+  const handleSendAll = () => {
+    const targets = {};
+    let hasSelection = false;
+
+    Object.entries(transferAssignments).forEach(([duty, targetUserId]) => {
+      if (targetUserId) {
+        if (!targets[targetUserId]) targets[targetUserId] = [];
+        targets[targetUserId].push(duty);
+        hasSelection = true;
+      }
+    });
+
+    if (!hasSelection) {
+      alert("Please assign at least one duty to a teammate.");
+      return;
+    }
+
+    const newStatuses = { ...transferStatuses };
+    Object.entries(targets).forEach(([targetUserId, dutiesToTransfer]) => {
+      dutiesToTransfer.forEach((d) => (newStatuses[d] = "waiting"));
+      sendTransferRequest(targetUserId, dutiesToTransfer);
+    });
+
+    setTransferStatuses(newStatuses);
+    setTransferModal({ isOpen: true, step: "tracking" });
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
       setIsInHandoverWindow(checkIsHandoverWindow());
-    }, 60000); 
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 
@@ -208,32 +316,40 @@ export default function TicketTable({
     const performLazySweep = async () => {
       if (!tickets || tickets.length === 0) return;
       const lastShiftStart = getLastShiftChangeTime();
-      
-      const oldCompletedTickets = tickets.filter(t => 
-        t.status !== "Pending" && new Date(t.created_at) < lastShiftStart
+
+      const oldCompletedTickets = tickets.filter(
+        (t) =>
+          t.status !== "Pending" && new Date(t.created_at) < lastShiftStart,
       );
 
       if (oldCompletedTickets.length > 0) {
-        const idsToArchive = oldCompletedTickets.map(t => t.id);
-        await supabase.from("tickets").update({ is_archived: true }).in("id", idsToArchive);
+        const idsToArchive = oldCompletedTickets.map((t) => t.id);
+        await supabase
+          .from("tickets")
+          .update({ is_archived: true })
+          .in("id", idsToArchive);
       }
     };
-    
+
     performLazySweep();
     const interval = setInterval(performLazySweep, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [tickets]);
 
-
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
   const checkHandoverEligibility = () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const missing = pendingTix.filter(
-      (t) => !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === ""
+      (t) =>
+        !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "",
     );
 
     if (missing.length > 0) {
-      setHandoverModal({ isOpen: true, step: "check", missingTickets: missing });
+      setHandoverModal({
+        isOpen: true,
+        step: "check",
+        missingTickets: missing,
+      });
     } else {
       processHandover();
     }
@@ -242,7 +358,11 @@ export default function TicketTable({
   const processHandover = async () => {
     const isWindow = checkIsHandoverWindow();
     if (!isWindow) {
-      setHandoverModal({ isOpen: true, step: "early_warning", missingTickets: [] });
+      setHandoverModal({
+        isOpen: true,
+        step: "early_warning",
+        missingTickets: [],
+      });
     } else {
       executeHandover();
     }
@@ -250,12 +370,17 @@ export default function TicketTable({
 
   const executeHandover = async () => {
     generateHandoverReport();
-    
-    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
+
+    const completedIds = tickets
+      .filter((t) => t.status !== "Pending")
+      .map((t) => t.id);
     if (completedIds.length > 0) {
-      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
+      await supabase
+        .from("tickets")
+        .update({ is_archived: true })
+        .in("id", completedIds);
     }
-    
+
     setHandoverModal({ isOpen: true, step: "success", missingTickets: [] });
   };
 
@@ -279,16 +404,20 @@ export default function TicketTable({
   const filteredTickets = tickets.filter((ticket) => {
     // --- APPROACH 2: THE CLEAN SLATE WALL ---
     // If you are early (out of shift) and not an Admin, hide all tickets completely.
-    if (!isMyShiftActive && !isAdminOrLeader) {
-      return false;
-    }
+    if (!isMyShiftActive && !isAdminOrLeader) return false;
 
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
-      const matches = (ticket.member_id && ticket.member_id.toLowerCase().includes(lowerSearch)) || (ticket.provider_account && ticket.provider_account.toLowerCase().includes(lowerSearch)) || (ticket.tracking_no && ticket.tracking_no.toLowerCase().includes(lowerSearch));
+      const matches =
+        (ticket.member_id &&
+          ticket.member_id.toLowerCase().includes(lowerSearch)) ||
+        (ticket.provider_account &&
+          ticket.provider_account.toLowerCase().includes(lowerSearch)) ||
+        (ticket.tracking_no &&
+          ticket.tracking_no.toLowerCase().includes(lowerSearch));
       if (!matches) return false;
     }
-    return true; 
+    return true;
   });
 
   const getGeneratedScript = () => {
@@ -327,11 +456,11 @@ export default function TicketTable({
     const dutyStatus = [];
     const userDutyMap = {};
 
-    // Group the active users by the duties they hold
-    dutyArray.forEach(duty => {
-      const activeUser = onlineUsers.find(ou => 
-        ou.duties?.includes(duty) && 
-        activeRoster[ou.workName] === currentActiveShift
+    dutyArray.forEach((duty) => {
+      const activeUser = onlineUsers.find(
+        (ou) =>
+          ou.duties?.includes(duty) &&
+          activeRoster[ou.workName] === currentActiveShift,
       );
 
       if (activeUser) {
@@ -342,7 +471,7 @@ export default function TicketTable({
       }
     });
 
-    Object.keys(userDutyMap).forEach(userName => {
+    Object.keys(userDutyMap).forEach((userName) => {
       const duties = userDutyMap[userName];
       const dutyStr = duties.length > 1 ? duties.join(" and ") : duties[0];
       dutyStatus.push(`${userName} is working on ${dutyStr}`);
@@ -354,7 +483,10 @@ export default function TicketTable({
     } else if (dutyStatus.length === 2) {
       statusText = `${dutyStatus[0]}, and ${dutyStatus[1]}`;
     } else if (dutyStatus.length > 2) {
-      statusText = dutyStatus.slice(0, -1).join(", ") + ", and " + dutyStatus[dutyStatus.length - 1];
+      statusText =
+        dutyStatus.slice(0, -1).join(", ") +
+        ", and " +
+        dutyStatus[dutyStatus.length - 1];
     }
 
     if (statusText) {
@@ -382,33 +514,48 @@ export default function TicketTable({
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
 
-  // Logic to determine Handover button state
-  const isHandoverDisabled = (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
-  
+  const isHandoverDisabled =
+    (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
+
   let handoverTooltip = "Handover Shift";
   if (!isMyShiftActive && !isAdminOrLeader) {
     handoverTooltip = "You can only handover during your assigned shift time.";
   } else if (!isInHandoverWindow) {
-    handoverTooltip = "Only available during shift handover time's (:15 to :45)";
+    handoverTooltip =
+      "Only available during shift handover time's (:15 to :45)";
   }
+
+  const availableUsersToTransfer = onlineUsers.filter(
+    (u) => u.id && u.id !== user?.id,
+  );
 
   return (
     <main className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
-        
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
         </div>
 
         <div className="flex items-center gap-3">
-          
-          {/* --- Soft Handover Button (Protected by Shift Guardrails) --- */}
+          {/* --- PEER-TO-PEER MULTI-TRANSFER BUTTON --- */}
+          {!dutyArray.includes("IC0") &&
+            (isMyShiftActive || isAdminOrLeader) && (
+              <button
+                onClick={handleOpenTransfer}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition-colors"
+                title="Pass duties to your teammates"
+              >
+                <ArrowRight size={14} /> Transfer Duty
+              </button>
+            )}
+
+          {/* --- Soft Handover Button --- */}
           {!dutyArray.includes("IC0") && (
             <button
               onClick={checkHandoverEligibility}
               disabled={isHandoverDisabled}
               className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-sm transition-colors
-                ${!isHandoverDisabled ? 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer' : 'bg-slate-300 opacity-50 cursor-not-allowed'}`}
+                ${!isHandoverDisabled ? "bg-indigo-600 hover:bg-indigo-700 cursor-pointer" : "bg-slate-300 opacity-50 cursor-not-allowed"}`}
               title={handoverTooltip}
             >
               <ArrowRightLeft size={14} /> Handover Shift
@@ -439,17 +586,20 @@ export default function TicketTable({
         </div>
       </div>
 
-      {/* --- EARLY LOGIN BANNER (Dynamic Option B Logic) --- */}
-      {!dutyArray.includes("IC0") && !isMyShiftActive && currentActiveShift && !isAdminOrLeader && (
-        <div className="mx-6 mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-indigo-700">
-          <Info size={18} className="shrink-0" />
-          <div>
-            <p className="text-[13px] font-medium leading-relaxed">
-              {getDynamicBannerText()}
-            </p>
+      {/* --- EARLY LOGIN BANNER (Clean Slate Protection) --- */}
+      {!dutyArray.includes("IC0") &&
+        !isMyShiftActive &&
+        currentActiveShift &&
+        !isAdminOrLeader && (
+          <div className="mx-6 mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-indigo-700">
+            <Info size={18} className="shrink-0" />
+            <div>
+              <p className="text-[13px] font-medium leading-relaxed">
+                {getDynamicBannerText()}
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div className="flex-1 overflow-auto bg-slate-50 mt-4">
         <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -476,12 +626,11 @@ export default function TicketTable({
                   colSpan={showDutyColumn ? "12" : "11"}
                   className="px-6 py-12 text-center text-slate-400"
                 >
-                  {/* CLEAN SLATE MESSAGE */}
-                  {!isMyShiftActive && !isAdminOrLeader 
+                  {!isMyShiftActive && !isAdminOrLeader
                     ? "Waiting for the previous shift to handover..."
                     : searchTerm
-                    ? `No tickets found matching "${searchTerm}"`
-                    : "No active investigations found."}
+                      ? `No tickets found matching "${searchTerm}"`
+                      : "No active investigations found."}
                 </td>
               </tr>
             ) : (
@@ -573,11 +722,13 @@ export default function TicketTable({
                     <td className="px-4 py-2 text-center">
                       <span
                         className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider
-                          ${!isCompleted 
-                            ? "bg-amber-50 text-amber-700 border-amber-200" 
-                            : ticket.status === "Normal" || ticket.status === "NORMAL"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                              : "bg-rose-50 text-rose-700 border-rose-200"
+                          ${
+                            !isCompleted
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : ticket.status === "Normal" ||
+                                  ticket.status === "NORMAL"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-rose-50 text-rose-700 border-rose-200"
                           }`}
                       >
                         {!isCompleted ? "Wait for provider" : ticket.status}
@@ -651,58 +802,285 @@ export default function TicketTable({
         </table>
       </div>
 
+      {/* --- HANDSHAKE SENDER MODAL (MULTI-SEND DASHBOARD) --- */}
+      {transferModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+            {/* STEP 1: The Multi-Selector */}
+            {transferModal.step === "select" && (
+              <>
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <Users size={18} className="text-indigo-600" /> Transfer
+                    Duties
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setTransferModal({ isOpen: false, step: "select" })
+                    }
+                    className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                    Assign the duties you want to transfer to your online
+                    teammates.
+                  </p>
+
+                  <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-1">
+                    {dutyArray.map((duty) => (
+                      <div
+                        key={duty}
+                        className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`px-2.5 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider ${getDutyTextColor(duty)} bg-slate-50 border border-slate-100`}
+                          >
+                            {duty}
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <select
+                            value={transferAssignments[duty] || ""}
+                            onChange={(e) =>
+                              setTransferAssignments((prev) => ({
+                                ...prev,
+                                [duty]: e.target.value,
+                              }))
+                            }
+                            className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition-all cursor-pointer w-[180px]"
+                          >
+                            <option value="">-- Keep Duty --</option>
+                            {availableUsersToTransfer.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.workName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={handleSendAll}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors flex items-center justify-center gap-2"
+                  >
+                    Send Transfer Requests <ArrowRight size={16} />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STEP 2: Live Tracking Dashboard */}
+            {transferModal.step === "tracking" && (
+              <>
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <ArrowRightLeft size={18} className="text-indigo-600" />{" "}
+                    Live Transfer Status
+                  </h3>
+                  <button
+                    onClick={() =>
+                      setTransferModal({ isOpen: false, step: "select" })
+                    }
+                    className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <p className="text-xs text-slate-500 mb-6 font-medium">
+                    Tracking requests sent to your teammates. Accepted duties
+                    will automatically close in the background.
+                  </p>
+
+                  <div className="space-y-3 mb-8">
+                    {dutyArray
+                      .filter((d) => transferAssignments[d])
+                      .map((duty) => {
+                        const targetId = transferAssignments[duty];
+                        const targetName =
+                          onlineUsers.find((u) => u.id === targetId)
+                            ?.workName || "Unknown User";
+                        const status = transferStatuses[duty] || "waiting";
+
+                        return (
+                          <div
+                            key={duty}
+                            className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[12px] font-bold text-slate-800">
+                                {duty}
+                              </span>
+                              <ArrowRight
+                                size={14}
+                                className="text-slate-300"
+                              />
+                              <span className="text-[12px] font-bold text-indigo-700">
+                                {targetName}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center">
+                              {status === "waiting" && (
+                                <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-100">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                  </span>{" "}
+                                  Waiting...
+                                </span>
+                              )}
+                              {status === "accepted" && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
+                                  <CheckCircle2 size={12} /> Accepted
+                                </span>
+                              )}
+                              {status === "declined" && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-100">
+                                  <X size={12} /> Declined
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      setTransferModal({ isOpen: false, step: "select" })
+                    }
+                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors"
+                  >
+                    Close Dashboard
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* --- HANDOVER MODALS --- */}
       {handoverModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
           <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-            
-            {/* Missing Tracking Numbers Alert */}
-            {handoverModal.step === 'check' && (
+            {handoverModal.step === "check" && (
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4 text-amber-600">
                   <AlertTriangle size={24} />
-                  <h3 className="text-lg font-bold text-slate-800">Missing Information</h3>
+                  <h3 className="text-lg font-bold text-slate-800">
+                    Missing Information
+                  </h3>
                 </div>
                 <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-                  You have pending tickets missing a Tracking Number. It is highly recommended to fill these before handing over the shift:
+                  You have pending tickets missing a Tracking Number. It is
+                  highly recommended to fill these before handing over the
+                  shift:
                 </p>
                 <div className="max-h-32 overflow-y-auto bg-slate-50 rounded-lg p-3 border border-slate-200 mb-6 space-y-2">
-                  {handoverModal.missingTickets.map(t => (
-                    <div key={t.id} className="text-xs font-mono text-slate-700 flex items-center justify-between">
-                      <span>Player: <span className="font-bold text-indigo-600">{t.member_id}</span></span>
+                  {handoverModal.missingTickets.map((t) => (
+                    <div
+                      key={t.id}
+                      className="text-xs font-mono text-slate-700 flex items-center justify-between"
+                    >
+                      <span>
+                        Player:{" "}
+                        <span className="font-bold text-indigo-600">
+                          {t.member_id}
+                        </span>
+                      </span>
                       <span className="text-slate-400">{t.provider}</span>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Go Back to Fix</button>
-                  <button onClick={processHandover} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors">Handover Anyway</button>
+                  <button
+                    onClick={() =>
+                      setHandoverModal({
+                        isOpen: false,
+                        step: "",
+                        missingTickets: [],
+                      })
+                    }
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Go Back to Fix
+                  </button>
+                  <button
+                    onClick={processHandover}
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Handover Anyway
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* Early Warning Request (Replacing Admin Block) */}
-            {handoverModal.step === 'early_warning' && (
+            {handoverModal.step === "early_warning" && (
               <div className="p-6 text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 mb-4"><ArrowRightLeft size={24} /></div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">Early Handover</h3>
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 mb-4">
+                  <ArrowRightLeft size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                  Early Handover
+                </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  You are generating a handover report outside the standard shift change times. Are you sure you want to proceed?
+                  You are generating a handover report outside the standard
+                  shift change times. Are you sure you want to proceed?
                 </p>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors">Cancel</button>
-                  <button onClick={executeHandover} className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors">Proceed</button>
+                  <button
+                    onClick={() =>
+                      setHandoverModal({
+                        isOpen: false,
+                        step: "",
+                        missingTickets: [],
+                      })
+                    }
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeHandover}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Proceed
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* Success and Copy */}
-            {handoverModal.step === 'success' && (
+            {handoverModal.step === "success" && (
               <div className="p-8 text-center animate-in zoom-in-95">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 mb-4"><CheckCircle2 size={32} /></div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">Handover Ready!</h3>
-                <p className="text-sm text-slate-600 mb-6 leading-relaxed">Your handover text has been automatically copied to your clipboard. Completed tickets have been instantly archived to clear your screen.</p>
-                <button onClick={() => setHandoverModal({ isOpen: false, step: '', missingTickets: [] })} className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors">Done</button>
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 mb-4">
+                  <CheckCircle2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">
+                  Handover Ready!
+                </h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                  Your handover text has been automatically copied to your
+                  clipboard. Completed tickets have been instantly archived to
+                  clear your screen.
+                </p>
+                <button
+                  onClick={() =>
+                    setHandoverModal({
+                      isOpen: false,
+                      step: "",
+                      missingTickets: [],
+                    })
+                  }
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors"
+                >
+                  Done
+                </button>
               </div>
             )}
           </div>
@@ -713,7 +1091,6 @@ export default function TicketTable({
       {selectedTicketForNotes && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
           <div className="bg-slate-50 w-[400px] h-[550px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Chat Header */}
             <div
               className={`px-5 py-4 ${getDutyHeaderBg(selectedTicketForNotes.ic_account)} flex items-center justify-between text-white shadow-md z-10 transition-colors`}
             >
@@ -732,8 +1109,6 @@ export default function TicketTable({
                 <X size={16} />
               </button>
             </div>
-
-            {/* Chat Messages Area */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {activeNotes.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
@@ -765,8 +1140,6 @@ export default function TicketTable({
                 ))
               )}
             </div>
-
-            {/* Chat Input Area */}
             <div className="p-4 bg-white border-t border-slate-200">
               <div className="relative flex items-center gap-2">
                 <input
@@ -817,9 +1190,7 @@ export default function TicketTable({
                 <X size={16} />
               </button>
             </div>
-
             <div className="p-6">
-              {/* STEP 1: Select Type */}
               {completeModal.step === "select" && (
                 <div className="space-y-6 animate-in slide-in-from-right-4">
                   <div className="space-y-3">
@@ -849,7 +1220,6 @@ export default function TicketTable({
                         className="text-emerald-400 group-hover:text-emerald-600"
                       />
                     </button>
-
                     <button
                       onClick={() =>
                         setCompleteModal({
@@ -876,8 +1246,6 @@ export default function TicketTable({
                   </div>
                 </div>
               )}
-
-              {/* STEP 2: Input Abnormal Type */}
               {completeModal.step === "input-abnormal" && (
                 <div className="space-y-5 animate-in slide-in-from-right-4">
                   <div>
@@ -907,7 +1275,7 @@ export default function TicketTable({
                       })
                     }
                     placeholder="e.g., fraudulent betting, multi-accounting"
-                    className="w-full px-3 py-2.5 bg-white border-2 border-indigo-200 rounded-lg text-sm outline-none focus:border-indigo-500 shadow-sm uppercase" 
+                    className="w-full px-3 py-2.5 bg-white border-2 border-indigo-200 rounded-lg text-sm outline-none focus:border-indigo-500 shadow-sm uppercase"
                     onKeyDown={(e) => {
                       if (
                         e.key === "Enter" &&
@@ -928,8 +1296,6 @@ export default function TicketTable({
                   </button>
                 </div>
               )}
-
-              {/* STEP 3: Script View & Copy */}
               {completeModal.step === "script" && (
                 <div className="space-y-5 animate-in slide-in-from-right-4">
                   <div className="flex items-center justify-between">
@@ -953,7 +1319,6 @@ export default function TicketTable({
                       {completeModal.type} Script
                     </span>
                   </div>
-
                   <div className="relative group">
                     <textarea
                       readOnly
@@ -961,7 +1326,6 @@ export default function TicketTable({
                       className="w-full h-36 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-mono resize-none focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors leading-relaxed"
                     />
                   </div>
-
                   <button
                     onClick={handleCopyAndComplete}
                     className="w-full py-3 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center justify-center gap-2"

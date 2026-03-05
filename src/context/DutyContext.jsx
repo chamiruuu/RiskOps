@@ -17,11 +17,16 @@ export const DutyProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState([]);
   
-  // --- NEW MASTER KEY STATES ---
+  // --- MASTER KEY STATES ---
   const [currentActiveShift, setCurrentActiveShift] = useState(null);
   const [myAssignedShift, setMyAssignedShift] = useState("Off");
   const [activeRoster, setActiveRoster] = useState({});
   
+  // --- REAL-TIME TRANSFER HANDSHAKE STATES ---
+  const [pendingTransferRequest, setPendingTransferRequest] = useState(null);
+  const [transferResponse, setTransferResponse] = useState(null);
+  const transferChannelRef = useRef(null);
+
   const currentUserTracker = useRef(null);
   
   const [selectedDuty, setSelectedDuty] = useState(() => {
@@ -78,7 +83,7 @@ export const DutyProvider = ({ children }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // --- 2. FETCH SCHEDULE & ROSTER (Option B Logic) ---
+  // --- 2. FETCH SCHEDULE & ROSTER ---
   useEffect(() => {
     const fetchScheduleAndRoster = async () => {
       if (!user) {
@@ -189,7 +194,7 @@ export const DutyProvider = ({ children }) => {
     }
   }, [selectedDuty]);
 
-  // --- MODIFIED: Added Debounce for Tab Flickering & Added Role Broadcasting ---
+  // --- 3. PRESENCE TRACKING ---
   useEffect(() => {
     if (!user || !workName) return;
 
@@ -211,6 +216,7 @@ export const DutyProvider = ({ children }) => {
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await presenceChannel.track({
+            id: user.id, // REQUIRED FOR PEER-TO-PEER TRANSFER
             workName: workName,
             duties: selectedDuty || [],
             role: userRole 
@@ -224,14 +230,65 @@ export const DutyProvider = ({ children }) => {
     };
   }, [user, workName, userRole, JSON.stringify(selectedDuty)]); 
 
-  const setDuty = (dutyArray) => {
-    setSelectedDuty(dutyArray);
+  // --- 4. REAL-TIME HANDSHAKE BROADCASTING ---
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase.channel('duty-transfers');
+    
+    // Listen for incoming requests directed at me
+    channel.on('broadcast', { event: 'transfer_request' }, ({ payload }) => {
+      if (payload.targetId === user.id) {
+        setPendingTransferRequest(payload);
+      }
+    });
+
+    // Listen for responses back to me after I send a request
+    channel.on('broadcast', { event: 'transfer_response' }, ({ payload }) => {
+      if (payload.targetId === user.id) {
+        // We add a timestamp so the dashboard triggers instantly even if responses stack up
+        setTransferResponse({ ...payload, _ts: Date.now() }); 
+      }
+    });
+
+    channel.subscribe();
+    transferChannelRef.current = channel;
+
+    return () => { supabase.removeChannel(channel); }
+  }, [user]);
+
+  // Functions to trigger the handshake
+  const sendTransferRequest = async (targetId, duties) => {
+    await transferChannelRef.current.send({
+      type: 'broadcast',
+      event: 'transfer_request',
+      payload: { fromId: user.id, fromName: workName, targetId, duties }
+    });
   };
+
+  const respondToTransferRequest = async (targetId, status, duties) => {
+    await transferChannelRef.current.send({
+      type: 'broadcast',
+      event: 'transfer_response',
+      payload: { fromId: user.id, targetId, status, duties }
+    });
+    setPendingTransferRequest(null); // Clear modal
+    
+    // If accepted, merge it into active duties automatically!
+    if (status === 'accepted') {
+      setSelectedDuty(prev => Array.from(new Set([...(prev || []), ...duties])));
+    }
+  };
+
+  const resetTransferResponse = () => setTransferResponse(null);
+
+  const setDuty = (val) => setSelectedDuty(val);
 
   return (
     <DutyContext.Provider value={{ 
       user, userRole, workName, selectedDuty, setDuty, onlineUsers, loading, 
-      isMyShiftActive, currentActiveShift, activeRoster 
+      isMyShiftActive, currentActiveShift, activeRoster,
+      pendingTransferRequest, transferResponse, sendTransferRequest, respondToTransferRequest, resetTransferResponse
     }}>
       {children}
     </DutyContext.Provider>

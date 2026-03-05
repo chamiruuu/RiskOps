@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 
 export default function Header() {
-  const { selectedDuty, user, userRole, workName, onlineUsers } = useDuty();
+  const { selectedDuty, user, userRole, workName, onlineUsers, pendingTransferRequest, respondToTransferRequest } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // --- Admin Modal States ---
@@ -561,6 +561,38 @@ export default function Header() {
           </button>
         </div>
       </header>
+
+      {/* --- REAL-TIME TRANSFER RECEIVER MODAL (GARUKA SEES THIS) --- */}
+      {pendingTransferRequest && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-[400px] overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 mb-4">
+                <Users size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Duty Transfer Request</h3>
+              <p className="text-sm text-slate-600 mb-8 leading-relaxed">
+                <strong>{pendingTransferRequest.fromName}</strong> is requesting to transfer <span className="font-bold text-indigo-600 uppercase bg-indigo-50 px-1.5 py-0.5 rounded">{pendingTransferRequest.duties.join(', ')}</span> to you. Do you accept?
+              </p>
+              
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => respondToTransferRequest(pendingTransferRequest.fromId, 'declined', pendingTransferRequest.duties)} 
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors"
+                >
+                  Decline
+                </button>
+                <button 
+                  onClick={() => respondToTransferRequest(pendingTransferRequest.fromId, 'accepted', pendingTransferRequest.duties)} 
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors shadow-md"
+                >
+                  Accept Duty
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- DEDICATED SHIFT PLANNER MODAL --- */}
       {showShiftModal && (

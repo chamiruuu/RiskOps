@@ -1729,7 +1729,7 @@ Time period：${timeRange}`;
       return "// fill in the required input feilds..";
     },
   },
-  
+
   // --- 56. DC ---
   DC: {
     channel: "[TG068/ QQ288/ YG/ DC/ AUX/ HS/ RG/ OP] CS",
@@ -1801,19 +1801,25 @@ Time period：${timeRange}`;
       "Once Carmen responds, notify the merchant.",
       "Add a note to the Redmine and close it.",
       "Update the IC-Redmine tab in the on-duty handover log.",
-      { image: "https://snipboard.io/XMJL5Q.jpg" }
+      { image: "https://snipboard.io/XMJL5Q.jpg" },
     ],
-    
+
     // NEW: Added "ipAddress" to the required fields!
-    requiredFields: ["memberId", "providerAccount", "currency", "ipAddress", "timeRange"],
-    
+    requiredFields: [
+      "memberId",
+      "providerAccount",
+      "currency",
+      "ipAddress",
+      "timeRange",
+    ],
+
     options: {
       currencies: ["THB", "IDR", "CNY", "MYR", "VND", "USD", "KRW"],
     },
 
     // NEW: Pulled ipAddress from the data to inject into the script
     generateScript: (data, workName) => {
-      const { providerAccount, currency, timeRange, ipAddress } = data; 
+      const { providerAccount, currency, timeRange, ipAddress } = data;
 
       if (providerAccount && currency && timeRange && ipAddress) {
         const zapportMap = {
@@ -1840,5 +1846,5 @@ Reason for request investigation : suspect member got cross bet activities`;
       }
       return "// Waiting for Provider Account, Currency, IP Address, and Time Range...";
     },
-  }
+  },
 };
