@@ -34,6 +34,9 @@ export default function Header() {
   const [createMsg, setCreateMsg] = useState({ text: "", type: "" });
   const [copiedPwd, setCopiedPwd] = useState(false);
 
+  const [shiftNotifications, setShiftNotifications] = useState([]);
+  const { myAssignedShift } = useDuty(); // Make sure you extract this!
+
   // --- Emergency Handover States ---
   const [emergencyRequests, setEmergencyRequests] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -153,6 +156,57 @@ export default function Header() {
       setSelectedCycle(cyclesList[0]);
     }
   }, [cyclesList, selectedCycle]);
+
+  // --- BROWSER NOTIFICATIONS & HANDOVER ALERTS ---
+  useEffect(() => {
+    // 1. Ask for browser notification permissions on load
+    if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+      Notification.requestPermission();
+    }
+
+    // 2. Fetch today's alerts for MY shift
+    const fetchHandoverAlerts = async () => {
+      if (!myAssignedShift || myAssignedShift === "Off") return;
+      
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      const { data } = await supabase
+        .from('shift_notifications')
+        .select('*')
+        .eq('target_shift', myAssignedShift)
+        .gte('created_at', today.toISOString())
+        .order('created_at', { ascending: false });
+        
+      if (data) setShiftNotifications(data);
+    };
+
+    fetchHandoverAlerts();
+
+    // 3. Listen for new handovers in Real-Time
+    const sub = supabase.channel('handover_alerts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'shift_notifications' }, (payload) => {
+        
+        // If the ping is for MY shift
+        if (payload.new.target_shift === myAssignedShift) {
+          setShiftNotifications((prev) => [payload.new, ...prev]);
+          
+          // Trigger Native Browser Popup & Sound
+          if (Notification.permission === "granted") {
+            new Notification("🚨 Shift Handover Received", {
+              body: payload.new.message,
+              icon: "/vite.svg" // Optional: path to your logo
+            });
+            // Play a ping sound
+            const audio = new Audio('src/assets/Notification.mp3');
+            audio.play().catch(e => console.log("Audio blocked by browser"));
+          }
+        }
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [myAssignedShift]);
 
   const fetchShiftDataForCycle = async (cycle) => {
     const { data } = await supabase.from('shift_assignments').select('*').eq('cycle_period', cycle);
@@ -385,6 +439,13 @@ export default function Header() {
     emergencyRequests.forEach(req => globalNotifications.push({ id: req.id, type: 'emergency', data: req }));
   }
 
+  // Inject Handover alerts into the Bell
+  if (shiftNotifications.length > 0) {
+    shiftNotifications.forEach(n => {
+      globalNotifications.push({ id: n.id, type: 'handover', text: n.message, time: n.created_at });
+    });
+  }
+
   const hasNotifications = globalNotifications.length > 0;
 
   return (
@@ -436,6 +497,23 @@ export default function Header() {
                                 <h4 className="text-xs font-bold text-amber-800 mb-0.5">Shift Cycle Expiring</h4>
                                 <p className="text-xs text-amber-700 font-medium leading-relaxed">{notif.text}</p>
                                 <button onClick={() => { setShowNotifications(false); setShowShiftModal(true); }} className="mt-2 text-[10px] font-bold text-amber-600 hover:text-amber-800 underline">Open Shift Planner</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === 'handover') {
+                        return (
+                          <div key={notif.id} className="p-3 mb-2 bg-indigo-50 border border-indigo-200 shadow-sm rounded-lg relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                            <div className="flex items-start gap-2">
+                              <Shield size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                              <div>
+                                <h4 className="text-xs font-bold text-indigo-800 mb-0.5">Incoming Handover</h4>
+                                <p className="text-xs text-indigo-700 font-medium leading-relaxed">{notif.text}</p>
+                                <span className="text-[9px] text-indigo-400 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
                               </div>
                             </div>
                           </div>

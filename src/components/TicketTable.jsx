@@ -14,6 +14,7 @@ import {
   Info,
   ArrowRight,
   Users,
+  LogOut,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
@@ -129,6 +130,12 @@ const checkIsHandoverWindow = () => {
     (h === 6 && m >= 45) ||
     (h === 7 && m <= 15)
   );
+};
+
+const getNextShift = (current) => {
+  if (current === "Morning") return "Afternoon";
+  if (current === "Afternoon") return "Night";
+  return "Morning";
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -369,26 +376,28 @@ export default function TicketTable({
   };
 
   const executeHandover = async () => {
-    generateHandoverReport();
+    const pendingTix = tickets.filter((t) => t.status === "Pending");
+    const nextShift = getNextShift(currentActiveShift);
+    
+    // Create the clean notification message
+    const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
 
-    const completedIds = tickets
-      .filter((t) => t.status !== "Pending")
-      .map((t) => t.id);
+    // 1. Push to database for the incoming shift
+    await supabase.from("shift_notifications").insert({
+      target_shift: nextShift,
+      message: msg,
+      duties: dutyArray
+    });
+
+    // 2. Archive completed tickets
+    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
     if (completedIds.length > 0) {
-      await supabase
-        .from("tickets")
-        .update({ is_archived: true })
-        .in("id", completedIds);
+      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
     }
 
-    setHandoverModal({ isOpen: true, step: "success", missingTickets: [] });
-  };
-
-  const generateHandoverReport = () => {
-    const pendingTix = tickets.filter((t) => t.status === "Pending");
-    const ids = pendingTix.map((t) => t.member_id).join(", ");
-    const script = `Shift Handover [${dutyArray.join(" & ")}] | Pending Tickets: ${pendingTix.length}\n${ids ? `Players pending: ${ids}` : "No pending tickets."}\n- ${shortWorkName}`;
-    navigator.clipboard.writeText(script);
+    // 3. Clear duties from screen and lock it
+    setDuty([]); 
+    setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
 
   const handleSendNote = () => {
@@ -496,6 +505,39 @@ export default function TicketTable({
     }
   };
 
+  // --- SHARED VIEWING ENGINE ---
+  const getSharedViewingText = () => {
+    // Only check if we are actually viewing duties
+    if (dutyArray.includes("IC0") || dutyArray.length === 0) return null;
+
+    const sharedViewingMap = {};
+
+    // Check if anyone else online is holding the exact same duties as me
+    dutyArray.forEach((duty) => {
+      onlineUsers.forEach((ou) => {
+        if (ou.id !== user?.id && ou.duties?.includes(duty)) {
+          if (!sharedViewingMap[ou.workName]) sharedViewingMap[ou.workName] = [];
+          sharedViewingMap[ou.workName].push(duty);
+        }
+      });
+    });
+
+    const userStrings = Object.keys(sharedViewingMap).map((userName) => {
+      const duties = sharedViewingMap[userName];
+      const dutyStr = duties.length > 1 ? duties.join(" and ") : duties[0];
+      return `${userName} (${dutyStr})`;
+    });
+
+    if (userStrings.length === 0) return null;
+
+    let combinedString = "";
+    if (userStrings.length === 1) combinedString = userStrings[0];
+    else if (userStrings.length === 2) combinedString = `${userStrings[0]} and ${userStrings[1]}`;
+    else combinedString = userStrings.slice(0, -1).join(", ") + ", and " + userStrings[userStrings.length - 1];
+
+    return `${combinedString} ${Object.keys(sharedViewingMap).length > 1 ? 'are' : 'is'} also viewing this duty.`;
+  };
+
   let displayTitle = "Active Investigations for IC Duty";
 
   if (!dutyArray.includes("IC0") && dutyArray.length > 0) {
@@ -600,6 +642,20 @@ export default function TicketTable({
             </div>
           </div>
         )}
+
+      {/* --- SHARED VIEWING BANNER (Collaboration Notice) --- */}
+      {(isMyShiftActive || isAdminOrLeader) && getSharedViewingText() && (
+        <div className="mx-6 mt-4 p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-blue-700">
+          <Users size={18} className="shrink-0" />
+          <div>
+            <p className="text-[13px] font-medium leading-relaxed">
+              <strong>Collaboration Notice:</strong> {getSharedViewingText()}
+            </p>
+          </div>
+        </div>
+      )}
+
+        
 
       <div className="flex-1 overflow-auto bg-slate-50 mt-4">
         <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -1056,30 +1112,22 @@ export default function TicketTable({
                 </div>
               </div>
             )}
-            {handoverModal.step === "success" && (
+            {handoverModal.step === "shift_done" && (
               <div className="p-8 text-center animate-in zoom-in-95">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-500 mb-4">
-                  <CheckCircle2 size={32} />
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 text-slate-500 mb-4">
+                  <LogOut size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 mb-2">
-                  Handover Ready!
+                  Handover Completed
                 </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  Your handover text has been automatically copied to your
-                  clipboard. Completed tickets have been instantly archived to
-                  clear your screen.
+                  This is the <strong>{getNextShift(currentActiveShift)}</strong> shift now. Your handover has been sent securely to the incoming team. Your shift is officially done!
                 </p>
                 <button
-                  onClick={() =>
-                    setHandoverModal({
-                      isOpen: false,
-                      step: "",
-                      missingTickets: [],
-                    })
-                  }
-                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg transition-colors"
+                  onClick={() => window.location.reload()} // Forces a clean logout/reset
+                  className="w-full py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-lg transition-colors"
                 >
-                  Done
+                  Return to Login
                 </button>
               </div>
             )}

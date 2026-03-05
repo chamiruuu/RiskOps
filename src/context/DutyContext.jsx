@@ -194,7 +194,7 @@ export const DutyProvider = ({ children }) => {
     }
   }, [selectedDuty]);
 
-  // --- 3. PRESENCE TRACKING ---
+  // --- 3. PRESENCE TRACKING & AGGRESSIVE KEEP-ALIVE ---
   useEffect(() => {
     if (!user || !workName) return;
 
@@ -203,29 +203,53 @@ export const DutyProvider = ({ children }) => {
     });
 
     let debounceTimer;
+    let keepAliveInterval;
+
+    const trackPresence = async () => {
+      try {
+        await presenceChannel.track({
+          id: user.id,
+          workName: workName,
+          duties: selectedDuty || [],
+          role: userRole,
+          _ping: Date.now() // Forces a tiny state refresh to trick the browser into keeping the connection fully awake!
+        });
+      } catch (e) {
+        // Ignore if channel temporarily disconnected
+      }
+    };
 
     presenceChannel
       .on('presence', { event: 'sync' }, () => {
         clearTimeout(debounceTimer);
+        // Reduced debounce to 300ms so background updates process almost instantly
         debounceTimer = setTimeout(() => {
           const newState = presenceChannel.presenceState();
           const activeUsers = Object.keys(newState).map(key => newState[key][0]);
           setOnlineUsers(activeUsers);
-        }, 800); 
+        }, 300); 
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await presenceChannel.track({
-            id: user.id, // REQUIRED FOR PEER-TO-PEER TRANSFER
-            workName: workName,
-            duties: selectedDuty || [],
-            role: userRole 
-          });
+          await trackPresence();
+          
+          // AGGRESSIVE PING: Fire every 20 seconds. Prevents Chrome's "Memory Saver" from sleeping the tab's WebSocket.
+          keepAliveInterval = setInterval(trackPresence, 20000);
         }
       });
 
+    // INSTANT WAKE-UP: If the OS forcefully suspended the tab (e.g. laptop closed or frozen), instantly resync the second they view the tab.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        trackPresence();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       clearTimeout(debounceTimer);
+      clearInterval(keepAliveInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       supabase.removeChannel(presenceChannel);
     };
   }, [user, workName, userRole, JSON.stringify(selectedDuty)]); 
@@ -246,7 +270,6 @@ export const DutyProvider = ({ children }) => {
     // Listen for responses back to me after I send a request
     channel.on('broadcast', { event: 'transfer_response' }, ({ payload }) => {
       if (payload.targetId === user.id) {
-        // We add a timestamp so the dashboard triggers instantly even if responses stack up
         setTransferResponse({ ...payload, _ts: Date.now() }); 
       }
     });
