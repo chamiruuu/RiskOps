@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand, Lock } from "lucide-react";
+import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand, Lock, CheckCircle2 } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
+import notificationSound from '../assets/Notification.mp3'; // <-- IMPORTED SOUND
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
@@ -22,13 +23,14 @@ const checkIsHandoverWindow = () => {
 };
 
 export default function TicketForm({ onAddTicket }) {
-  // Destructure the new Master Key variables from context!
   const { selectedDuty, user, workName, isMyShiftActive, userRole } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
   
-  // FIX: Create short name for scripts (e.g. "Fernando IPCS" -> "Fernando")
+  // --- NEW: Local Success Toast State ---
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
   // Quick Reply States
@@ -43,7 +45,6 @@ export default function TicketForm({ onAddTicket }) {
   // --- SHIFT LOCKOUT STATE ---
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
   
-  // Check the clock every minute to see if handover window opened
   useEffect(() => {
     const timer = setInterval(() => {
       setIsInHandoverWindow(checkIsHandoverWindow());
@@ -51,7 +52,6 @@ export default function TicketForm({ onAddTicket }) {
     return () => clearInterval(timer);
   }, []);
 
-  // Form is unlocked IF: You are on shift OR You are an Admin OR The handover window just opened!
   const isAdminOrLeader = userRole === 'Admin' || userRole === 'Leader';
   const canCreate = isMyShiftActive || isAdminOrLeader || isInHandoverWindow;
 
@@ -70,24 +70,21 @@ export default function TicketForm({ onAddTicket }) {
     ipAddress: "",
   });
 
-  // Sync search text when formData.provider changes (like on form reset)
   useEffect(() => {
     setProviderSearch(formData.provider);
   }, [formData.provider]);
 
-  // Handle clicking outside the custom dropdown to close it
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (providerRef.current && !providerRef.current.contains(event.target)) {
         setIsProviderOpen(false);
-        setProviderSearch(formData.provider); // Revert to valid provider if clicked away
+        setProviderSearch(formData.provider); 
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [formData.provider]);
 
-  // Filter providers based on search input
   const filteredProviders = Object.keys(PROVIDER_CONFIG).filter(p =>
     p.toLowerCase().includes(providerSearch.toLowerCase())
   );
@@ -95,12 +92,10 @@ export default function TicketForm({ onAddTicket }) {
   const { name: merchantName, error: dutyError } = useMerchantData(formData.memberId, selectedDuty);
   const currentConfig = PROVIDER_CONFIG[formData.provider];
 
-  // FIX: Pass shortWorkName to the script generator (Removed the bugged email override line)
   const generatedScript = currentConfig ? currentConfig.generateScript(formData, shortWorkName) : "// Waiting for provider selection...";
 
   const isFormValid = () => {
     if (!currentConfig) return false; 
-    
     if (currentConfig?.isManualCheckOnly) return false;
     if (!formData.memberId || dutyError) return false;
 
@@ -133,7 +128,6 @@ export default function TicketForm({ onAddTicket }) {
 
   const handleCopySop = () => {
     if (currentConfig?.conditionScript) {
-      // FIX: Use shortWorkName here too
       navigator.clipboard.writeText(currentConfig.conditionScript(shortWorkName));
       setCopiedSop(true);
       setTimeout(() => setCopiedSop(false), 2000);
@@ -141,7 +135,6 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const handleCopyLoss = () => {
-    // FIX: Use shortWorkName
     const script = `Hello team, this is ${shortWorkName}. As we confirmed the member has no profit from the provider during this period. Do you still need to check member bet normal or not?`;
     navigator.clipboard.writeText(script);
     setCopiedLoss(true);
@@ -149,7 +142,6 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const handleCopyHold = () => {
-    // FIX: Use shortWorkName
     const script = `This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You. - ${shortWorkName}`;
     navigator.clipboard.writeText(script);
     setCopiedHold(true);
@@ -169,7 +161,6 @@ export default function TicketForm({ onAddTicket }) {
       provider: formData.provider,
       time_range: formData.timeRange || "-", 
       tracking_no: "",
-      // FIX: Save the FULL workName to the database, but fallback to "RiskOps" if missing
       recorder: workName || "RiskOps",
       status: "Pending",
       notes: [] 
@@ -177,14 +168,36 @@ export default function TicketForm({ onAddTicket }) {
 
     onAddTicket(newTicket);
 
+    // Reset Form
     setFormData({
       loginId: "", memberId: "", providerAccount: "", provider: "", 
       trackingId: "", timeRange: "", currency: "", reasonToCheck: "", gameName: "", betTicket: "", roundId: "", ipAddress: "",
     });
+
+    // --- PLAY LOCAL SOUND ---
+    const audio = new Audio(notificationSound);
+    audio.play().catch(e => console.log("Audio blocked by browser"));
+
+    // --- SHOW BOTTOM-RIGHT TOAST ---
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 3000);
   };
 
   return (
-    <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden">
+    <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden relative">
+      
+      {/* --- LOCAL SYSTEM ALERT (Fixed to bottom-right of screen!) --- */}
+      {showSuccessToast && (
+        <div className="fixed bottom-8 right-8 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-emerald-500 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-bold whitespace-nowrap border border-emerald-400">
+            <div className="bg-emerald-600 p-1 rounded-full">
+              <CheckCircle2 size={18} className="text-emerald-100" />
+            </div>
+            <span className="text-sm">Ticket Created Successfully!</span>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 pt-6 pb-2 border-b border-slate-50">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900">New Investigation</h2>
@@ -204,7 +217,6 @@ export default function TicketForm({ onAddTicket }) {
         {activeTab === "form" ? (
           <div className="p-6 space-y-4">
             
-            {/* --- Searchable Custom Provider Dropdown --- */}
             <div ref={providerRef} className="relative z-20">
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Provider Source <span className="text-red-500">*</span></label>
               <div className="relative">
@@ -247,7 +259,6 @@ export default function TicketForm({ onAddTicket }) {
               )}
             </div>
 
-            {/* --- FIX: Only show the rest of the form if a provider is selected --- */}
             {currentConfig && (
               <>
                 {!currentConfig?.isManualCheckOnly && (
@@ -384,7 +395,6 @@ export default function TicketForm({ onAddTicket }) {
                       </button>
                     )}
                   </div>
-                  {/* FIX: Passed shortWorkName to conditionScript */}
                   {currentConfig.conditionScript && <div className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono text-slate-600 whitespace-pre-wrap leading-relaxed">{currentConfig.conditionScript(shortWorkName)}</div>}
                   <ul className="space-y-2 mt-2">
                     {currentConfig.conditions.map((item, i) => (
@@ -406,9 +416,7 @@ export default function TicketForm({ onAddTicket }) {
                           <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">{typeof step === "string" ? step : step.text}</p>
                           {typeof step === "object" && step.copyText && (
                             <div className="mt-2 mb-3 relative group">
-                              {/* FIX: Passed shortWorkName to the UI display */}
                               <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-[11px] text-slate-700 font-mono whitespace-pre-wrap pr-10">{step.copyText.replace("[Your Name]", shortWorkName)}</div>
-                              {/* FIX: Passed shortWorkName to the copy button */}
                               <button onClick={() => navigator.clipboard.writeText(step.copyText.replace("[Your Name]", shortWorkName))} className="absolute top-2 right-2 p-1.5 bg-white border border-slate-200 rounded-md shadow-sm text-slate-400 hover:text-blue-500 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all" title="Copy script"><Copy size={14} /></button>
                             </div>
                           )}
