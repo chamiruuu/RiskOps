@@ -1,15 +1,23 @@
 import { useState, useRef, useEffect } from "react";
-import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand, Lock, CheckCircle2 } from "lucide-react";
+import { Copy, Plus, ChevronDown, Check, BookOpen, FileText, AlertCircle, Shield, Clock, TrendingDown, Hand, Lock, CheckCircle2, Calendar } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
-import notificationSound from '../assets/Notification.mp3'; // <-- IMPORTED SOUND
+import notificationSound from '../assets/Notification.mp3';
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
   const d = new Date();
   const utc = d.getTime() + d.getTimezoneOffset() * 60000;
   return new Date(utc + 3600000 * 8);
+};
+
+// --- HELPER: Format Date to YYYY-MM-DD ---
+const getFormattedDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 // HELPER: Check if time is currently inside the handover window
@@ -28,12 +36,9 @@ export default function TicketForm({ onAddTicket }) {
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
   
-  // --- NEW: Local Success Toast State ---
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
-  // Quick Reply States
   const [copiedLoss, setCopiedLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
 
@@ -41,6 +46,12 @@ export default function TicketForm({ onAddTicket }) {
   const [isProviderOpen, setIsProviderOpen] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
   const providerRef = useRef(null);
+
+  // --- Smart Date Picker States ---
+  const [isDateOpen, setIsDateOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const dateRef = useRef(null);
 
   // --- SHIFT LOCKOUT STATE ---
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(checkIsHandoverWindow());
@@ -74,11 +85,15 @@ export default function TicketForm({ onAddTicket }) {
     setProviderSearch(formData.provider);
   }, [formData.provider]);
 
+  // Handle clicking outside custom dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (providerRef.current && !providerRef.current.contains(event.target)) {
         setIsProviderOpen(false);
         setProviderSearch(formData.provider); 
+      }
+      if (dateRef.current && !dateRef.current.contains(event.target)) {
+        setIsDateOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -148,6 +163,35 @@ export default function TicketForm({ onAddTicket }) {
     setTimeout(() => setCopiedHold(false), 2000);
   };
 
+  // --- SMART DATE PICKER LOGIC ---
+  const applyQuickDate = (daysBack) => {
+    const today = getGMT8Time();
+    
+    if (daysBack === 'today') {
+      setFormData({ ...formData, timeRange: getFormattedDate(today) });
+    } else if (daysBack === 'yesterday') {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      setFormData({ ...formData, timeRange: getFormattedDate(yesterday) });
+    } else {
+      const start = new Date(today);
+      start.setDate(today.getDate() - (daysBack - 1));
+      setFormData({ ...formData, timeRange: `${getFormattedDate(start)} - ${getFormattedDate(today)}` });
+    }
+    setIsDateOpen(false);
+  };
+
+  const applyCustomDate = () => {
+    if (customFrom && customTo) {
+      setFormData({ ...formData, timeRange: `${customFrom} - ${customTo}` });
+    } else if (customFrom) {
+      setFormData({ ...formData, timeRange: customFrom });
+    } else if (customTo) {
+      setFormData({ ...formData, timeRange: customTo });
+    }
+    setIsDateOpen(false);
+  };
+
   const handleCreateClick = () => {
     const extractedMerchantId = formData.memberId.includes("@") ? formData.memberId.split("@")[1] : "-";
 
@@ -168,17 +212,14 @@ export default function TicketForm({ onAddTicket }) {
 
     onAddTicket(newTicket);
 
-    // Reset Form
     setFormData({
       loginId: "", memberId: "", providerAccount: "", provider: "", 
       trackingId: "", timeRange: "", currency: "", reasonToCheck: "", gameName: "", betTicket: "", roundId: "", ipAddress: "",
     });
 
-    // --- PLAY LOCAL SOUND ---
     const audio = new Audio(notificationSound);
     audio.play().catch(e => console.log("Audio blocked by browser"));
 
-    // --- SHOW BOTTOM-RIGHT TOAST ---
     setShowSuccessToast(true);
     setTimeout(() => setShowSuccessToast(false), 3000);
   };
@@ -186,7 +227,6 @@ export default function TicketForm({ onAddTicket }) {
   return (
     <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden relative">
       
-      {/* --- LOCAL SYSTEM ALERT (Fixed to bottom-right of screen!) --- */}
       {showSuccessToast && (
         <div className="fixed bottom-8 right-8 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
           <div className="bg-emerald-500 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-bold whitespace-nowrap border border-emerald-400">
@@ -307,10 +347,57 @@ export default function TicketForm({ onAddTicket }) {
                       {dutyError && <p className="text-[10px] font-bold text-red-500 mt-1 flex items-center gap-1">⚠️ {dutyError}</p>}
                     </div>
 
+                    {/* --- THE NEW SMART DATE PICKER --- */}
                     {currentConfig?.requiredFields?.includes("timeRange") && (
-                      <div>
+                      <div ref={dateRef} className="relative z-10">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Time Period <span className="text-red-500">*</span></label>
-                        <input type="text" placeholder="e.g. 10:00 - 12:00" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" value={formData.timeRange} onChange={(e) => setFormData({ ...formData, timeRange: e.target.value })} />
+                        <div className="relative">
+                          <input 
+                            type="text" 
+                            placeholder="e.g. 2026-03-01 - 2026-03-07" 
+                            className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-text" 
+                            value={formData.timeRange} 
+                            onChange={(e) => setFormData({ ...formData, timeRange: e.target.value })}
+                            onFocus={() => setIsDateOpen(true)}
+                          />
+                          <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                            <Calendar size={14} className={isDateOpen ? "text-indigo-500" : ""} />
+                          </div>
+                        </div>
+                        
+                        {isDateOpen && (
+                          <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 shadow-xl rounded-xl p-3 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Quick Select</p>
+                            <div className="grid grid-cols-2 gap-2 mb-3">
+                              <button type="button" onClick={() => applyQuickDate('today')} className="py-2 text-xs font-bold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-lg transition-colors">Today</button>
+                              <button type="button" onClick={() => applyQuickDate('yesterday')} className="py-2 text-xs font-bold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-lg transition-colors">Yesterday</button>
+                              <button type="button" onClick={() => applyQuickDate(3)} className="py-2 text-xs font-bold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-lg transition-colors">Last 3 Days</button>
+                              <button type="button" onClick={() => applyQuickDate(7)} className="py-2 text-xs font-bold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-lg transition-colors">Last 7 Days</button>
+                            </div>
+                            
+                            <div className="border-t border-slate-100 pt-3">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Custom Range</p>
+                              <div className="flex items-center gap-2 mb-3">
+                                <input 
+                                  type="date" 
+                                  className="flex-1 w-full text-xs font-bold text-slate-700 border border-slate-200 bg-slate-50 rounded-lg px-2 py-2 outline-none focus:border-indigo-400 focus:bg-white" 
+                                  value={customFrom} 
+                                  onChange={e => setCustomFrom(e.target.value)} 
+                                />
+                                <span className="text-slate-400 text-xs font-bold">-</span>
+                                <input 
+                                  type="date" 
+                                  className="flex-1 w-full text-xs font-bold text-slate-700 border border-slate-200 bg-slate-50 rounded-lg px-2 py-2 outline-none focus:border-indigo-400 focus:bg-white" 
+                                  value={customTo} 
+                                  onChange={e => setCustomTo(e.target.value)} 
+                                />
+                              </div>
+                              <button type="button" onClick={applyCustomDate} className="w-full py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors">
+                                Apply Custom Date
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

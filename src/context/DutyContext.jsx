@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import notificationSound from '../assets/Notification.mp3';
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
@@ -194,75 +195,79 @@ export const DutyProvider = ({ children }) => {
     }
   }, [selectedDuty]);
 
-  // --- 3. PRESENCE TRACKING & AGGRESSIVE KEEP-ALIVE ---
-  useEffect(() => {
-    if (!user || !workName) return;
+  // --- 3. BULLETPROOF PRESENCE TRACKING ARCHITECTURE ---
+  const presenceDataRef = useRef({});
 
-    let presenceChannel;
+  // 3a. Always keep the ref perfectly synced with the absolute latest state
+  useEffect(() => {
+    presenceDataRef.current = {
+      id: user?.id,
+      workName: workName || user?.email?.split("@")[0] || "Unknown User",
+      duties: selectedDuty || [],
+      role: userRole || "User"
+    };
+
+    // If the channel is already open, push the update instantly over the live connection!
+    if (window._triggerPresenceUpdate) {
+      window._triggerPresenceUpdate();
+    }
+  }, [user, workName, selectedDuty, userRole]);
+
+  // 3b. Open the WebSocket connection ONLY ONCE when the user logs in.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase.channel('online-users', {
+      config: { presence: { key: user.id } },
+    });
+
     let debounceTimer;
     let keepAliveInterval;
-    let isMounted = true;
 
-    // We delay the connection by 400ms to allow React to finish setting all the states.
-    // This perfectly prevents the "WebSocket closed before connection established" crash!
-    const connectionDelay = setTimeout(() => {
-      if (!isMounted) return;
+    const broadcastPresence = async () => {
+      if (channel.state !== 'joined') return;
+      try {
+        await channel.track({
+          ...presenceDataRef.current, // Pulls the exact latest data
+          _ping: Date.now() // Forces refresh to keep websocket fully awake
+        });
+      } catch (e) {
+        // Ignore temporary network drops
+      }
+    };
 
-      presenceChannel = supabase.channel('online-users', {
-        config: { presence: { key: user.id } },
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const newState = channel.presenceState();
+          const activeUsers = Object.keys(newState).map(key => newState[key][0]);
+          setOnlineUsers(activeUsers);
+        }, 300); 
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await broadcastPresence();
+          keepAliveInterval = setInterval(broadcastPresence, 20000); // Aggressive 20s Heartbeat
+        }
       });
 
-      const trackPresence = async () => {
-        try {
-          await presenceChannel.track({
-            id: user.id,
-            workName: workName,
-            duties: selectedDuty || [],
-            role: userRole,
-            _ping: Date.now() 
-          });
-        } catch (e) {
-          // Ignore temporary disconnects
-        }
-      };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') broadcastPresence();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') trackPresence();
-      };
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      presenceChannel
-        .on('presence', { event: 'sync' }, () => {
-          clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            const newState = presenceChannel.presenceState();
-            const activeUsers = Object.keys(newState).map(key => newState[key][0]);
-            setOnlineUsers(activeUsers);
-          }, 300); 
-        })
-        .subscribe(async (status) => {
-          if (status === 'SUBSCRIBED') {
-            await trackPresence();
-            keepAliveInterval = setInterval(trackPresence, 20000);
-          }
-        });
-
-      // Attach cleanup to the window object for this specific effect run
-      window._cleanupPresence = () => {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-      };
-
-    }, 400);
+    // Expose the update function so the ref-sync can trigger it without tearing down the channel
+    window._triggerPresenceUpdate = broadcastPresence;
 
     return () => {
-      isMounted = false;
-      clearTimeout(connectionDelay);
       clearTimeout(debounceTimer);
       clearInterval(keepAliveInterval);
-      if (window._cleanupPresence) window._cleanupPresence();
-      if (presenceChannel) supabase.removeChannel(presenceChannel);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      supabase.removeChannel(channel);
+      window._triggerPresenceUpdate = null;
     };
-  }, [user, workName, userRole, JSON.stringify(selectedDuty)]); 
+  }, [user?.id]); // <-- THE MAGIC FIX: This entirely prevents connection tearing!
 
   // --- 4. REAL-TIME HANDSHAKE BROADCASTING ---
   useEffect(() => {
@@ -273,6 +278,15 @@ export const DutyProvider = ({ children }) => {
     channel.on('broadcast', { event: 'transfer_request' }, ({ payload }) => {
       if (payload.targetId === user.id) {
         setPendingTransferRequest(payload);
+        
+        if (Notification.permission === "granted") {
+          new Notification("🔄 Duty Transfer Request", {
+            body: `${payload.fromName} wants to transfer ${payload.duties.join(', ')} to you.`,
+            icon: "/vite.svg" 
+          });
+          const audio = new Audio(notificationSound); 
+          audio.play().catch(e => console.log("Audio blocked by browser"));
+        }
       }
     });
 
@@ -288,12 +302,11 @@ export const DutyProvider = ({ children }) => {
     return () => { supabase.removeChannel(channel); }
   }, [user]);
 
-  // Functions to trigger the handshake
   const sendTransferRequest = async (targetId, duties) => {
     await transferChannelRef.current.send({
       type: 'broadcast',
       event: 'transfer_request',
-      payload: { fromId: user.id, fromName: workName, targetId, duties }
+      payload: { fromId: user.id, fromName: workName || user.email.split("@")[0], targetId, duties }
     });
   };
 
@@ -311,7 +324,6 @@ export const DutyProvider = ({ children }) => {
   };
 
   const resetTransferResponse = () => setTransferResponse(null);
-
   const setDuty = (val) => setSelectedDuty(val);
 
   return (
