@@ -58,6 +58,7 @@ export default function TicketForm({ onAddTicket }) {
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
 
   const [copiedLoss, setCopiedLoss] = useState(false);
+  const [copiedStrictLoss, setCopiedStrictLoss] = useState(false); // NEW STATE
   const [copiedHold, setCopiedHold] = useState(false);
 
   // --- Searchable Provider Dropdown States ---
@@ -100,6 +101,10 @@ export default function TicketForm({ onAddTicket }) {
     roundId: "",
     ipAddress: "",
   });
+
+  // NEW TRIGGER: Check if the selected provider is strict
+  const isStrictProvider =
+    formData.provider === "PG Soft" || formData.provider === "PA Casino";
 
   useEffect(() => {
     setProviderSearch(formData.provider);
@@ -195,8 +200,15 @@ export default function TicketForm({ onAddTicket }) {
     setTimeout(() => setCopiedLoss(false), 2000);
   };
 
+  const handleCopyStrictLoss = () => {
+    const script = `Hi Team, due to provider have some query guidelines, please be informed that if the player has no profit from the provider in the requested time period for us to check. Provider doesn't allow us to proceed with the inquiry. Sorry for the inconvenience caused please be informed about this. Thank You - ${shortWorkName}.`;
+    navigator.clipboard.writeText(script);
+    setCopiedStrictLoss(true);
+    setTimeout(() => setCopiedStrictLoss(false), 2000);
+  };
+
   const handleCopyHold = () => {
-    const script = `Hello sir, this is ${shortWorkName}. \nThis issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You.`;
+    const script = `This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You. - ${shortWorkName}`;
     navigator.clipboard.writeText(script);
     setCopiedHold(true);
     setTimeout(() => setCopiedHold(false), 2000);
@@ -509,7 +521,6 @@ export default function TicketForm({ onAddTicket }) {
                       )}
                     </div>
 
-                    {/* --- THE NEW SMART DATE PICKER --- */}
                     {currentConfig?.requiredFields?.includes("timeRange") && (
                       <div ref={dateRef} className="relative z-10">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
@@ -903,10 +914,16 @@ export default function TicketForm({ onAddTicket }) {
             </span>
 
             <div className="flex items-center gap-1.5">
+              {/* NORMAL LOSS SCRIPT */}
               <button
+                disabled={isStrictProvider}
                 onClick={handleCopyLoss}
-                className="group p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                title="Copy Loss Confirmation Script"
+                className={`group p-1.5 rounded-lg transition-colors ${isStrictProvider ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-slate-100 hover:bg-slate-200"}`}
+                title={
+                  isStrictProvider
+                    ? `Disabled for ${formData.provider}`
+                    : "Copy Loss Confirmation Script"
+                }
               >
                 {copiedLoss ? (
                   <Check size={14} className="text-emerald-500" />
@@ -917,6 +934,28 @@ export default function TicketForm({ onAddTicket }) {
                   />
                 )}
               </button>
+
+              {/* STRICT PROVIDER LOSS SCRIPT */}
+              <button
+                disabled={!isStrictProvider}
+                onClick={handleCopyStrictLoss}
+                className={`group p-1.5 rounded-lg transition-colors ${!isStrictProvider ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-amber-100 hover:bg-amber-200 shadow-sm border border-amber-200"}`}
+                title={
+                  !isStrictProvider
+                    ? "Only enabled for strict providers (PG Soft, PA Casino)"
+                    : "Copy Strict Provider Loss Script"
+                }
+              >
+                {copiedStrictLoss ? (
+                  <Check size={14} className="text-emerald-500" />
+                ) : (
+                  <AlertCircle
+                    size={14}
+                    className={`transition-colors ${!isStrictProvider ? "text-slate-400" : "text-amber-600"}`}
+                  />
+                )}
+              </button>
+
               <button
                 onClick={handleCopyHold}
                 className="group p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
