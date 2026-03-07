@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Users,
   LogOut,
+  Handshake,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
@@ -378,7 +379,7 @@ export default function TicketTable({
   const executeHandover = async () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const nextShift = getNextShift(currentActiveShift);
-    
+
     // Create the clean notification message
     const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
 
@@ -386,17 +387,22 @@ export default function TicketTable({
     await supabase.from("shift_notifications").insert({
       target_shift: nextShift,
       message: msg,
-      duties: dutyArray
+      duties: dutyArray,
     });
 
     // 2. Archive completed tickets
-    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
+    const completedIds = tickets
+      .filter((t) => t.status !== "Pending")
+      .map((t) => t.id);
     if (completedIds.length > 0) {
-      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
+      await supabase
+        .from("tickets")
+        .update({ is_archived: true })
+        .in("id", completedIds);
     }
 
     // 3. Clear duties from screen and lock it
-    setDuty([]); 
+    setDuty([]);
     setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
 
@@ -507,16 +513,15 @@ export default function TicketTable({
 
   // --- SHARED VIEWING ENGINE ---
   const getSharedViewingText = () => {
-    // Only check if we are actually viewing duties
     if (dutyArray.includes("IC0") || dutyArray.length === 0) return null;
 
     const sharedViewingMap = {};
 
-    // Check if anyone else online is holding the exact same duties as me
     dutyArray.forEach((duty) => {
       onlineUsers.forEach((ou) => {
         if (ou.id !== user?.id && ou.duties?.includes(duty)) {
-          if (!sharedViewingMap[ou.workName]) sharedViewingMap[ou.workName] = [];
+          if (!sharedViewingMap[ou.workName])
+            sharedViewingMap[ou.workName] = [];
           sharedViewingMap[ou.workName].push(duty);
         }
       });
@@ -532,13 +537,18 @@ export default function TicketTable({
 
     let combinedString = "";
     if (userStrings.length === 1) combinedString = userStrings[0];
-    else if (userStrings.length === 2) combinedString = `${userStrings[0]} and ${userStrings[1]}`;
-    else combinedString = userStrings.slice(0, -1).join(", ") + ", and " + userStrings[userStrings.length - 1];
+    else if (userStrings.length === 2)
+      combinedString = `${userStrings[0]} and ${userStrings[1]}`;
+    else
+      combinedString =
+        userStrings.slice(0, -1).join(", ") +
+        ", and " +
+        userStrings[userStrings.length - 1];
 
-    return `${combinedString} ${Object.keys(sharedViewingMap).length > 1 ? 'are' : 'is'} also viewing this duty.`;
+    return `${combinedString} ${Object.keys(sharedViewingMap).length > 1 ? "are" : "is"} also viewing this duty.`;
   };
 
-  let displayTitle = "Active Investigations for IC Duty";
+  let displayTitle = "Active Investigations";
 
   if (!dutyArray.includes("IC0") && dutyArray.length > 0) {
     const nums = dutyArray.map((d) => d.replace("IC", "").padStart(2, "0"));
@@ -578,16 +588,32 @@ export default function TicketTable({
           <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* --- DB Online Status Indicator (Only Visible if On Shift or Admin) --- */}
+          {(isMyShiftActive || isAdminOrLeader) && (
+            <div
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg shadow-sm"
+              title="Database Connection Active"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                ONLINE
+              </span>
+            </div>
+          )}
+
           {/* --- PEER-TO-PEER MULTI-TRANSFER BUTTON --- */}
           {!dutyArray.includes("IC0") &&
             (isMyShiftActive || isAdminOrLeader) && (
               <button
                 onClick={handleOpenTransfer}
-                className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm transition-colors"
-                title="Pass duties to your teammates"
+                className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+                title="Transfer Duty to Teammate"
               >
-                <ArrowRight size={14} /> Transfer Duty
+                <Send size={16} />
               </button>
             )}
 
@@ -596,11 +622,14 @@ export default function TicketTable({
             <button
               onClick={checkHandoverEligibility}
               disabled={isHandoverDisabled}
-              className={`flex items-center gap-2 px-4 py-2 text-white text-xs font-bold rounded-lg shadow-sm transition-colors
-                ${!isHandoverDisabled ? "bg-indigo-600 hover:bg-indigo-700 cursor-pointer" : "bg-slate-300 opacity-50 cursor-not-allowed"}`}
+              className={`p-2 rounded-lg shadow-sm transition-colors border ml-1 ${
+                !isHandoverDisabled
+                  ? "bg-amber-50 hover:bg-amber-100 text-amber-600 border-amber-200 cursor-pointer"
+                  : "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+              }`}
               title={handoverTooltip}
             >
-              <ArrowRightLeft size={14} /> Handover Shift
+              <Handshake size={16} />
             </button>
           )}
 
@@ -614,7 +643,7 @@ export default function TicketTable({
               placeholder="Search tickets..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm w-64 outline-none focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
+              className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm w-56 md:w-64 outline-none focus:ring-2 focus:ring-indigo-100 focus:bg-white transition-all"
             />
             {searchTerm && (
               <button
@@ -654,8 +683,6 @@ export default function TicketTable({
           </div>
         </div>
       )}
-
-        
 
       <div className="flex-1 overflow-auto bg-slate-50 mt-4">
         <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -1121,7 +1148,10 @@ export default function TicketTable({
                   Handover Completed
                 </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  This is the <strong>{getNextShift(currentActiveShift)}</strong> shift now. Your handover has been sent securely to the incoming team. Your shift is officially done!
+                  This is the{" "}
+                  <strong>{getNextShift(currentActiveShift)}</strong> shift now.
+                  Your handover has been sent securely to the incoming team.
+                  Your shift is officially done!
                 </p>
                 <button
                   onClick={() => window.location.reload()} // Forces a clean logout/reset
