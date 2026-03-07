@@ -21,10 +21,10 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js"; 
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
-import notificationSound from '../assets/Notification.mp3';
+import notificationSound from "../assets/Notification.mp3";
 
 export default function Header() {
   const {
@@ -80,6 +80,9 @@ export default function Header() {
   const [activeCycle, setActiveCycle] = useState("None");
   const [cycleWarning, setCycleWarning] = useState(null);
 
+  // --- TRACKING REMINDER STATE ---
+  const [trackingReminder, setTrackingReminder] = useState(null);
+
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
   const getDutyTextColorOnly = (dutyName) => {
@@ -120,6 +123,27 @@ export default function Header() {
     }
   }, [selectedCycle, showShiftModal]);
 
+  // --- TRACKING ID EVENT LISTENER ---
+  useEffect(() => {
+    const handleReminder = (e) => {
+      setTrackingReminder({
+        id: "tracking-reminder-" + e.detail.time,
+        type: "action-reminder",
+        text: `You have ${e.detail.missingCount} pending ticket(s) missing a Tracking ID. Handover opens in 5 minutes!`,
+        time: e.detail.time,
+      });
+    };
+    const clearReminder = () => setTrackingReminder(null);
+
+    window.addEventListener("tracking-reminder-alert", handleReminder);
+    window.addEventListener("clear-tracking-reminder", clearReminder);
+
+    return () => {
+      window.removeEventListener("tracking-reminder-alert", handleReminder);
+      window.removeEventListener("clear-tracking-reminder", clearReminder);
+    };
+  }, []);
+
   const fetchCyclesList = async () => {
     const { data } = await supabase
       .from("shift_assignments")
@@ -144,7 +168,7 @@ export default function Header() {
     if (!cyclesList.length) return;
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0); 
+    today.setHours(0, 0, 0, 0);
 
     let currentLive = null;
     let warningMsg = null;
@@ -231,7 +255,7 @@ export default function Header() {
             if (Notification.permission === "granted") {
               new Notification("🚨 Shift Handover Received", {
                 body: payload.new.message,
-                icon: "/vite.svg", 
+                icon: "/vite.svg",
               });
               const audio = new Audio(notificationSound);
               audio
@@ -320,13 +344,11 @@ export default function Header() {
 
   const handleShiftChange = async (userId, newShift) => {
     setShiftData((prev) => ({ ...prev, [userId]: newShift }));
-    await supabase
-      .from("shift_assignments")
-      .upsert({
-        user_id: userId,
-        shift_type: newShift,
-        cycle_period: selectedCycle,
-      });
+    await supabase.from("shift_assignments").upsert({
+      user_id: userId,
+      shift_type: newShift,
+      cycle_period: selectedCycle,
+    });
   };
 
   useEffect(() => {
@@ -482,15 +504,13 @@ export default function Header() {
           .eq("id", data.user.id);
 
         if (activeCycle !== "None") {
-          await supabase
-            .from("shift_assignments")
-            .insert([
-              {
-                user_id: data.user.id,
-                shift_type: "Off",
-                cycle_period: activeCycle,
-              },
-            ]);
+          await supabase.from("shift_assignments").insert([
+            {
+              user_id: data.user.id,
+              shift_type: "Off",
+              cycle_period: activeCycle,
+            },
+          ]);
         }
       }
 
@@ -588,6 +608,11 @@ export default function Header() {
 
   // Build the Global Notifications List
   const globalNotifications = [];
+
+  if (trackingReminder) {
+    globalNotifications.push(trackingReminder);
+  }
+
   if (isAdminOrLeader && cycleWarning) {
     globalNotifications.push({
       id: "warning",
@@ -639,7 +664,6 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-4">
-          
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
           {!isAdminOrLeader && (
             <button
@@ -683,6 +707,36 @@ export default function Header() {
                     </p>
                   ) : (
                     globalNotifications.map((notif) => {
+                      if (notif.type === "action-reminder") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-amber-50 border border-amber-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle
+                                size={16}
+                                className="text-amber-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-amber-800 mb-0.5">
+                                  Action Required
+                                </h4>
+                                <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-amber-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                       if (notif.type === "system") {
                         return (
                           <div

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
+import notificationSound from "../assets/Notification.mp3"; // <-- ADDED SOUND FOR TOAST
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
@@ -244,30 +245,93 @@ export default function TicketTable({
     type: "",
     abnormalType: "",
   });
-
   const [handoverModal, setHandoverModal] = useState({
     isOpen: false,
     step: "",
     missingTickets: [],
   });
 
+  // --- TRACKING ID REMINDER STATES ---
+  const [showReminderToast, setShowReminderToast] = useState(false);
+  const [lastReminderHour, setLastReminderHour] = useState(null);
+
   const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(
     checkIsHandoverWindow(),
   );
 
-  // --- LISTEN FOR TRANSFER HANDSHAKE RESPONSES (GLOBAL DASHBOARD SYNC) ---
+  // --- SMART 5-MIN HANDOVER REMINDER ---
+  useEffect(() => {
+    const checkReminder = () => {
+      // Ignore Admins/Leaders and Off-Shift users
+      if (isAdminOrLeader || !isMyShiftActive) return;
+
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+
+      // Exact trigger times: 14:10, 22:10, 06:40
+      const isReminderTime =
+        (h === 14 && m === 10) ||
+        (h === 22 && m === 10) ||
+        (h === 6 && m === 40);
+
+      if (isReminderTime && lastReminderHour !== h) {
+        const pendingTix = tickets.filter((t) => t.status === "Pending");
+        const missing = pendingTix.filter(
+          (t) =>
+            !t.tracking_no ||
+            t.tracking_no === "-" ||
+            t.tracking_no.trim() === "",
+        );
+
+        // Only trigger if they actually have messy tickets!
+        if (missing.length > 0) {
+          setLastReminderHour(h);
+          setShowReminderToast(true);
+
+          // Play Sound
+          const audio = new Audio(notificationSound);
+          audio.play().catch((e) => console.log("Audio blocked by browser"));
+
+          // Send invisible signal to Notification Bell in Header
+          const event = new CustomEvent("tracking-reminder-alert", {
+            detail: { missingCount: missing.length, time: Date.now() },
+          });
+          window.dispatchEvent(event);
+
+          // Hide local toast after 8 seconds
+          setTimeout(() => setShowReminderToast(false), 8000);
+        }
+      }
+    };
+
+    checkReminder();
+    const timer = setInterval(checkReminder, 30000); // Check every 30s
+    return () => clearInterval(timer);
+  }, [isAdminOrLeader, isMyShiftActive, tickets, lastReminderHour]);
+
+  // --- AUTO-CLEAR BELL REMINDER IF FIXED ---
+  useEffect(() => {
+    const pendingTix = tickets.filter((t) => t.status === "Pending");
+    const missing = pendingTix.filter(
+      (t) =>
+        !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "",
+    );
+    if (missing.length === 0) {
+      window.dispatchEvent(new CustomEvent("clear-tracking-reminder"));
+    }
+  }, [tickets]);
+
+  // --- LISTEN FOR TRANSFER HANDSHAKE RESPONSES ---
   useEffect(() => {
     if (transferResponse) {
       if (transferResponse.status === "accepted") {
-        // If Accepted, magically remove those duties from Malinda's screen instantly!
         setDuty((prev) => {
           if (!prev) return [];
           return prev.filter((d) => !transferResponse.duties.includes(d));
         });
       }
-
-      // Update the local tracking dashboard statuses
       setTransferStatuses((prev) => {
         const next = { ...prev };
         transferResponse.duties.forEach((d) => {
@@ -380,17 +444,14 @@ export default function TicketTable({
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const nextShift = getNextShift(currentActiveShift);
 
-    // Create the clean notification message
     const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
 
-    // 1. Push to database for the incoming shift
     await supabase.from("shift_notifications").insert({
       target_shift: nextShift,
       message: msg,
       duties: dutyArray,
     });
 
-    // 2. Archive completed tickets
     const completedIds = tickets
       .filter((t) => t.status !== "Pending")
       .map((t) => t.id);
@@ -401,7 +462,6 @@ export default function TicketTable({
         .in("id", completedIds);
     }
 
-    // 3. Clear duties from screen and lock it
     setDuty([]);
     setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
@@ -417,8 +477,6 @@ export default function TicketTable({
     : [];
 
   const filteredTickets = tickets.filter((ticket) => {
-    // --- APPROACH 2: THE CLEAN SLATE WALL ---
-    // If you are early (out of shift) and not an Admin, hide all tickets completely.
     if (!isMyShiftActive && !isAdminOrLeader) return false;
 
     if (searchTerm) {
@@ -454,7 +512,6 @@ export default function TicketTable({
         : completeModal.abnormalType.toUpperCase();
 
     onUpdateTicket(completeModal.ticket.id, "status", finalStatus);
-
     setCompleteModal({
       isOpen: false,
       ticket: null,
@@ -464,7 +521,6 @@ export default function TicketTable({
     });
   };
 
-  // --- DYNAMIC BANNER ENGINE ---
   const getDynamicBannerText = () => {
     if (!currentActiveShift || dutyArray.includes("IC0")) return null;
 
@@ -477,7 +533,6 @@ export default function TicketTable({
           ou.duties?.includes(duty) &&
           activeRoster[ou.workName] === currentActiveShift,
       );
-
       if (activeUser) {
         if (!userDutyMap[activeUser.workName]) {
           userDutyMap[activeUser.workName] = [];
@@ -493,25 +548,21 @@ export default function TicketTable({
     });
 
     let statusText = "";
-    if (dutyStatus.length === 1) {
-      statusText = dutyStatus[0];
-    } else if (dutyStatus.length === 2) {
+    if (dutyStatus.length === 1) statusText = dutyStatus[0];
+    else if (dutyStatus.length === 2)
       statusText = `${dutyStatus[0]}, and ${dutyStatus[1]}`;
-    } else if (dutyStatus.length > 2) {
+    else if (dutyStatus.length > 2)
       statusText =
         dutyStatus.slice(0, -1).join(", ") +
         ", and " +
         dutyStatus[dutyStatus.length - 1];
-    }
 
-    if (statusText) {
+    if (statusText)
       return `It is currently the ${currentActiveShift} shift. ${statusText}. Please wait for them to handover.`;
-    } else {
+    else
       return `It is currently the ${currentActiveShift} shift. Please wait for the assigned shift workers to handover.`;
-    }
   };
 
-  // --- SHARED VIEWING ENGINE ---
   const getSharedViewingText = () => {
     if (dutyArray.includes("IC0") || dutyArray.length === 0) return null;
 
@@ -519,13 +570,13 @@ export default function TicketTable({
 
     dutyArray.forEach((duty) => {
       onlineUsers.forEach((ou) => {
-        // FIX: Now we also check if the other user is scheduled for the CURRENT active shift!
         if (
-          ou.id !== user?.id && 
+          ou.id !== user?.id &&
           ou.duties?.includes(duty) &&
           activeRoster[ou.workName] === currentActiveShift
         ) {
-          if (!sharedViewingMap[ou.workName]) sharedViewingMap[ou.workName] = [];
+          if (!sharedViewingMap[ou.workName])
+            sharedViewingMap[ou.workName] = [];
           sharedViewingMap[ou.workName].push(duty);
         }
       });
@@ -553,33 +604,26 @@ export default function TicketTable({
   };
 
   let displayTitle = "Active Investigations";
-
   if (!dutyArray.includes("IC0") && dutyArray.length > 0) {
     const nums = dutyArray.map((d) => d.replace("IC", "").padStart(2, "0"));
     let formattedNums = "";
-
-    if (nums.length === 1) {
-      formattedNums = nums[0];
-    } else if (nums.length === 2) {
-      formattedNums = nums.join(" & ");
-    } else {
+    if (nums.length === 1) formattedNums = nums[0];
+    else if (nums.length === 2) formattedNums = nums.join(" & ");
+    else
       formattedNums = `${nums.slice(0, -1).join(", ")} & ${nums[nums.length - 1]}`;
-    }
     displayTitle = `Active Investigations for IC Duty ${formattedNums}`;
   }
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
-
   const isHandoverDisabled =
     (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
 
   let handoverTooltip = "Handover Shift";
-  if (!isMyShiftActive && !isAdminOrLeader) {
+  if (!isMyShiftActive && !isAdminOrLeader)
     handoverTooltip = "You can only handover during your assigned shift time.";
-  } else if (!isInHandoverWindow) {
+  else if (!isInHandoverWindow)
     handoverTooltip =
       "Only available during shift handover time's (:15 to :45)";
-  }
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
@@ -587,13 +631,30 @@ export default function TicketTable({
 
   return (
     <main className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
+      {/* --- NEW: TRACKING ID REMINDER TOAST --- */}
+      {showReminderToast && (
+        <div className="fixed bottom-8 right-8 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className="bg-amber-500 text-white px-5 py-4 rounded-2xl shadow-2xl flex items-start gap-3 border border-amber-400 max-w-[320px]">
+            <div className="bg-amber-600 p-1.5 rounded-full shrink-0 mt-0.5 shadow-inner">
+              <AlertTriangle size={18} className="text-amber-50" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm mb-0.5">Missing Tracking IDs</h4>
+              <p className="text-xs font-medium text-amber-50 leading-snug">
+                Handover window opens in 5 minutes! Please update your pending
+                tickets.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-bold text-slate-900">{displayTitle}</h2>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* --- DB Online Status Indicator (Only Visible if On Shift or Admin) --- */}
           {(isMyShiftActive || isAdminOrLeader) && (
             <div
               className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg shadow-sm"
@@ -609,7 +670,6 @@ export default function TicketTable({
             </div>
           )}
 
-          {/* --- PEER-TO-PEER MULTI-TRANSFER BUTTON --- */}
           {!dutyArray.includes("IC0") &&
             (isMyShiftActive || isAdminOrLeader) && (
               <button
@@ -621,7 +681,6 @@ export default function TicketTable({
               </button>
             )}
 
-          {/* --- Soft Handover Button --- */}
           {!dutyArray.includes("IC0") && (
             <button
               onClick={checkHandoverEligibility}
@@ -661,7 +720,6 @@ export default function TicketTable({
         </div>
       </div>
 
-      {/* --- EARLY LOGIN BANNER (Clean Slate Protection) --- */}
       {!dutyArray.includes("IC0") &&
         !isMyShiftActive &&
         currentActiveShift &&
@@ -676,7 +734,6 @@ export default function TicketTable({
           </div>
         )}
 
-      {/* --- SHARED VIEWING BANNER (Collaboration Notice) --- */}
       {(isMyShiftActive || isAdminOrLeader) && getSharedViewingText() && (
         <div className="mx-6 mt-4 p-3 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-blue-700">
           <Users size={18} className="shrink-0" />
@@ -738,7 +795,6 @@ export default function TicketTable({
                         </span>
                       </td>
                     )}
-
                     <td className="px-4 py-3 text-slate-500">
                       {new Date(ticket.created_at).toLocaleDateString("en-GB", {
                         day: "2-digit",
@@ -751,7 +807,6 @@ export default function TicketTable({
                     <td className="px-4 py-3 text-slate-600">
                       {ticket.login_id}
                     </td>
-
                     <td className="px-4 py-2">
                       <EditableField
                         ticket={ticket}
@@ -785,12 +840,10 @@ export default function TicketTable({
                     <td className="px-4 py-3 text-slate-500">
                       {ticket.recorder}
                     </td>
-
                     <td className="px-4 py-2 text-center">
                       <button
                         onClick={() => setSelectedTicketForNotes(ticket)}
-                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all shadow-sm border
-                          ${ticket.notes && ticket.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all shadow-sm border ${ticket.notes && ticket.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
                       >
                         <MessageCircle
                           size={14}
@@ -805,23 +858,13 @@ export default function TicketTable({
                           : "Open Chat"}
                       </button>
                     </td>
-
                     <td className="px-4 py-2 text-center">
                       <span
-                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider
-                          ${
-                            !isCompleted
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : ticket.status === "Normal" ||
-                                  ticket.status === "NORMAL"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : "bg-rose-50 text-rose-700 border-rose-200"
-                          }`}
+                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${!isCompleted ? "bg-amber-50 text-amber-700 border-amber-200" : ticket.status === "Normal" || ticket.status === "NORMAL" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}
                       >
                         {!isCompleted ? "Wait for provider" : ticket.status}
                       </span>
                     </td>
-
                     <td className="px-4 py-2 text-center">
                       {deletingRowId === ticket.id ? (
                         <div className="flex items-center justify-center gap-2">
@@ -889,11 +932,10 @@ export default function TicketTable({
         </table>
       </div>
 
-      {/* --- HANDSHAKE SENDER MODAL (MULTI-SEND DASHBOARD) --- */}
+      {/* MODALS RETAINED EXACTLY THE SAME... */}
       {transferModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
           <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
-            {/* STEP 1: The Multi-Selector */}
             {transferModal.step === "select" && (
               <>
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -915,7 +957,6 @@ export default function TicketTable({
                     Assign the duties you want to transfer to your online
                     teammates.
                   </p>
-
                   <div className="space-y-3 mb-6 max-h-60 overflow-y-auto pr-1">
                     {dutyArray.map((duty) => (
                       <div
@@ -951,7 +992,6 @@ export default function TicketTable({
                       </div>
                     ))}
                   </div>
-
                   <button
                     onClick={handleSendAll}
                     className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-colors flex items-center justify-center gap-2"
@@ -961,8 +1001,6 @@ export default function TicketTable({
                 </div>
               </>
             )}
-
-            {/* STEP 2: Live Tracking Dashboard */}
             {transferModal.step === "tracking" && (
               <>
                 <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -984,7 +1022,6 @@ export default function TicketTable({
                     Tracking requests sent to your teammates. Accepted duties
                     will automatically close in the background.
                   </p>
-
                   <div className="space-y-3 mb-8">
                     {dutyArray
                       .filter((d) => transferAssignments[d])
@@ -994,7 +1031,6 @@ export default function TicketTable({
                           onlineUsers.find((u) => u.id === targetId)
                             ?.workName || "Unknown User";
                         const status = transferStatuses[duty] || "waiting";
-
                         return (
                           <div
                             key={duty}
@@ -1012,7 +1048,6 @@ export default function TicketTable({
                                 {targetName}
                               </span>
                             </div>
-
                             <div className="flex items-center">
                               {status === "waiting" && (
                                 <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-100">
@@ -1038,7 +1073,6 @@ export default function TicketTable({
                         );
                       })}
                   </div>
-
                   <button
                     onClick={() =>
                       setTransferModal({ isOpen: false, step: "select" })
@@ -1054,7 +1088,6 @@ export default function TicketTable({
         </div>
       )}
 
-      {/* --- HANDOVER MODALS --- */}
       {handoverModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
           <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
@@ -1158,7 +1191,7 @@ export default function TicketTable({
                   Your shift is officially done!
                 </p>
                 <button
-                  onClick={() => window.location.reload()} // Forces a clean logout/reset
+                  onClick={() => window.location.reload()}
                   className="w-full py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-lg transition-colors"
                 >
                   Return to Login
@@ -1169,7 +1202,6 @@ export default function TicketTable({
         </div>
       )}
 
-      {/* --- NOTES POPUP MODAL --- */}
       {selectedTicketForNotes && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
           <div className="bg-slate-50 w-[400px] h-[550px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1248,7 +1280,6 @@ export default function TicketTable({
         </div>
       )}
 
-      {/* --- COMPLETION FLOW MODAL --- */}
       {completeModal.isOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
           <div className="bg-white w-[420px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
