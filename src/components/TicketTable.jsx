@@ -519,9 +519,13 @@ export default function TicketTable({
 
     dutyArray.forEach((duty) => {
       onlineUsers.forEach((ou) => {
-        if (ou.id !== user?.id && ou.duties?.includes(duty)) {
-          if (!sharedViewingMap[ou.workName])
-            sharedViewingMap[ou.workName] = [];
+        // FIX: Now we also check if the other user is scheduled for the CURRENT active shift!
+        if (
+          ou.id !== user?.id && 
+          ou.duties?.includes(duty) &&
+          activeRoster[ou.workName] === currentActiveShift
+        ) {
+          if (!sharedViewingMap[ou.workName]) sharedViewingMap[ou.workName] = [];
           sharedViewingMap[ou.workName].push(duty);
         }
       });
