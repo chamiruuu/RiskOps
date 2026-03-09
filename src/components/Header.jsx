@@ -1622,7 +1622,7 @@ export default function Header() {
       {/* --- NEW: ADMIN ARCHIVE HISTORY MODAL (WITH DATE RANGE) --- */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center animate-in fade-in duration-200 p-4">
-          <div className="bg-white w-[1100px] h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-[95vw] max-w-[1400px] h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
                 <ArchiveRestore size={18} className="text-indigo-600" />
@@ -1670,91 +1670,63 @@ export default function Header() {
             </div>
 
             <div className="flex-1 overflow-auto bg-slate-50/50 p-6">
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead className="bg-slate-50 sticky top-0 z-10 font-bold text-slate-500 uppercase tracking-wide text-[10px]">
                     <tr className="border-b border-slate-200">
                       <th className="px-4 py-3">Date Completed</th>
                       <th className="px-4 py-3">Duty</th>
-                      <th className="px-4 py-3">Merchant</th>
+                      <th className="px-4 py-3">Merchant ID</th>
+                      <th className="px-4 py-3">Login ID</th>
                       <th className="px-4 py-3">Player ID</th>
+                      <th className="px-4 py-3">Provider Account</th>
                       <th className="px-4 py-3">Provider</th>
                       <th className="px-4 py-3">Tracking No.</th>
-                      <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Recorder</th>
+                      <th className="px-4 py-3 text-center">Audit Notes</th>
+                      <th className="px-4 py-3 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {isFetchingHistory ? (
                       <tr>
-                        <td
-                          colSpan="8"
-                          className="px-6 py-12 text-center text-slate-400 font-medium"
-                        >
+                        <td colSpan="11" className="px-6 py-12 text-center text-slate-400 font-medium">
                           <div className="flex items-center justify-center gap-2">
-                            <RefreshCw
-                              size={16}
-                              className="animate-spin text-indigo-500"
-                            />{" "}
-                            Fetching secure records...
+                            <RefreshCw size={16} className="animate-spin text-indigo-500" /> Fetching secure records...
                           </div>
                         </td>
                       </tr>
                     ) : archivedTickets.length === 0 ? (
                       <tr>
-                        <td
-                          colSpan="8"
-                          className="px-6 py-12 text-center text-slate-400 font-medium italic"
-                        >
+                        <td colSpan="11" className="px-6 py-12 text-center text-slate-400 font-medium italic">
                           No archived tickets found for this time period.
                         </td>
                       </tr>
                     ) : (
                       archivedTickets.map((t) => (
-                        <tr
-                          key={t.id}
-                          className="hover:bg-slate-50 transition-colors"
-                        >
+                        <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3 text-slate-500 font-medium">
-                            {new Date(t.created_at).toLocaleDateString(
-                              "en-GB",
-                              { month: "short", day: "2-digit" },
-                            )}{" "}
-                            <span className="text-slate-400 ml-1">
-                              {new Date(t.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                            {new Date(t.created_at).toLocaleDateString("en-GB", { month: "short", day: "2-digit" })} <span className="text-slate-400 ml-1">{new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-700">{t.ic_account}</td>
+                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">{t.merchant_name}</td>
+                          <td className="px-4 py-3 text-slate-600">{t.login_id || "-"}</td>
+                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">{t.member_id}</td>
+                          <td className="px-4 py-3 font-mono text-slate-600">{t.provider_account || "-"}</td>
+                          <td className="px-4 py-3 text-slate-600 font-medium">{t.provider}</td>
+                          <td className="px-4 py-3 font-mono text-slate-600">{t.tracking_no || "-"}</td>
+                          <td className="px-4 py-3 text-slate-500 font-medium">{t.recorder}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${t.notes && t.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
+                              {t.notes && t.notes.length > 0 ? `${t.notes.length} Messages` : "No Notes"}
                             </span>
                           </td>
-                          <td className="px-4 py-3 font-bold text-slate-700">
-                            {t.ic_account}
-                          </td>
-                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">
-                            {t.merchant_name}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">
-                            {t.member_id}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 font-medium">
-                            {t.provider}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-600">
-                            {t.tracking_no || "-"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                t.status === "Normal" || t.status === "NORMAL"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-rose-50 text-rose-700 border border-rose-200"
-                              }`}
-                            >
+                          <td className="px-4 py-3 text-center">
+                            <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              t.status === "Normal" || t.status === "NORMAL" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}>
                               {t.status}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 font-medium">
-                            {t.recorder}
                           </td>
                         </tr>
                       ))

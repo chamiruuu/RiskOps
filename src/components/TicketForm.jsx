@@ -14,10 +14,13 @@ import {
   Lock,
   CheckCircle2,
   Calendar,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
+import { supabase } from "../lib/supabase"; // <-- NEW: Imported for DB check
 import notificationSound from "../assets/Notification.mp3";
 
 // --- HELPER: Get Current GMT+8 Time ---
@@ -32,7 +35,7 @@ const getFormattedDate = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return `${m}-${d}-${y}`;
+  return `${y}-${m}-${d}`;
 };
 
 // HELPER: Check if time is currently inside the handover window
@@ -58,7 +61,7 @@ export default function TicketForm({ onAddTicket }) {
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
 
   const [copiedLoss, setCopiedLoss] = useState(false);
-  const [copiedStrictLoss, setCopiedStrictLoss] = useState(false); // NEW STATE
+  const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
 
   // --- Searchable Provider Dropdown States ---
@@ -71,6 +74,14 @@ export default function TicketForm({ onAddTicket }) {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const dateRef = useRef(null);
+
+  // --- NEW: PG SOFT 7-DAY CHECK STATES ---
+  const [isCheckingPgSoft, setIsCheckingPgSoft] = useState(false);
+  const [pgSoftCheckModal, setPgSoftCheckModal] = useState({
+    isOpen: false,
+    step: "ask",
+    providerAcc: "",
+  });
 
   // --- SHIFT LOCKOUT STATE ---
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(
@@ -102,7 +113,6 @@ export default function TicketForm({ onAddTicket }) {
     ipAddress: "",
   });
 
-  // NEW TRIGGER: Check if the selected provider is strict
   const isStrictProvider =
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
 
@@ -246,7 +256,8 @@ export default function TicketForm({ onAddTicket }) {
     setIsDateOpen(false);
   };
 
-  const handleCreateClick = () => {
+  // --- NEW: CREATION EXECUTION BLOCK ---
+  const proceedWithCreation = () => {
     const extractedMerchantId = formData.memberId.includes("@")
       ? formData.memberId.split("@")[1]
       : "-";
@@ -288,6 +299,46 @@ export default function TicketForm({ onAddTicket }) {
 
     setShowSuccessToast(true);
     setTimeout(() => setShowSuccessToast(false), 3000);
+    setPgSoftCheckModal({ isOpen: false, step: "ask", providerAcc: "" });
+  };
+
+  // --- NEW: INTERCEPT & CHECK DATABASE LOGIC ---
+  const handleCreateClick = async () => {
+    // If it's PG Soft, we must verify the 7-day rule first
+    if (formData.provider === "PG Soft") {
+      setIsCheckingPgSoft(true);
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const { data, error } = await supabase
+          .from("tickets")
+          .select("id")
+          .eq("provider", "PG Soft")
+          .eq("member_id", formData.memberId)
+          .eq("provider_account", formData.providerAccount)
+          .gte("created_at", sevenDaysAgo.toISOString());
+
+        if (error) throw error;
+
+        // If a match is found in the last 7 days, halt creation and ask the agent
+        if (data && data.length > 0) {
+          setPgSoftCheckModal({
+            isOpen: true,
+            step: "ask",
+            providerAcc: formData.providerAccount,
+          });
+          setIsCheckingPgSoft(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Error checking PG Soft history:", err);
+      }
+      setIsCheckingPgSoft(false);
+    }
+
+    // If not PG Soft, or no recent tickets found, proceed normally!
+    proceedWithCreation();
   };
 
   return (
@@ -529,7 +580,7 @@ export default function TicketForm({ onAddTicket }) {
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="e.g. MM-DD-YYYY - MM-DD-YYYY"
+                            placeholder="e.g. 2026-03-01 - 2026-03-07"
                             className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-text"
                             value={formData.timeRange}
                             onChange={(e) =>
@@ -741,19 +792,32 @@ export default function TicketForm({ onAddTicket }) {
                 )}
 
                 <button
-                  disabled={!isFormValid() || !canCreate}
+                  disabled={!isFormValid() || !canCreate || isCheckingPgSoft}
                   onClick={handleCreateClick}
                   className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 
                     ${
                       !canCreate
                         ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
-                        : isFormValid()
+                        : isFormValid() && !isCheckingPgSoft
                           ? "bg-black hover:bg-slate-800 text-white"
                           : "bg-slate-200 text-slate-400 cursor-not-allowed"
                     }`}
                 >
-                  {!canCreate ? <Lock size={16} /> : <Plus size={18} />}
-                  {!canCreate ? "Locked until Handover" : "Create Ticket"}
+                  {!canCreate ? (
+                    <Lock size={16} />
+                  ) : isCheckingPgSoft ? (
+                    <RefreshCw
+                      size={18}
+                      className="animate-spin text-slate-400"
+                    />
+                  ) : (
+                    <Plus size={18} />
+                  )}
+                  {!canCreate
+                    ? "Locked until Handover"
+                    : isCheckingPgSoft
+                      ? "Checking Database..."
+                      : "Create Ticket"}
                 </button>
               </>
             )}
@@ -996,6 +1060,93 @@ export default function TicketForm({ onAddTicket }) {
                 <Copy size={12} /> Click anywhere to copy
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW: PG SOFT 7-DAY WARNING MODAL --- */}
+      {pgSoftCheckModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[420px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <AlertCircle size={18} className="text-amber-500" /> PG Soft
+                within 01 week Warning
+              </h3>
+              <button
+                onClick={() =>
+                  setPgSoftCheckModal({
+                    isOpen: false,
+                    step: "ask",
+                    providerAcc: "",
+                  })
+                }
+                className="p-1 text-slate-400 hover:text-slate-600 bg-slate-200/50 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {pgSoftCheckModal.step === "ask" && (
+                <div className="space-y-6">
+                  <p className="text-sm text-slate-700 leading-relaxed">
+                    This player <strong>({formData.memberId})</strong> has
+                    already been investigated by PG Soft within the past 7 days.
+                  </p>
+                  <p className="text-sm font-bold text-slate-800">
+                    Did PG Soft accept this new query?
+                  </p>
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      onClick={() =>
+                        setPgSoftCheckModal({
+                          ...pgSoftCheckModal,
+                          step: "script",
+                        })
+                      }
+                      className="flex-1 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-sm font-bold rounded-xl transition-colors border border-rose-200"
+                    >
+                      No, Rejected
+                    </button>
+                    <button
+                      onClick={proceedWithCreation}
+                      className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors shadow-md"
+                    >
+                      Yes, Proceed
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {pgSoftCheckModal.step === "script" && (
+                <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
+                  <p className="text-xs text-slate-500 font-medium">
+                    Please copy this script and inform the merchant:
+                  </p>
+                  <textarea
+                    readOnly
+                    className="w-full h-64 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-mono resize-none focus:outline-none focus:border-indigo-400 transition-colors leading-relaxed"
+                    value={`Hi Team, please refer to the message from the provider. Thank You - ${shortWorkName}\n\n【Hi team, this ${pgSoftCheckModal.providerAcc} has been submitted for risk investigation within the last 1 week, so we will not accept this risk request investigation again.\nWhether the operator provides the player name or the bet ID, and if the player has been investigated within the past week, players will remain under surveillance for another week if no anomalies have been reported. Therefore, the player and payouts are correct and normal. If any anomalies are detected, we will inform you immediately.】`}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `Hi Team, please refer to the message from the provider. Thank You - ${shortWorkName}\n\n【Hi team, this ${pgSoftCheckModal.providerAcc} has been submitted for risk investigation within the last 1 week, so we will not accept this risk request investigation again.\nWhether the operator provides the player name or the bet ID, and if the player has been investigated within the past week, players will remain under surveillance for another week if no anomalies have been reported. Therefore, the player and payouts are correct and normal. If any anomalies are detected, we will inform you immediately.】`,
+                      );
+                      setPgSoftCheckModal({
+                        isOpen: false,
+                        step: "ask",
+                        providerAcc: "",
+                      });
+                    }}
+                    className="w-full py-3 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center justify-center gap-2"
+                  >
+                    <Copy size={16} /> Copy Script & Close
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
