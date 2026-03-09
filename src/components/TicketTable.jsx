@@ -16,6 +16,7 @@ import {
   Users,
   LogOut,
   Handshake,
+  Megaphone,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
@@ -250,6 +251,9 @@ export default function TicketTable({
     step: "",
     missingTickets: [],
   });
+
+  const [followUpModal, setFollowUpModal] = useState(false);
+  const [copiedProvider, setCopiedProvider] = useState(null);
 
   // --- TRACKING ID REMINDER STATES ---
   const [showReminderToast, setShowReminderToast] = useState(false);
@@ -668,6 +672,17 @@ export default function TicketTable({
                 ONLINE
               </span>
             </div>
+          )}
+
+          {/* --- NEW: FOLLOW-UP SCRIPTS BUTTON --- */}
+          {!dutyArray.includes("IC0") && (isMyShiftActive || isAdminOrLeader) && (
+            <button
+              onClick={() => setFollowUpModal(true)}
+              className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+              title="Bulk Follow-up Scripts"
+            >
+              <Megaphone size={16} />
+            </button>
           )}
 
           {!dutyArray.includes("IC0") &&
@@ -1447,6 +1462,86 @@ export default function TicketTable({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* --- FOLLOW-UP SCRIPTS MODAL --- */}
+      {followUpModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Megaphone size={18} className="text-indigo-600" /> Follow-up Scripts
+              </h3>
+              <button
+                onClick={() => setFollowUpModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto bg-slate-50/50">
+              <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                Generate bulk follow-up scripts for pending tickets by provider.
+              </p>
+              
+              {(() => {
+                const pendingTix = tickets.filter(t => t.status === "Pending");
+                if (pendingTix.length === 0) {
+                  return <p className="text-xs text-slate-400 italic text-center py-6 bg-white border border-slate-200 rounded-xl">No pending tickets found.</p>;
+                }
+
+                const grouped = {};
+                pendingTix.forEach(t => {
+                  if (!grouped[t.provider]) grouped[t.provider] = { valid: [], missingCount: 0 };
+                  if (!t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "") {
+                    grouped[t.provider].missingCount++;
+                  } else {
+                    grouped[t.provider].valid.push(t.tracking_no);
+                  }
+                });
+
+                return (
+                  <div className="space-y-4">
+                    {Object.entries(grouped).map(([provider, data]) => (
+                      <div key={provider} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="font-bold text-sm text-slate-800">{provider}</span>
+                          <button
+                            disabled={data.valid.length === 0}
+                            onClick={() => {
+                              const script = `Hi team, this is ${shortWorkName}, may we know if there's any update regarding the following tracking ID's. Thank You.\n${data.valid.join('\n')}`;
+                              navigator.clipboard.writeText(script);
+                              setCopiedProvider(provider);
+                              setTimeout(() => setCopiedProvider(null), 2000);
+                            }}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition-all ${data.valid.length === 0 ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : copiedProvider === provider ? 'bg-emerald-500 text-white shadow-md' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+                          >
+                            {copiedProvider === provider ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                            {copiedProvider === provider ? "Copied!" : "Copy Script"}
+                          </button>
+                        </div>
+                        
+                        <div className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-mono tracking-wide space-y-1">
+                          {data.valid.length > 0 ? (
+                            data.valid.map((id, i) => <div key={i}>{id}</div>)
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">No valid Tracking IDs available.</span>
+                          )}
+                        </div>
+                        
+                        {data.missingCount > 0 && (
+                          <div className="mt-3 flex items-start gap-2 text-[10px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100 leading-snug">
+                            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-500" />
+                            <span><strong>{data.missingCount} pending ticket(s)</strong> excluded from this script because they are missing a Tracking ID.</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
