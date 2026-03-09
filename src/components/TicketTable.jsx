@@ -17,10 +17,12 @@ import {
   LogOut,
   Handshake,
   Megaphone,
+  FileWarning,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3"; // <-- ADDED SOUND FOR TOAST
+import { PROVIDER_CONFIG } from "../config/providerConfig"; // <-- 2. ADD THIS
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
@@ -254,6 +256,14 @@ export default function TicketTable({
 
   const [followUpModal, setFollowUpModal] = useState(false);
   const [copiedProvider, setCopiedProvider] = useState(null);
+
+  const [abnormalModalState, setAbnormalModalState] = useState({
+    isOpen: false,
+    provider: "",
+    memberId: "",
+    abnormalType: "",
+  });
+  const [copiedAbnormal, setCopiedAbnormal] = useState(false);
 
   // --- TRACKING ID REMINDER STATES ---
   const [showReminderToast, setShowReminderToast] = useState(false);
@@ -674,16 +684,35 @@ export default function TicketTable({
             </div>
           )}
 
-          {/* --- NEW: FOLLOW-UP SCRIPTS BUTTON --- */}
-          {!dutyArray.includes("IC0") && (isMyShiftActive || isAdminOrLeader) && (
+          {/* --- NEW: ABNORMAL SCRIPT GENERATOR BUTTON --- */}
+          {(isMyShiftActive || isAdminOrLeader) && (
             <button
-              onClick={() => setFollowUpModal(true)}
-              className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
-              title="Bulk Follow-up Scripts"
+              onClick={() =>
+                setAbnormalModalState({
+                  isOpen: true,
+                  provider: "",
+                  memberId: "",
+                  abnormalType: "",
+                })
+              }
+              className="p-2 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+              title="Generate Abnormal Script"
             >
-              <Megaphone size={16} />
+              <FileWarning size={16} />
             </button>
           )}
+
+          {/* --- NEW: FOLLOW-UP SCRIPTS BUTTON --- */}
+          {!dutyArray.includes("IC0") &&
+            (isMyShiftActive || isAdminOrLeader) && (
+              <button
+                onClick={() => setFollowUpModal(true)}
+                className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+                title="Bulk Follow-up Scripts"
+              >
+                <Megaphone size={16} />
+              </button>
+            )}
 
           {!dutyArray.includes("IC0") &&
             (isMyShiftActive || isAdminOrLeader) && (
@@ -1472,7 +1501,8 @@ export default function TicketTable({
           <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Megaphone size={18} className="text-indigo-600" /> Follow-up Scripts
+                <Megaphone size={18} className="text-indigo-600" /> Follow-up
+                Scripts
               </h3>
               <button
                 onClick={() => setFollowUpModal(false)}
@@ -1485,17 +1515,28 @@ export default function TicketTable({
               <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                 Generate bulk follow-up scripts for pending tickets by provider.
               </p>
-              
+
               {(() => {
-                const pendingTix = tickets.filter(t => t.status === "Pending");
+                const pendingTix = tickets.filter(
+                  (t) => t.status === "Pending",
+                );
                 if (pendingTix.length === 0) {
-                  return <p className="text-xs text-slate-400 italic text-center py-6 bg-white border border-slate-200 rounded-xl">No pending tickets found.</p>;
+                  return (
+                    <p className="text-xs text-slate-400 italic text-center py-6 bg-white border border-slate-200 rounded-xl">
+                      No pending tickets found.
+                    </p>
+                  );
                 }
 
                 const grouped = {};
-                pendingTix.forEach(t => {
-                  if (!grouped[t.provider]) grouped[t.provider] = { valid: [], missingCount: 0 };
-                  if (!t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "") {
+                pendingTix.forEach((t) => {
+                  if (!grouped[t.provider])
+                    grouped[t.provider] = { valid: [], missingCount: 0 };
+                  if (
+                    !t.tracking_no ||
+                    t.tracking_no === "-" ||
+                    t.tracking_no.trim() === ""
+                  ) {
                     grouped[t.provider].missingCount++;
                   } else {
                     grouped[t.provider].valid.push(t.tracking_no);
@@ -1505,36 +1546,58 @@ export default function TicketTable({
                 return (
                   <div className="space-y-4">
                     {Object.entries(grouped).map(([provider, data]) => (
-                      <div key={provider} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+                      <div
+                        key={provider}
+                        className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm"
+                      >
                         <div className="flex justify-between items-center mb-3">
-                          <span className="font-bold text-sm text-slate-800">{provider}</span>
+                          <span className="font-bold text-sm text-slate-800">
+                            {provider}
+                          </span>
                           <button
                             disabled={data.valid.length === 0}
                             onClick={() => {
-                              const script = `Hi team, this is ${shortWorkName}, may we know if there's any update regarding the following tracking ID's. Thank You.\n${data.valid.join('\n')}`;
+                              const script = `Hi team, this is ${shortWorkName}, may we know if there's any update regarding the following tracking ID's. Thank You.\n${data.valid.join("\n")}`;
                               navigator.clipboard.writeText(script);
                               setCopiedProvider(provider);
                               setTimeout(() => setCopiedProvider(null), 2000);
                             }}
-                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition-all ${data.valid.length === 0 ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : copiedProvider === provider ? 'bg-emerald-500 text-white shadow-md' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition-all ${data.valid.length === 0 ? "bg-slate-50 text-slate-400 cursor-not-allowed" : copiedProvider === provider ? "bg-emerald-500 text-white shadow-md" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"}`}
                           >
-                            {copiedProvider === provider ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-                            {copiedProvider === provider ? "Copied!" : "Copy Script"}
+                            {copiedProvider === provider ? (
+                              <CheckCircle2 size={14} />
+                            ) : (
+                              <Copy size={14} />
+                            )}
+                            {copiedProvider === provider
+                              ? "Copied!"
+                              : "Copy Script"}
                           </button>
                         </div>
-                        
+
                         <div className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-mono tracking-wide space-y-1">
                           {data.valid.length > 0 ? (
                             data.valid.map((id, i) => <div key={i}>{id}</div>)
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">No valid Tracking IDs available.</span>
+                            <span className="text-slate-400 italic text-[11px]">
+                              No valid Tracking IDs available.
+                            </span>
                           )}
                         </div>
-                        
+
                         {data.missingCount > 0 && (
                           <div className="mt-3 flex items-start gap-2 text-[10px] text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100 leading-snug">
-                            <AlertTriangle size={14} className="shrink-0 mt-0.5 text-amber-500" />
-                            <span><strong>{data.missingCount} pending ticket(s)</strong> excluded from this script because they are missing a Tracking ID.</span>
+                            <AlertTriangle
+                              size={14}
+                              className="shrink-0 mt-0.5 text-amber-500"
+                            />
+                            <span>
+                              <strong>
+                                {data.missingCount} pending ticket(s)
+                              </strong>{" "}
+                              excluded from this script because they are missing
+                              a Tracking ID.
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1542,6 +1605,96 @@ export default function TicketTable({
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- ABNORMAL SCRIPT GENERATOR MODAL --- */}
+      {abnormalModalState.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[150] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <FileWarning size={18} className="text-rose-600" /> Abnormal Script Generator
+              </h3>
+              <button
+                onClick={() => setAbnormalModalState({ ...abnormalModalState, isOpen: false })}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600 mb-2 leading-relaxed">
+                Generate an abnormal notification script for providers that don't allow formal ticket creation.
+              </p>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Provider Source <span className="text-red-500">*</span></label>
+                <select 
+                  value={abnormalModalState.provider}
+                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, provider: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer"
+                >
+                  <option value="" disabled>Select Provider</option>
+                  {Object.keys(PROVIDER_CONFIG).map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Member ID <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. user@017" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-100"
+                  value={abnormalModalState.memberId}
+                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, memberId: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Abnormal Type <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. fraudulent betting, arbitrage" 
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-100 uppercase"
+                  value={abnormalModalState.abnormalType}
+                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, abnormalType: e.target.value })}
+                />
+              </div>
+
+              {abnormalModalState.provider && abnormalModalState.memberId && abnormalModalState.abnormalType ? (
+                <div className="pt-2 animate-in slide-in-from-bottom-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase mb-2 block">Script Preview</span>
+                  <div className="relative group">
+                    <textarea 
+                      readOnly 
+                      value={`Hello team,this is ${shortWorkName}. Please refer to the below information from provider, thank you.\n\nAnnouncement：【${abnormalModalState.provider}】 confirm this member is【${abnormalModalState.abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${abnormalModalState.memberId}`}
+                      className="w-full h-44 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-mono resize-none focus:outline-none focus:border-rose-400 transition-colors leading-relaxed" 
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`Hello team,this is ${shortWorkName}. Please refer to the below information from provider, thank you.\n\nAnnouncement：【${abnormalModalState.provider}】 confirm this member is【${abnormalModalState.abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${abnormalModalState.memberId}`);
+                      setCopiedAbnormal(true);
+                      setTimeout(() => {
+                        setCopiedAbnormal(false);
+                        setAbnormalModalState({ isOpen: false, provider: "", memberId: "", abnormalType: "" });
+                      }, 1500);
+                    }} 
+                    className="w-full mt-3 py-3 bg-rose-600 text-white text-sm font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-md flex items-center justify-center gap-2"
+                  >
+                    {copiedAbnormal ? <CheckCircle2 size={16} /> : <Copy size={16} />} 
+                    {copiedAbnormal ? "Copied!" : "Copy Script & Close"}
+                  </button>
+                </div>
+              ) : (
+                 <div className="pt-4 text-center text-xs text-slate-400 italic">Fill all fields to generate script</div>
+              )}
             </div>
           </div>
         </div>
