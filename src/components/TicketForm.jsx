@@ -32,7 +32,7 @@ const getFormattedDate = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return `${m}-${d}-${y}`;
 };
 
 // HELPER: Check if time is currently inside the handover window
@@ -529,7 +529,7 @@ export default function TicketForm({ onAddTicket }) {
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="e.g. 2026-03-01 - 2026-03-07"
+                            placeholder="e.g. MM-DD-YYYY - MM-DD-YYYY"
                             className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-text"
                             value={formData.timeRange}
                             onChange={(e) =>

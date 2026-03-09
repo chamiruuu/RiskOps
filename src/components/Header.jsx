@@ -20,6 +20,7 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertTriangle,
+  ArchiveRestore,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -82,6 +83,13 @@ export default function Header() {
 
   // --- TRACKING REMINDER STATE ---
   const [trackingReminder, setTrackingReminder] = useState(null);
+
+  // --- ARCHIVE HISTORY STATES ---
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [archivedTickets, setArchivedTickets] = useState([]);
+  const [historyStartDate, setHistoryStartDate] = useState("");
+  const [historyEndDate, setHistoryEndDate] = useState("");
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
@@ -536,6 +544,48 @@ export default function Header() {
     }
   };
 
+  // --- ARCHIVED HISTORY FETCH LOGIC (UPDATED WITH DATE RANGE) ---
+  useEffect(() => {
+    if (showHistoryModal) {
+      fetchArchivedTickets(historyStartDate, historyEndDate);
+    }
+  }, [showHistoryModal, historyStartDate, historyEndDate]);
+
+  const fetchArchivedTickets = async (startStr, endStr) => {
+    setIsFetchingHistory(true);
+    try {
+      let query = supabase
+        .from("tickets")
+        .select("*")
+        .eq("is_archived", true)
+        .order("created_at", { ascending: false });
+
+      if (startStr || endStr) {
+        if (startStr) {
+          const start = new Date(startStr);
+          start.setHours(0, 0, 0, 0);
+          query = query.gte("created_at", start.toISOString());
+        }
+        if (endStr) {
+          const end = new Date(endStr);
+          end.setHours(23, 59, 59, 999);
+          query = query.lte("created_at", end.toISOString());
+        }
+      } else {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        query = query.gte("created_at", thirtyDaysAgo.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      if (data) setArchivedTickets(data);
+    } catch (err) {
+      console.error("Error fetching archive:", err);
+    }
+    setIsFetchingHistory(false);
+  };
+
   const getDutyStyle = (role) => {
     switch (role) {
       case "IC0":
@@ -852,29 +902,36 @@ export default function Header() {
             )}
           </div>
 
+          {/* --- ADMIN TOOLBAR BUTTONS --- */}
           {isAdminOrLeader && (
-            <div className="relative">
+            <div className="relative flex items-center">
+              <button
+                onClick={() => setShowHistoryModal(true)}
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors ml-1"
+                title="Archived Investigations"
+              >
+                <ArchiveRestore size={16} strokeWidth={2.5} />
+              </button>
+
               <button
                 onClick={() => setShowShiftModal(true)}
-                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors ml-1"
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors ml-1 relative"
                 title="Shift Planner"
               >
                 <CalendarDays size={16} strokeWidth={2.5} />
+                {cycleWarning && (
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full animate-pulse pointer-events-none"></span>
+                )}
               </button>
-              {cycleWarning && (
-                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 border-2 border-white rounded-full animate-pulse pointer-events-none"></span>
-              )}
-            </div>
-          )}
 
-          {isAdminOrLeader && (
-            <button
-              onClick={() => setShowAdminModal(true)}
-              className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors ml-1"
-              title="User Management"
-            >
-              <Users size={16} strokeWidth={2.5} />
-            </button>
+              <button
+                onClick={() => setShowAdminModal(true)}
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors ml-1"
+                title="User Management"
+              >
+                <Users size={16} strokeWidth={2.5} />
+              </button>
+            </div>
           )}
 
           {/* --- RESTORED ORIGINAL GREETING --- */}
@@ -1557,6 +1614,154 @@ export default function Header() {
                   </form>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- NEW: ADMIN ARCHIVE HISTORY MODAL (WITH DATE RANGE) --- */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[1100px] h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
+                <ArchiveRestore size={18} className="text-indigo-600" />
+                Archived Investigations{" "}
+                {historyStartDate || historyEndDate ? "" : "(Past 30 Days)"}
+              </h2>
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Date:
+                  </span>
+                  <input
+                    type="date"
+                    value={historyStartDate}
+                    onChange={(e) => setHistoryStartDate(e.target.value)}
+                    className="text-xs font-bold border-none bg-transparent outline-none text-slate-700 cursor-pointer"
+                  />
+                  <span className="text-slate-400 font-bold text-xs">-</span>
+                  <input
+                    type="date"
+                    value={historyEndDate}
+                    onChange={(e) => setHistoryEndDate(e.target.value)}
+                    className="text-xs font-bold border-none bg-transparent outline-none text-slate-700 cursor-pointer"
+                  />
+                  {(historyStartDate || historyEndDate) && (
+                    <button
+                      onClick={() => {
+                        setHistoryStartDate("");
+                        setHistoryEndDate("");
+                      }}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-bold transition-colors ml-2"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-slate-50/50 p-6">
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <table className="w-full text-left border-collapse whitespace-nowrap">
+                  <thead className="bg-slate-50 sticky top-0 z-10 font-bold text-slate-500 uppercase tracking-wide text-[10px]">
+                    <tr className="border-b border-slate-200">
+                      <th className="px-4 py-3">Date Completed</th>
+                      <th className="px-4 py-3">Duty</th>
+                      <th className="px-4 py-3">Merchant</th>
+                      <th className="px-4 py-3">Player ID</th>
+                      <th className="px-4 py-3">Provider</th>
+                      <th className="px-4 py-3">Tracking No.</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Recorder</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {isFetchingHistory ? (
+                      <tr>
+                        <td
+                          colSpan="8"
+                          className="px-6 py-12 text-center text-slate-400 font-medium"
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <RefreshCw
+                              size={16}
+                              className="animate-spin text-indigo-500"
+                            />{" "}
+                            Fetching secure records...
+                          </div>
+                        </td>
+                      </tr>
+                    ) : archivedTickets.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan="8"
+                          className="px-6 py-12 text-center text-slate-400 font-medium italic"
+                        >
+                          No archived tickets found for this time period.
+                        </td>
+                      </tr>
+                    ) : (
+                      archivedTickets.map((t) => (
+                        <tr
+                          key={t.id}
+                          className="hover:bg-slate-50 transition-colors"
+                        >
+                          <td className="px-4 py-3 text-slate-500 font-medium">
+                            {new Date(t.created_at).toLocaleDateString(
+                              "en-GB",
+                              { month: "short", day: "2-digit" },
+                            )}{" "}
+                            <span className="text-slate-400 ml-1">
+                              {new Date(t.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-700">
+                            {t.ic_account}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">
+                            {t.merchant_name}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">
+                            {t.member_id}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 font-medium">
+                            {t.provider}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-600">
+                            {t.tracking_no || "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                t.status === "Normal" || t.status === "NORMAL"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
+                            >
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 font-medium">
+                            {t.recorder}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
