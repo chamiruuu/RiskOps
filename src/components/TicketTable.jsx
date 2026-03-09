@@ -656,13 +656,15 @@ export default function TicketTable({
   }
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
-  const isHandoverDisabled = (!isMyShiftActive && !isAdminOrLeader);
+  // Re-enabled lock: Button is disabled if it's not your shift OR not the handover window
+  const isHandoverDisabled =
+    (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
 
   let handoverTooltip = "Handover Shift";
   if (!isMyShiftActive && !isAdminOrLeader)
     handoverTooltip = "You can only handover during your assigned shift time.";
   else if (!isInHandoverWindow)
-    handoverTooltip = "Click to Force Early Handover";
+    handoverTooltip = "Only available during shift handover times (:15 to :45)";
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
