@@ -17,38 +17,40 @@ serve(async (req) => {
     const body = await req.json()
     const { action, tickets, handoverBy, ticketId, status } = body
 
-    // 1. Grab secrets from Supabase UI
-    let sheetId = Deno.env.get('GOOGLE_SHEET_ID') || ''
-    let clientEmail = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL') || ''
-    let privateKey = Deno.env.get('GOOGLE_PRIVATE_KEY') || ''
+    // 1. Get the Sheet ID and Raw JSON Secret
+    const sheetId = Deno.env.get('GOOGLE_SHEET_ID')?.trim()
+    const rawCreds = Deno.env.get('GOOGLE_CREDS_JSON')?.trim()
 
-    // 2. Auto-clean any accidental quotes or spaces
-    sheetId = sheetId.replace(/^"|"$/g, '').trim()
-    clientEmail = clientEmail.replace(/^"|"$/g, '').trim()
-    privateKey = privateKey.replace(/^"|"$/g, '').trim()
-    
-    // 3. Fix the \n line breaks for Google
-    privateKey = privateKey.replace(/\\n/g, '\n')
-
-    if (!sheetId || !clientEmail || !privateKey) {
-      throw new Error('Missing Google Credentials. Please add them in the Supabase Dashboard.')
+    if (!sheetId || !rawCreds) {
+      throw new Error('Missing GOOGLE_SHEET_ID or GOOGLE_CREDS_JSON in Supabase Secrets.')
     }
 
-    // 4. Authenticate
+    // 2. Parse the JSON safely (Immune to \n formatting errors!)
+    let creds;
+    try {
+      creds = JSON.parse(rawCreds);
+    } catch (e) {
+      throw new Error('Failed to parse GOOGLE_CREDS_JSON. Make sure you pasted the exact JSON object.')
+    }
+
+    if (!creds.client_email || !creds.private_key) {
+      throw new Error('JSON is missing client_email or private_key.')
+    }
+
+    // 3. Authenticate with Google
     const auth = new JWT({
-      email: clientEmail,
-      key: privateKey,
+      email: creds.client_email,
+      key: creds.private_key,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     })
     
     let accessToken;
     try {
-      // If the key is bad, this is where it used to crash. Now we catch it!
       const token = await auth.getToken()
       accessToken = token.access_token
-    } catch (authErr) {
+    } catch (authErr: any) {
       console.error("AUTH FAILED:", authErr)
-      throw new Error("Google rejected the login! The Private Key or Client Email in your Supabase Secrets is incorrect.")
+      throw new Error(`Google Auth Failed: ${authErr.message}`)
     }
 
     // ==========================================
