@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
 import { useState, useEffect } from "react";
@@ -230,15 +230,17 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
+
   return (
     <DutyProvider>
-      <BrowserRouter>
+      <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
-      </BrowserRouter>
+      </Router>
     </DutyProvider>
   );
 }
