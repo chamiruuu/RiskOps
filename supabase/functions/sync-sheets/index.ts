@@ -6,11 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Helper to safely format the Sheet Name with spaces for Google's API
 const SHEET_NAME = "'RiskOps Handover'"
 
 serve(async (req) => {
-  // Handle CORS preflight requests from the browser
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -19,42 +17,58 @@ serve(async (req) => {
     const body = await req.json()
     const { action, tickets, handoverBy, ticketId, status } = body
 
-    const sheetId = Deno.env.get('GOOGLE_SHEET_ID')
-    const clientEmail = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL')
-    // We replace \\n with actual newlines because Supabase secrets escape them
-    const privateKey = Deno.env.get('GOOGLE_PRIVATE_KEY')?.replace(/\\n/g, '\n')
+    // 1. Grab secrets from Supabase UI
+    let sheetId = Deno.env.get('GOOGLE_SHEET_ID') || ''
+    let clientEmail = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL') || ''
+    let privateKey = Deno.env.get('GOOGLE_PRIVATE_KEY') || ''
+
+    // 2. Auto-clean any accidental quotes or spaces
+    sheetId = sheetId.replace(/^"|"$/g, '').trim()
+    clientEmail = clientEmail.replace(/^"|"$/g, '').trim()
+    privateKey = privateKey.replace(/^"|"$/g, '').trim()
+    
+    // 3. Fix the \n line breaks for Google
+    privateKey = privateKey.replace(/\\n/g, '\n')
 
     if (!sheetId || !clientEmail || !privateKey) {
-      throw new Error('Missing Google Credentials in Supabase Secrets')
+      throw new Error('Missing Google Credentials. Please add them in the Supabase Dashboard.')
     }
 
-    // Authenticate with Google
+    // 4. Authenticate
     const auth = new JWT({
       email: clientEmail,
       key: privateKey,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     })
-    const token = await auth.getToken()
-    const accessToken = token.access_token
+    
+    let accessToken;
+    try {
+      // If the key is bad, this is where it used to crash. Now we catch it!
+      const token = await auth.getToken()
+      accessToken = token.access_token
+    } catch (authErr) {
+      console.error("AUTH FAILED:", authErr)
+      throw new Error("Google rejected the login! The Private Key or Client Email in your Supabase Secrets is incorrect.")
+    }
 
     // ==========================================
     // ACTION 1: APPEND PENDING TICKETS ON HANDOVER
     // ==========================================
     if (action === 'APPEND') {
       const rows = tickets.map((t: any) => [
-        t.id,                                              // A: Ticket ID (Hidden)
-        t.ic_account,                                      // B: Duty Acc
-        new Date(t.created_at).toLocaleString("en-US", { timeZone: "Asia/Singapore" }), // C: Date
-        t.merchant_name,                                   // D: Merchant ID
-        t.login_id || "-",                                 // E: Login ID
-        t.member_id,                                       // F: Player ID
-        t.provider_account || "-",                         // G: Provider Account
-        t.provider,                                        // H: Provider
-        t.tracking_no || "-",                              // I: Tracking No.
-        t.recorder,                                        // J: Recorder
-        t.notes && t.notes.length > 0 ? `${t.notes.length} Messages` : "No Notes", // K: Audit Notes
-        t.status,                                          // L: Status
-        handoverBy                                         // M: Handover By
+        t.id,                                              
+        t.ic_account,                                      
+        new Date(t.created_at).toLocaleString("en-US", { timeZone: "Asia/Singapore" }), 
+        t.merchant_name,                                   
+        t.login_id || "-",                                 
+        t.member_id,                                       
+        t.provider_account || "-",                         
+        t.provider,                                        
+        t.tracking_no || "-",                              
+        t.recorder,                                        
+        t.notes && t.notes.length > 0 ? `${t.notes.length} Messages` : "No Notes", 
+        t.status,                                          
+        handoverBy                                         
       ])
 
       const appendRange = encodeURIComponent(`${SHEET_NAME}!A:M`)
@@ -68,6 +82,8 @@ serve(async (req) => {
       })
 
       const data = await response.json()
+      if (data.error) throw new Error(`Google Sheets API Error: ${data.error.message}`)
+
       return new Response(JSON.stringify({ success: true, action: 'APPEND', data }), { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
@@ -77,21 +93,20 @@ serve(async (req) => {
     // ACTION 2: UPDATE STATUS ON COMPLETION
     // ==========================================
     if (action === 'UPDATE') {
-      // 1. Get all IDs from Column A to find the right row
       const getRange = encodeURIComponent(`${SHEET_NAME}!A:A`)
       const getRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${getRange}`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       })
       const getJson = await getRes.json()
+      
+      if (getJson.error) throw new Error(`Google Sheets API Error: ${getJson.error.message}`)
+      
       const existingRows = getJson.values || []
-
-      // 2. Find the row index where Column A matches our Ticket ID
       const rowIndex = existingRows.findIndex((row: any) => row[0] === ticketId)
 
       if (rowIndex !== -1) {
-        const sheetRowNumber = rowIndex + 1 // Google Sheets is 1-indexed
+        const sheetRowNumber = rowIndex + 1 
         
-        // 3. Update Column L (Status) for that specific row
         const updateRange = encodeURIComponent(`${SHEET_NAME}!L${sheetRowNumber}`)
         const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${updateRange}?valueInputOption=USER_ENTERED`, {
           method: 'PUT',
@@ -99,15 +114,16 @@ serve(async (req) => {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ values: [[status]] }) // Wrap in 2D array
+          body: JSON.stringify({ values: [[status]] }) 
         })
         
         const updateJson = await updateRes.json()
+        if (updateJson.error) throw new Error(`Google Sheets API Error: ${updateJson.error.message}`)
+
         return new Response(JSON.stringify({ success: true, updated: true, data: updateJson }), { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         })
       } else {
-        // If ticket isn't in the sheet
         return new Response(JSON.stringify({ success: true, updated: false, message: 'Not found in sheet' }), { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         })
@@ -117,7 +133,8 @@ serve(async (req) => {
     throw new Error('Invalid Action provided')
 
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error("Function Error:", error.message)
+    return new Response(JSON.stringify({ error: error.message || "Unknown Error" }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
