@@ -60,9 +60,22 @@ export default function TicketForm({ onAddTicket }) {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
 
+// Predefined Scripts for BTi and PKQ
+  const pkqRules = `Hi there, this is ${shortWorkName}. Please be informed that there are some new rules about checking the players fraud transactions from PokerQ.\n1. Players withdraw over 50x with his last deposit amount ( example : deposit 50K and then withdraw 2.5M ).\n2. First time withdrawal\n3. Suspect of something suspicious about the players transactions and provide the screenshot proof for us.`;
+  
+  const btiRules = `Hi Sir this is ${shortWorkName}, please be informed that there are some BTi rules, please check, thanks\n1. Member place bet more than 5 bets within 30 days and the average amount is higher than 900 CNY\n2. profit exceeds 9,000 CNY within 30 days\n\nSince the player does not meet the above criteria, Bti does not provide the query thank you.`;
   const [copiedLoss, setCopiedLoss] = useState(false);
   const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
+  const [copiedBti, setCopiedBti] = useState(false);
+  const [copiedPkq, setCopiedPkq] = useState(false);
+  const [copiedField, setCopiedField] = useState(null);
+
+  const handleCopyField = (text, fieldId) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldId);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // --- Searchable Provider Dropdown States ---
   const [isProviderOpen, setIsProviderOpen] = useState(false);
@@ -222,6 +235,18 @@ export default function TicketForm({ onAddTicket }) {
     navigator.clipboard.writeText(script);
     setCopiedHold(true);
     setTimeout(() => setCopiedHold(false), 2000);
+  };
+
+  const handleCopyBti = () => {
+    navigator.clipboard.writeText(btiRules);
+    setCopiedBti(true);
+    setTimeout(() => setCopiedBti(false), 2000);
+  };
+
+  const handleCopyPkq = () => {
+    navigator.clipboard.writeText(pkqRules);
+    setCopiedPkq(true);
+    setTimeout(() => setCopiedPkq(false), 2000);
   };
 
   // --- SMART DATE PICKER LOGIC ---
@@ -1034,6 +1059,32 @@ export default function TicketForm({ onAddTicket }) {
                   />
                 )}
               </button>
+
+              {/* NEW: BTi Icon Button */}
+            {formData.provider === 'BTi' && (
+              <button
+                type="button"
+                onClick={() => handleCopy(btiRules, 'bti_rules')}
+                title="Copy BTi Query Conditions"
+                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
+              >
+                {copiedField === 'bti_rules' ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+                BTi Rules
+              </button>
+            )}
+
+            {/* NEW: PokerQ / PKQ Icon Button */}
+            {(formData.provider === 'PKQ' || formData.provider === 'PokerQ') && (
+              <button
+                type="button"
+                onClick={() => handleCopy(pkqRules, 'pkq_rules')}
+                title="Copy PKQ Query Conditions"
+                className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
+              >
+                {copiedField === 'pkq_rules' ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+                PKQ Rules
+              </button>
+            )}
             </div>
           </div>
 
