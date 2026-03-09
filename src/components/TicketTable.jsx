@@ -457,26 +457,32 @@ export default function TicketTable({
   const executeHandover = async () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const nextShift = getNextShift(currentActiveShift);
-
+    
     const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
 
     await supabase.from("shift_notifications").insert({
       target_shift: nextShift,
       message: msg,
-      duties: dutyArray,
+      duties: dutyArray
     });
 
-    const completedIds = tickets
-      .filter((t) => t.status !== "Pending")
-      .map((t) => t.id);
+    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
     if (completedIds.length > 0) {
-      await supabase
-        .from("tickets")
-        .update({ is_archived: true })
-        .in("id", completedIds);
+      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
     }
 
-    setDuty([]);
+    // --- NEW: TRIGGER GOOGLE SHEETS APPEND ---
+    if (pendingTix.length > 0) {
+      supabase.functions.invoke('sync-sheets', {
+        body: {
+          action: 'APPEND',
+          tickets: pendingTix,
+          handoverBy: shortWorkName
+        }
+      }).catch(e => console.error("Sheet Handover Error:", e)); // Fired in background so UI doesn't freeze
+    }
+
+    setDuty([]); 
     setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
 
@@ -520,19 +526,22 @@ export default function TicketTable({
     const script = getGeneratedScript();
     navigator.clipboard.writeText(script);
 
-    const finalStatus =
-      completeModal.type === "Normal"
-        ? "Normal"
-        : completeModal.abnormalType.toUpperCase();
+    const finalStatus = completeModal.type === "Normal" ? "Normal" : completeModal.abnormalType.toUpperCase();
+    const targetTicketId = completeModal.ticket.id;
 
-    onUpdateTicket(completeModal.ticket.id, "status", finalStatus);
-    setCompleteModal({
-      isOpen: false,
-      ticket: null,
-      step: "select",
-      type: "",
-      abnormalType: "",
-    });
+    // Update inside your RiskOps Database
+    onUpdateTicket(targetTicketId, "status", finalStatus);
+
+    // --- NEW: TRIGGER GOOGLE SHEETS LIVE SYNC ---
+    supabase.functions.invoke('sync-sheets', {
+      body: {
+        action: 'UPDATE',
+        ticketId: targetTicketId,
+        status: finalStatus
+      }
+    }).catch(e => console.error("Sheet Update Error:", e)); // Fired in background
+
+    setCompleteModal({ isOpen: false, ticket: null, step: "select", type: "", abnormalType: "" });
   };
 
   const getDynamicBannerText = () => {
