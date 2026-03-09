@@ -457,32 +457,39 @@ export default function TicketTable({
   const executeHandover = async () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const nextShift = getNextShift(currentActiveShift);
-    
+
     const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
 
     await supabase.from("shift_notifications").insert({
       target_shift: nextShift,
       message: msg,
-      duties: dutyArray
+      duties: dutyArray,
     });
 
-    const completedIds = tickets.filter((t) => t.status !== "Pending").map((t) => t.id);
+    const completedIds = tickets
+      .filter((t) => t.status !== "Pending")
+      .map((t) => t.id);
     if (completedIds.length > 0) {
-      await supabase.from("tickets").update({ is_archived: true }).in("id", completedIds);
+      await supabase
+        .from("tickets")
+        .update({ is_archived: true })
+        .in("id", completedIds);
     }
 
     // --- NEW: TRIGGER GOOGLE SHEETS APPEND ---
     if (pendingTix.length > 0) {
-      supabase.functions.invoke('sync-sheets', {
-        body: {
-          action: 'APPEND',
-          tickets: pendingTix,
-          handoverBy: shortWorkName
-        }
-      }).catch(e => console.error("Sheet Handover Error:", e)); // Fired in background so UI doesn't freeze
+      supabase.functions
+        .invoke("sync-sheets", {
+          body: {
+            action: "APPEND",
+            tickets: pendingTix,
+            handoverBy: shortWorkName,
+          },
+        })
+        .catch((e) => console.error("Sheet Handover Error:", e)); // Fired in background so UI doesn't freeze
     }
 
-    setDuty([]); 
+    setDuty([]);
     setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
 
@@ -526,22 +533,33 @@ export default function TicketTable({
     const script = getGeneratedScript();
     navigator.clipboard.writeText(script);
 
-    const finalStatus = completeModal.type === "Normal" ? "Normal" : completeModal.abnormalType.toUpperCase();
+    const finalStatus =
+      completeModal.type === "Normal"
+        ? "Normal"
+        : completeModal.abnormalType.toUpperCase();
     const targetTicketId = completeModal.ticket.id;
 
     // Update inside your RiskOps Database
     onUpdateTicket(targetTicketId, "status", finalStatus);
 
     // --- NEW: TRIGGER GOOGLE SHEETS LIVE SYNC ---
-    supabase.functions.invoke('sync-sheets', {
-      body: {
-        action: 'UPDATE',
-        ticketId: targetTicketId,
-        status: finalStatus
-      }
-    }).catch(e => console.error("Sheet Update Error:", e)); // Fired in background
+    supabase.functions
+      .invoke("sync-sheets", {
+        body: {
+          action: "UPDATE",
+          ticketId: targetTicketId,
+          status: finalStatus,
+        },
+      })
+      .catch((e) => console.error("Sheet Update Error:", e)); // Fired in background
 
-    setCompleteModal({ isOpen: false, ticket: null, step: "select", type: "", abnormalType: "" });
+    setCompleteModal({
+      isOpen: false,
+      ticket: null,
+      step: "select",
+      type: "",
+      abnormalType: "",
+    });
   };
 
   const getDynamicBannerText = () => {
@@ -638,15 +656,13 @@ export default function TicketTable({
   }
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
-  const isHandoverDisabled =
-    (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
+  const isHandoverDisabled = (!isMyShiftActive && !isAdminOrLeader);
 
   let handoverTooltip = "Handover Shift";
   if (!isMyShiftActive && !isAdminOrLeader)
     handoverTooltip = "You can only handover during your assigned shift time.";
   else if (!isInHandoverWindow)
-    handoverTooltip =
-      "Only available during shift handover time's (:15 to :45)";
+    handoverTooltip = "Click to Force Early Handover";
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
@@ -1625,84 +1641,133 @@ export default function TicketTable({
           <div className="bg-white w-[450px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <FileWarning size={18} className="text-rose-600" /> Abnormal Script Generator
+                <FileWarning size={18} className="text-rose-600" /> Abnormal
+                Script Generator
               </h3>
               <button
-                onClick={() => setAbnormalModalState({ ...abnormalModalState, isOpen: false })}
+                onClick={() =>
+                  setAbnormalModalState({
+                    ...abnormalModalState,
+                    isOpen: false,
+                  })
+                }
                 className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
-            
+
             <div className="p-6 space-y-4">
               <p className="text-sm text-slate-600 mb-2 leading-relaxed">
-                Generate an abnormal notification script for providers that don't allow formal ticket creation.
+                Generate an abnormal notification script for providers that
+                don't allow formal ticket creation.
               </p>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Provider Source <span className="text-red-500">*</span></label>
-                <select 
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  Provider Source <span className="text-red-500">*</span>
+                </label>
+                <select
                   value={abnormalModalState.provider}
-                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, provider: e.target.value })}
+                  onChange={(e) =>
+                    setAbnormalModalState({
+                      ...abnormalModalState,
+                      provider: e.target.value,
+                    })
+                  }
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer"
                 >
-                  <option value="" disabled>Select Provider</option>
+                  <option value="" disabled>
+                    Select Provider
+                  </option>
                   {Object.keys(PROVIDER_CONFIG).map((p) => (
-                    <option key={p} value={p}>{p}</option>
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Member ID <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. user@017" 
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  Member ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. user@017"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-100"
                   value={abnormalModalState.memberId}
-                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, memberId: e.target.value })}
+                  onChange={(e) =>
+                    setAbnormalModalState({
+                      ...abnormalModalState,
+                      memberId: e.target.value,
+                    })
+                  }
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Abnormal Type <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. fraudulent betting, arbitrage" 
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  Abnormal Type <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. fraudulent betting, arbitrage"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-100 uppercase"
                   value={abnormalModalState.abnormalType}
-                  onChange={(e) => setAbnormalModalState({ ...abnormalModalState, abnormalType: e.target.value })}
+                  onChange={(e) =>
+                    setAbnormalModalState({
+                      ...abnormalModalState,
+                      abnormalType: e.target.value,
+                    })
+                  }
                 />
               </div>
 
-              {abnormalModalState.provider && abnormalModalState.memberId && abnormalModalState.abnormalType ? (
+              {abnormalModalState.provider &&
+              abnormalModalState.memberId &&
+              abnormalModalState.abnormalType ? (
                 <div className="pt-2 animate-in slide-in-from-bottom-2">
-                  <span className="text-xs font-bold text-slate-400 uppercase mb-2 block">Script Preview</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase mb-2 block">
+                    Script Preview
+                  </span>
                   <div className="relative group">
-                    <textarea 
-                      readOnly 
+                    <textarea
+                      readOnly
                       value={`Hello team,this is ${shortWorkName}. Please refer to the below information from provider, thank you.\n\nAnnouncement：【${abnormalModalState.provider}】 confirm this member is【${abnormalModalState.abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${abnormalModalState.memberId}`}
-                      className="w-full h-44 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-mono resize-none focus:outline-none focus:border-rose-400 transition-colors leading-relaxed" 
+                      className="w-full h-44 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-mono resize-none focus:outline-none focus:border-rose-400 transition-colors leading-relaxed"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => {
-                      navigator.clipboard.writeText(`Hello team,this is ${shortWorkName}. Please refer to the below information from provider, thank you.\n\nAnnouncement：【${abnormalModalState.provider}】 confirm this member is【${abnormalModalState.abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${abnormalModalState.memberId}`);
+                      navigator.clipboard.writeText(
+                        `Hello team,this is ${shortWorkName}. Please refer to the below information from provider, thank you.\n\nAnnouncement：【${abnormalModalState.provider}】 confirm this member is【${abnormalModalState.abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${abnormalModalState.memberId}`,
+                      );
                       setCopiedAbnormal(true);
                       setTimeout(() => {
                         setCopiedAbnormal(false);
-                        setAbnormalModalState({ isOpen: false, provider: "", memberId: "", abnormalType: "" });
+                        setAbnormalModalState({
+                          isOpen: false,
+                          provider: "",
+                          memberId: "",
+                          abnormalType: "",
+                        });
                       }, 1500);
-                    }} 
+                    }}
                     className="w-full mt-3 py-3 bg-rose-600 text-white text-sm font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-md flex items-center justify-center gap-2"
                   >
-                    {copiedAbnormal ? <CheckCircle2 size={16} /> : <Copy size={16} />} 
+                    {copiedAbnormal ? (
+                      <CheckCircle2 size={16} />
+                    ) : (
+                      <Copy size={16} />
+                    )}
                     {copiedAbnormal ? "Copied!" : "Copy Script & Close"}
                   </button>
                 </div>
               ) : (
-                 <div className="pt-4 text-center text-xs text-slate-400 italic">Fill all fields to generate script</div>
+                <div className="pt-4 text-center text-xs text-slate-400 italic">
+                  Fill all fields to generate script
+                </div>
               )}
             </div>
           </div>
