@@ -231,7 +231,7 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const handleCopyHold = () => {
-    const script = `This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You. - ${shortWorkName}`;
+    const script = `Hello Sir, this is ${shortWorkName}.\n This issue has been forwarded to the related team to be confirmed, Kindly be reminded that if the member applies for withdrawal before we receive any response, we suggest you not to approve it until we have the result, we will inform you as soon as we have any update, Thank You.`;
     navigator.clipboard.writeText(script);
     setCopiedHold(true);
     setTimeout(() => setCopiedHold(false), 2000);
