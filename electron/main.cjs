@@ -1,9 +1,10 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
 let mainWindow;
+let updaterInitialized = false;
 
 function emitUpdaterStatus(status) {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -47,6 +48,11 @@ function createWindow() {
 }
 
 function setupAutoUpdater() {
+  if (updaterInitialized) {
+    return;
+  }
+
+  updaterInitialized = true;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -113,8 +119,33 @@ function setupAutoUpdater() {
   autoUpdater.checkForUpdates();
 }
 
+async function checkForUpdatesManually() {
+  if (isDev) {
+    emitUpdaterStatus({ type: 'none', message: 'Manual update check is only available in packaged builds.' });
+    return { ok: false, reason: 'dev' };
+  }
+
+  if (!updaterInitialized) {
+    setupAutoUpdater();
+    return { ok: true, reason: 'initialized' };
+  }
+
+  emitUpdaterStatus({ type: 'checking', message: 'Checking for updates...' });
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (error) {
+    const message = error == null ? 'unknown error' : error.message;
+    emitUpdaterStatus({ type: 'error', message: `Manual update check failed: ${message}` });
+    return { ok: false, reason: 'error', message };
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
+
+  ipcMain.handle('updater:check-now', async () => checkForUpdatesManually());
 
   if (!isDev) {
     setupAutoUpdater();

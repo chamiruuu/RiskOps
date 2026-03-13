@@ -39,6 +39,7 @@ export default function Header() {
     setDuty,
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // --- Admin Modal States ---
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -114,6 +115,52 @@ export default function Header() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
+      return undefined;
+    }
+
+    const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
+      if (!payload || !payload.type) return;
+
+      if (payload.type === "checking" || payload.type === "downloading") {
+        setIsCheckingUpdate(true);
+        return;
+      }
+
+      if (
+        payload.type === "none" ||
+        payload.type === "available" ||
+        payload.type === "downloaded" ||
+        payload.type === "error" ||
+        payload.type === "installing"
+      ) {
+        setIsCheckingUpdate(false);
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    if (!window.electronAPI || typeof window.electronAPI.checkForUpdates !== "function") {
+      alert("Update check is only available in the desktop app build.");
+      return;
+    }
+
+    setIsCheckingUpdate(true);
+    try {
+      await window.electronAPI.checkForUpdates();
+    } catch {
+      setIsCheckingUpdate(false);
+      alert("Unable to start update check. Please try again.");
+    }
+  };
 
   useEffect(() => {
     if (showAdminModal || showShiftModal) {
@@ -714,6 +761,19 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-4">
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={isCheckingUpdate}
+            className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${isCheckingUpdate ? "bg-sky-100 text-sky-600 cursor-not-allowed" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+            title={isCheckingUpdate ? "Checking for updates..." : "Check for Updates"}
+          >
+            <RefreshCw
+              size={16}
+              strokeWidth={2.5}
+              className={isCheckingUpdate ? "animate-spin" : ""}
+            />
+          </button>
+
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
           {!isAdminOrLeader && (
             <button
