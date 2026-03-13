@@ -1,7 +1,7 @@
 {
   "name": "riskops-tms",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "main": "electron/main.cjs",
   "author": "RiskOps",
@@ -16,7 +16,8 @@
     "electron:build:portable": "vite build && electron-builder --win --config.win.target=portable",
     "electron:build:nsis": "vite build && electron-builder --win --config.win.target=nsis",
     "electron:build:dir": "vite build && electron-builder --win --dir",
-    "electron:publish": "vite build && electron-builder --win --publish always"
+    "electron:publish": "vite build && electron-builder --win --publish always",
+    "publish": "node scripts/publish-release.js"
   },
   "build": {
     "appId": "com.riskops.tms",
@@ -36,6 +37,7 @@
           "arch": ["x64"]
         }
       ],
+      "icon": "electron/assets/icon.ico",
       "artifactName": "RiskOps-TMS-Setup-${version}.${ext}",
       "signAndEditExecutable": false
     },
@@ -51,7 +53,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "RiskOps TMS"
+      "shortcutName": "RiskOps TMS",
+      "installerIcon": "electron/assets/icon.ico",
+      "uninstallerIcon": "electron/assets/icon.ico"
     }
   },
   "dependencies": {
