@@ -695,6 +695,11 @@ export default function Header() {
       return `linear-gradient(135deg, ${colors[0]}, ${colors[0]})`;
     return `linear-gradient(135deg, ${colors.join(", ")})`;
   };
+  const mappedDutyArray = safeDutyArray.filter((duty) => dutyColors[duty]);
+  const gradientDutyCount = mappedDutyArray.length;
+  const useGradientLogoIcon = gradientDutyCount >= 2;
+  const logoTitleColor =
+    gradientDutyCount === 1 ? dutyColors[mappedDutyArray[0]] : "#000000";
   // -----------------------------------------
 
   const formattedDate = currentTime.toLocaleDateString("en-US", {
@@ -769,14 +774,19 @@ export default function Header() {
       <header className="bg-white rounded-2xl shadow-sm border border-slate-100 mx-6 mt-6 px-6 h-16 flex items-center justify-between shrink-0 z-40 relative">
         <div className="flex items-center gap-3">
           <div
-            className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-300 ${style.container} ${style.text}`}
+            className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-300 ${useGradientLogoIcon ? "text-white" : `${style.container} ${style.text}`}`}
+            style={
+              useGradientLogoIcon
+                ? { backgroundImage: getDynamicGradient(safeDutyArray) }
+                : undefined
+            }
           >
             <Shield size={18} />
           </div>
           <div>
             <h1
-              className="text-sm font-black tracking-tight text-transparent bg-clip-text"
-              style={{ backgroundImage: getDynamicGradient(safeDutyArray) }}
+              className="text-sm font-black tracking-tight transition-colors duration-300"
+              style={{ color: logoTitleColor }}
             >
               RiskOps Portal
             </h1>
