@@ -20,8 +20,8 @@
     "publish": "node scripts/publish-release.js"
   },
   "build": {
-    "appId": "com.riskops.tms",
-    "productName": "RiskOps TMS",
+    "appId": "com.riskops.icdro",
+    "productName": "RiskOps",
     "directories": {
       "output": "release"
     },
