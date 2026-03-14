@@ -1,7 +1,7 @@
 {
   "name": "riskops-tms",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "main": "electron/main.cjs",
   "author": "RiskOps",
@@ -40,8 +40,7 @@
         }
       ],
       "icon": "electron/assets/icon.ico",
-      "artifactName": "RiskOps-TMS-Setup-${version}.${ext}",
-      "signAndEditExecutable": false
+      "artifactName": "RiskOps-TMS-Setup-${version}.${ext}"
     },
     "publish": [
       {
