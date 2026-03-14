@@ -30,13 +30,13 @@ const getDutyTextColor = (dutyName) => {
     case "IC0":
       return "text-purple-700";
     case "IC1":
-      return "text-indigo-700";
+      return "text-[#6366F1]";
     case "IC2":
-      return "text-emerald-700";
+      return "text-[#10B981]";
     case "IC3":
-      return "text-amber-700";
+      return "text-[#F59E0B]";
     case "IC5":
-      return "text-rose-700";
+      return "text-[#F43F5E]";
     default:
       return "text-slate-700";
   }
@@ -48,13 +48,13 @@ const getDutyBorderRing = (dutyName) => {
     case "IC0":
       return "focus:border-purple-400 focus:ring-purple-50";
     case "IC1":
-      return "focus:border-indigo-400 focus:ring-indigo-50";
+      return "focus:border-[#6366F1] focus:ring-[#6366F1]/10";
     case "IC2":
-      return "focus:border-emerald-400 focus:ring-emerald-50";
+      return "focus:border-[#10B981] focus:ring-[#10B981]/10";
     case "IC3":
-      return "focus:border-amber-400 focus:ring-amber-50";
+      return "focus:border-[#F59E0B] focus:ring-[#F59E0B]/10";
     case "IC5":
-      return "focus:border-rose-400 focus:ring-rose-50";
+      return "focus:border-[#F43F5E] focus:ring-[#F43F5E]/10";
     default:
       return "focus:border-slate-400 focus:ring-slate-50";
   }
@@ -65,13 +65,13 @@ const getDutyButton = (dutyName) => {
     case "IC0":
       return "bg-purple-600 hover:bg-purple-700";
     case "IC1":
-      return "bg-indigo-600 hover:bg-indigo-700";
+      return "bg-[#6366F1] hover:bg-[#6366F1]/90";
     case "IC2":
-      return "bg-emerald-600 hover:bg-emerald-700";
+      return "bg-[#10B981] hover:bg-[#10B981]/90";
     case "IC3":
-      return "bg-amber-600 hover:bg-amber-700";
+      return "bg-[#F59E0B] hover:bg-[#F59E0B]/90";
     case "IC5":
-      return "bg-rose-600 hover:bg-rose-700";
+      return "bg-[#F43F5E] hover:bg-[#F43F5E]/90";
     default:
       return "bg-slate-600 hover:bg-slate-700";
   }
@@ -82,13 +82,13 @@ const getDutyHeaderBg = (dutyName) => {
     case "IC0":
       return "bg-purple-600";
     case "IC1":
-      return "bg-indigo-600";
+      return "bg-[#6366F1]";
     case "IC2":
-      return "bg-emerald-600";
+      return "bg-[#10B981]";
     case "IC3":
-      return "bg-amber-600";
+      return "bg-[#F59E0B]";
     case "IC5":
-      return "bg-rose-600";
+      return "bg-[#F43F5E]";
     default:
       return "bg-slate-600";
   }

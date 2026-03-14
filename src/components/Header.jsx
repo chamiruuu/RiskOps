@@ -99,13 +99,13 @@ export default function Header() {
       case "IC0":
         return "text-purple-600";
       case "IC1":
-        return "text-indigo-600";
+        return "text-[#6366F1]";
       case "IC2":
-        return "text-emerald-600";
+        return "text-[#10B981]";
       case "IC3":
-        return "text-amber-600";
+        return "text-[#F59E0B]";
       case "IC5":
-        return "text-rose-600";
+        return "text-[#F43F5E]";
       default:
         return "text-slate-600";
     }
@@ -117,7 +117,10 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
+    if (
+      !window.electronAPI ||
+      typeof window.electronAPI.onUpdaterStatus !== "function"
+    ) {
       return undefined;
     }
 
@@ -148,7 +151,10 @@ export default function Header() {
   }, []);
 
   const handleCheckForUpdates = async () => {
-    if (!window.electronAPI || typeof window.electronAPI.checkForUpdates !== "function") {
+    if (
+      !window.electronAPI ||
+      typeof window.electronAPI.checkForUpdates !== "function"
+    ) {
       alert("Update check is only available in the desktop app build.");
       return;
     }
@@ -642,23 +648,23 @@ export default function Header() {
         };
       case "IC1":
         return {
-          container: "bg-indigo-100 border-indigo-200",
-          text: "text-indigo-700",
+          container: "bg-[#6366F1]/15 border-[#6366F1]/30",
+          text: "text-[#6366F1]",
         };
       case "IC2":
         return {
-          container: "bg-emerald-100 border-emerald-200",
-          text: "text-emerald-700",
+          container: "bg-[#10B981]/15 border-[#10B981]/30",
+          text: "text-[#10B981]",
         };
       case "IC3":
         return {
-          container: "bg-amber-100 border-amber-200",
-          text: "text-amber-700",
+          container: "bg-[#F59E0B]/15 border-[#F59E0B]/30",
+          text: "text-[#F59E0B]",
         };
       case "IC5":
         return {
-          container: "bg-rose-100 border-rose-200",
-          text: "text-rose-700",
+          container: "bg-[#F43F5E]/15 border-[#F43F5E]/30",
+          text: "text-[#F43F5E]",
         };
       default:
         return {
@@ -673,6 +679,23 @@ export default function Header() {
     ? "IC0"
     : safeDutyArray[0];
   const style = getDutyStyle(primaryDutyTheme);
+
+  // --- NEW: DYNAMIC LOGO GRADIENT LOGIC ---
+  const dutyColors = {
+    IC1: "#6366F1", // Indigo
+    IC2: "#10B981", // Emerald
+    IC3: "#F59E0B", // Amber
+    IC5: "#F43F5E", // Rose
+  };
+
+  const getDynamicGradient = (activeDuties) => {
+    const colors = activeDuties.map((duty) => dutyColors[duty]).filter(Boolean);
+    if (colors.length === 0) return "linear-gradient(135deg, #1E293B, #475569)";
+    if (colors.length === 1)
+      return `linear-gradient(135deg, ${colors[0]}, ${colors[0]})`;
+    return `linear-gradient(135deg, ${colors.join(", ")})`;
+  };
+  // -----------------------------------------
 
   const formattedDate = currentTime.toLocaleDateString("en-US", {
     timeZone: "Asia/Singapore",
@@ -751,7 +774,10 @@ export default function Header() {
             <Shield size={18} />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-slate-900 tracking-tight">
+            <h1
+              className="text-sm font-black tracking-tight text-transparent bg-clip-text"
+              style={{ backgroundImage: getDynamicGradient(safeDutyArray) }}
+            >
               RiskOps Portal
             </h1>
             <p className="text-[10px] font-medium text-slate-500">
@@ -765,7 +791,9 @@ export default function Header() {
             onClick={handleCheckForUpdates}
             disabled={isCheckingUpdate}
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${isCheckingUpdate ? "bg-sky-100 text-sky-600 cursor-not-allowed" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-            title={isCheckingUpdate ? "Checking for updates..." : "Check for Updates"}
+            title={
+              isCheckingUpdate ? "Checking for updates..." : "Check for Updates"
+            }
           >
             <RefreshCw
               size={16}
@@ -1750,41 +1778,87 @@ export default function Header() {
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {isFetchingHistory ? (
                       <tr>
-                        <td colSpan="11" className="px-6 py-12 text-center text-slate-400 font-medium">
+                        <td
+                          colSpan="11"
+                          className="px-6 py-12 text-center text-slate-400 font-medium"
+                        >
                           <div className="flex items-center justify-center gap-2">
-                            <RefreshCw size={16} className="animate-spin text-indigo-500" /> Fetching secure records...
+                            <RefreshCw
+                              size={16}
+                              className="animate-spin text-indigo-500"
+                            />{" "}
+                            Fetching secure records...
                           </div>
                         </td>
                       </tr>
                     ) : archivedTickets.length === 0 ? (
                       <tr>
-                        <td colSpan="11" className="px-6 py-12 text-center text-slate-400 font-medium italic">
+                        <td
+                          colSpan="11"
+                          className="px-6 py-12 text-center text-slate-400 font-medium italic"
+                        >
                           No archived tickets found for this time period.
                         </td>
                       </tr>
                     ) : (
                       archivedTickets.map((t) => (
-                        <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                        <tr
+                          key={t.id}
+                          className="hover:bg-slate-50 transition-colors"
+                        >
                           <td className="px-4 py-3 text-slate-500 font-medium">
-                            {new Date(t.created_at).toLocaleDateString("en-GB", { month: "short", day: "2-digit" })} <span className="text-slate-400 ml-1">{new Date(t.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            {new Date(t.created_at).toLocaleDateString(
+                              "en-GB",
+                              { month: "short", day: "2-digit" },
+                            )}{" "}
+                            <span className="text-slate-400 ml-1">
+                              {new Date(t.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 font-bold text-slate-700">{t.ic_account}</td>
-                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">{t.merchant_name}</td>
-                          <td className="px-4 py-3 text-slate-600">{t.login_id || "-"}</td>
-                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">{t.member_id}</td>
-                          <td className="px-4 py-3 font-mono text-slate-600">{t.provider_account || "-"}</td>
-                          <td className="px-4 py-3 text-slate-600 font-medium">{t.provider}</td>
-                          <td className="px-4 py-3 font-mono text-slate-600">{t.tracking_no || "-"}</td>
-                          <td className="px-4 py-3 text-slate-500 font-medium">{t.recorder}</td>
+                          <td className="px-4 py-3 font-bold text-slate-700">
+                            {t.ic_account}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">
+                            {t.merchant_name}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {t.login_id || "-"}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">
+                            {t.member_id}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-600">
+                            {t.provider_account || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 font-medium">
+                            {t.provider}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-600">
+                            {t.tracking_no || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 font-medium">
+                            {t.recorder}
+                          </td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${t.notes && t.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-400 border-slate-200"}`}>
-                              {t.notes && t.notes.length > 0 ? `${t.notes.length} Messages` : "No Notes"}
+                            <span
+                              className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${t.notes && t.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-400 border-slate-200"}`}
+                            >
+                              {t.notes && t.notes.length > 0
+                                ? `${t.notes.length} Messages`
+                                : "No Notes"}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <span className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                              t.status === "Normal" || t.status === "NORMAL" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"
-                            }`}>
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                t.status === "Normal" || t.status === "NORMAL"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}
+                            >
                               {t.status}
                             </span>
                           </td>
