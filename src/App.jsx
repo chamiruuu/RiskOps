@@ -17,23 +17,6 @@ function Dashboard() {
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
   const [tickets, setTickets] = useState([]);
-  const [updaterStatus, setUpdaterStatus] = useState(null);
-
-  useEffect(() => {
-    if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
-      return undefined;
-    }
-
-    const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
-      setUpdaterStatus(payload);
-    });
-
-    return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
-    };
-  }, []);
 
   // 1. Define fetchTickets FIRST so React knows what it is
   const fetchTickets = async () => {
@@ -213,16 +196,6 @@ function Dashboard() {
   return (
     <div className="h-screen bg-slate-50 text-slate-900 font-sans flex flex-col overflow-hidden">
       <Header />
-      {updaterStatus && (
-        <div className="mx-6 mt-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900">
-          <div className="flex items-center justify-between gap-4">
-            <p className="font-medium">{updaterStatus.message}</p>
-            {updaterStatus.type === "downloading" && typeof updaterStatus.percent === "number" && (
-              <span className="font-semibold">{updaterStatus.percent.toFixed(1)}%</span>
-            )}
-          </div>
-        </div>
-      )}
       <div className="flex flex-1 overflow-hidden p-6 gap-6">
         <TicketForm onAddTicket={handleAddTicket} />
         <TicketTable 

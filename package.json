@@ -1,7 +1,7 @@
 {
   "name": "riskops-tms",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.5",
   "type": "module",
   "main": "electron/main.cjs",
   "author": "RiskOps",
@@ -34,7 +34,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "electron/assets/icon.ico",

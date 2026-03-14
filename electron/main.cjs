@@ -1,10 +1,15 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
 let mainWindow;
 let updaterInitialized = false;
+
+// Required on Windows so taskbar/pinned icon uses the app identity instead of Electron default.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.riskops.icdro');
+}
 
 function emitUpdaterStatus(status) {
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -23,6 +28,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
+    icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -99,21 +105,6 @@ function setupAutoUpdater() {
       version: info.version,
       message: `Update ${info.version} is ready. Restart to install.`,
     });
-
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Update Ready',
-      message: `Version ${info.version} has been downloaded.`,
-      detail: 'Restart now to finish installing the update.',
-    });
-
-    if (result.response === 0) {
-      emitUpdaterStatus({ type: 'installing', message: 'Restarting to install update...' });
-      autoUpdater.quitAndInstall();
-    }
   });
 
   autoUpdater.checkForUpdates();
@@ -146,6 +137,11 @@ app.whenReady().then(() => {
   createWindow();
 
   ipcMain.handle('updater:check-now', async () => checkForUpdatesManually());
+  ipcMain.handle('updater:restart-now', async () => {
+    emitUpdaterStatus({ type: 'installing', message: 'Restarting to install update...' });
+    autoUpdater.quitAndInstall();
+    return { ok: true };
+  });
 
   if (!isDev) {
     setupAutoUpdater();

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   isElectron: true,
   checkForUpdates: () => ipcRenderer.invoke('updater:check-now'),
+  restartToInstallUpdate: () => ipcRenderer.invoke('updater:restart-now'),
   onUpdaterStatus: (callback) => {
     const wrapped = (_event, payload) => callback(payload);
     ipcRenderer.on('updater:status', wrapped);

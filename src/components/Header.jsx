@@ -92,6 +92,9 @@ export default function Header() {
   // --- TRACKING REMINDER STATE ---
   const [trackingReminder, setTrackingReminder] = useState(null);
   const [showDutySwitchConfirm, setShowDutySwitchConfirm] = useState(false);
+  const [updaterNotification, setUpdaterNotification] = useState(null);
+  const [showUpdaterToast, setShowUpdaterToast] = useState(false);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -132,6 +135,48 @@ export default function Header() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
+      return undefined;
+    }
+
+    const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
+      if (payload?.type !== "downloaded") {
+        return;
+      }
+
+      const notification = {
+        id: `update-ready-${Date.now()}`,
+        type: "update-ready",
+        text:
+          payload.message ||
+          "A new RiskOps update is ready. Restart the app to apply it.",
+        time: new Date().toISOString(),
+      };
+
+      setUpdaterNotification(notification);
+      setShowUpdaterToast(true);
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showUpdaterToast) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setShowUpdaterToast(false);
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [showUpdaterToast]);
 
   useEffect(() => {
     if (showAdminModal || showShiftModal) {
@@ -771,6 +816,10 @@ export default function Header() {
     globalNotifications.push(trackingReminder);
   }
 
+  if (updaterNotification) {
+    globalNotifications.push(updaterNotification);
+  }
+
   if (isAdminOrLeader && cycleWarning) {
     globalNotifications.push({
       id: "warning",
@@ -832,6 +881,23 @@ export default function Header() {
     setFeedbackText("");
     setFeedbackNotice({ text: "", type: "" });
     setIsSendingFeedback(false);
+  };
+
+  const handleRestartForUpdate = async () => {
+    if (
+      isInstallingUpdate ||
+      !window.electronAPI ||
+      typeof window.electronAPI.restartToInstallUpdate !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      setIsInstallingUpdate(true);
+      await window.electronAPI.restartToInstallUpdate();
+    } catch {
+      setIsInstallingUpdate(false);
+    }
   };
 
   const handleConfirmDutySwitch = () => {
@@ -1063,6 +1129,43 @@ export default function Header() {
                                     minute: "2-digit",
                                   })}
                                 </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "update-ready") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-emerald-50 border border-emerald-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                            <div className="flex items-start gap-2">
+                              <CheckCircle2
+                                size={16}
+                                className="text-emerald-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-emerald-800 mb-0.5">
+                                  Update Ready
+                                </h4>
+                                <p className="text-xs text-emerald-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-emerald-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                <button
+                                  onClick={handleRestartForUpdate}
+                                  disabled={isInstallingUpdate}
+                                  className="mt-2 text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  {isInstallingUpdate ? "Restarting..." : "Restart Now"}
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1491,6 +1594,36 @@ export default function Header() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showUpdaterToast && updaterNotification && (
+        <div className="fixed bottom-4 right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-white shadow-xl">
+          <div className="p-3 flex items-start gap-2">
+            <div className="mt-0.5 text-emerald-600">
+              <Bell size={16} />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-slate-900">Update Ready</p>
+              <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                {updaterNotification.text}
+              </p>
+              <button
+                onClick={handleRestartForUpdate}
+                disabled={isInstallingUpdate}
+                className="mt-2 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isInstallingUpdate ? "Restarting..." : "Restart Now"}
+              </button>
+            </div>
+            <button
+              onClick={() => setShowUpdaterToast(false)}
+              className="text-slate-400 hover:text-slate-600"
+              aria-label="Close update toast"
+            >
+              <X size={14} />
+            </button>
           </div>
         </div>
       )}
