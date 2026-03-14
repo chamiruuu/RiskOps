@@ -17,6 +17,14 @@ import {
   Eye,
   EyeOff,
   Bell,
+  MessageCircle,
+  ArrowLeftRight,
+  CircleHelp,
+  BookOpen,
+  Bug,
+  Sparkles,
+  History,
+  Send,
   CalendarDays,
   CheckCircle2,
   AlertTriangle,
@@ -39,7 +47,6 @@ export default function Header() {
     setDuty,
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
   // --- Admin Modal States ---
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -84,6 +91,7 @@ export default function Header() {
 
   // --- TRACKING REMINDER STATE ---
   const [trackingReminder, setTrackingReminder] = useState(null);
+  const [showDutySwitchConfirm, setShowDutySwitchConfirm] = useState(false);
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -91,6 +99,15 @@ export default function Header() {
   const [historyStartDate, setHistoryStartDate] = useState("");
   const [historyEndDate, setHistoryEndDate] = useState("");
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [selectedHistoryTicketForNotes, setSelectedHistoryTicketForNotes] =
+    useState(null);
+
+  // --- INFO CENTER STATES ---
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [infoView, setInfoView] = useState("menu");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState({ text: "", type: "" });
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
@@ -117,58 +134,6 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    if (
-      !window.electronAPI ||
-      typeof window.electronAPI.onUpdaterStatus !== "function"
-    ) {
-      return undefined;
-    }
-
-    const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
-      if (!payload || !payload.type) return;
-
-      if (payload.type === "checking" || payload.type === "downloading") {
-        setIsCheckingUpdate(true);
-        return;
-      }
-
-      if (
-        payload.type === "none" ||
-        payload.type === "available" ||
-        payload.type === "downloaded" ||
-        payload.type === "error" ||
-        payload.type === "installing"
-      ) {
-        setIsCheckingUpdate(false);
-      }
-    });
-
-    return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
-    };
-  }, []);
-
-  const handleCheckForUpdates = async () => {
-    if (
-      !window.electronAPI ||
-      typeof window.electronAPI.checkForUpdates !== "function"
-    ) {
-      alert("Update check is only available in the desktop app build.");
-      return;
-    }
-
-    setIsCheckingUpdate(true);
-    try {
-      await window.electronAPI.checkForUpdates();
-    } catch {
-      setIsCheckingUpdate(false);
-      alert("Unable to start update check. Please try again.");
-    }
-  };
-
-  useEffect(() => {
     if (showAdminModal || showShiftModal) {
       fetchTeam();
     }
@@ -190,7 +155,9 @@ export default function Header() {
       setTrackingReminder({
         id: "tracking-reminder-" + e.detail.time,
         type: "action-reminder",
-        text: `You have ${e.detail.missingCount} pending ticket(s) missing a Tracking ID. Handover opens in 5 minutes!`,
+        text:
+          e.detail.text ||
+          `You have ${e.detail.missingCount} pending ticket(s) missing a Tracking ID. Handover opens in 5 minutes!`,
         time: e.detail.time,
       });
     };
@@ -601,6 +568,8 @@ export default function Header() {
   useEffect(() => {
     if (showHistoryModal) {
       fetchArchivedTickets(historyStartDate, historyEndDate);
+    } else {
+      setSelectedHistoryTicketForNotes(null);
     }
   }, [showHistoryModal, historyStartDate, historyEndDate]);
 
@@ -700,6 +669,70 @@ export default function Header() {
   const useGradientLogoIcon = gradientDutyCount >= 2;
   const logoTitleColor =
     gradientDutyCount === 1 ? dutyColors[mappedDutyArray[0]] : "#000000";
+
+  const getTicketDutyThemeKey = (ticketDuty) => {
+    if (Array.isArray(ticketDuty)) {
+      return ticketDuty.includes("IC0") ? "IC0" : ticketDuty[0] || "";
+    }
+
+    if (typeof ticketDuty === "string") {
+      const trimmed = ticketDuty.trim();
+      if (!trimmed) return "";
+
+      if (trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed.includes("IC0") ? "IC0" : parsed[0] || "";
+          }
+        } catch {
+          // fallback to plain string parsing below
+        }
+      }
+
+      const dutyMatch = trimmed.match(/IC[0-9]/i);
+      if (dutyMatch) return dutyMatch[0].toUpperCase();
+    }
+
+    return "";
+  };
+
+  const getDutyHeaderBg = (dutyKey) => {
+    switch (dutyKey) {
+      case "IC0":
+        return "bg-purple-600";
+      case "IC1":
+        return "bg-[#6366F1]";
+      case "IC2":
+        return "bg-[#10B981]";
+      case "IC3":
+        return "bg-[#F59E0B]";
+      case "IC5":
+        return "bg-[#F43F5E]";
+      default:
+        return "bg-slate-700";
+    }
+  };
+
+  const activeHistoryNotes = useMemo(() => {
+    const notes = selectedHistoryTicketForNotes?.notes;
+    if (!notes) return [];
+    if (Array.isArray(notes)) return notes;
+    if (typeof notes === "string") {
+      try {
+        const parsed = JSON.parse(notes);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [selectedHistoryTicketForNotes]);
+
+  const historyModalDutyKey = getTicketDutyThemeKey(
+    selectedHistoryTicketForNotes?.ic_account,
+  );
+  const historyModalHeaderClass = getDutyHeaderBg(historyModalDutyKey);
   // -----------------------------------------
 
   const formattedDate = currentTime.toLocaleDateString("en-US", {
@@ -769,6 +802,96 @@ export default function Header() {
 
   const hasNotifications = globalNotifications.length > 0;
 
+  const APP_VERSION = "1.0.3";
+  const VERSION_HISTORY_ITEMS = [
+    {
+      version: "1.0.3",
+      date: "2026-03",
+      notes: "UI refinements, archive chat modal improvements, and quality fixes.",
+    },
+    {
+      version: "1.0.2",
+      date: "2026-02",
+      notes: "Stability updates and packaging improvements.",
+    },
+    {
+      version: "1.0.1",
+      date: "2026-01",
+      notes: "Desktop installer and release pipeline improvements.",
+    },
+    {
+      version: "1.0.0",
+      date: "2025-12",
+      notes: "Initial production release.",
+    },
+  ];
+
+  const closeInfoModal = () => {
+    setShowInfoModal(false);
+    setInfoView("menu");
+    setFeedbackText("");
+    setFeedbackNotice({ text: "", type: "" });
+    setIsSendingFeedback(false);
+  };
+
+  const handleConfirmDutySwitch = () => {
+    setShowDutySwitchConfirm(false);
+    setDuty([]);
+  };
+
+  const openManual = () => {
+    alert("RiskOps Manual link is not set yet.");
+  };
+
+  const submitFeedback = async (type) => {
+    if (!feedbackText.trim()) {
+      setFeedbackNotice({ text: "Please enter details before submitting.", type: "error" });
+      return;
+    }
+
+    setIsSendingFeedback(true);
+    setFeedbackNotice({ text: "", type: "" });
+
+    try {
+      const payload = {
+        service_id: "service_ek7yrd6",
+        template_id: "template_a5phivn",
+        user_id: "9YcKE1VQOAlpV78OM",
+        template_params: {
+          type: type === "bug" ? "Bug Report" : "Feature Suggestion",
+          user_name: workName || user?.email || "RiskOps Agent",
+          message: feedbackText,
+        },
+      };
+
+      const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to submit");
+      }
+
+      setFeedbackText("");
+      setFeedbackNotice({ text: "Submitted successfully.", type: "success" });
+      setTimeout(() => {
+        setInfoView("menu");
+        setFeedbackNotice({ text: "", type: "" });
+      }, 1200);
+    } catch {
+      setFeedbackNotice({
+        text: "Unable to submit right now. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsSendingFeedback(false);
+    }
+  };
+
   return (
     <>
       <header className="bg-white rounded-2xl shadow-sm border border-slate-100 mx-6 mt-6 px-6 h-16 flex items-center justify-between shrink-0 z-40 relative">
@@ -797,31 +920,28 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-4">
-          <button
-            onClick={handleCheckForUpdates}
-            disabled={isCheckingUpdate}
-            className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${isCheckingUpdate ? "bg-sky-100 text-sky-600 cursor-not-allowed" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-            title={
-              isCheckingUpdate ? "Checking for updates..." : "Check for Updates"
-            }
-          >
-            <RefreshCw
-              size={16}
-              strokeWidth={2.5}
-              className={isCheckingUpdate ? "animate-spin" : ""}
-            />
-          </button>
-
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
           {!isAdminOrLeader && (
             <button
-              onClick={() => setDuty([])}
+              onClick={() => setShowDutySwitchConfirm(true)}
               className="flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2 bg-slate-100 text-slate-600 hover:bg-slate-200"
-              title="Change Duty"
+              title="Switch Duty"
             >
-              <RefreshCw size={16} strokeWidth={2.5} />
+              <ArrowLeftRight size={16} strokeWidth={2.5} />
             </button>
           )}
+
+          <button
+            onClick={() => {
+              setShowInfoModal(true);
+              setInfoView("menu");
+              setFeedbackNotice({ text: "", type: "" });
+            }}
+            className="flex items-center justify-center w-8 h-8 rounded-full transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200"
+            title="Info Center"
+          >
+            <CircleHelp size={16} strokeWidth={2.5} />
+          </button>
 
           {/* --- GLOBAL NOTIFICATION BELL --- */}
           <div className="relative">
@@ -1811,11 +1931,24 @@ export default function Header() {
                         </td>
                       </tr>
                     ) : (
-                      archivedTickets.map((t) => (
-                        <tr
-                          key={t.id}
-                          className="hover:bg-slate-50 transition-colors"
-                        >
+                      archivedTickets.map((t) => {
+                        let rowNotes = [];
+                        if (Array.isArray(t.notes)) {
+                          rowNotes = t.notes;
+                        } else if (typeof t.notes === "string") {
+                          try {
+                            const parsed = JSON.parse(t.notes);
+                            rowNotes = Array.isArray(parsed) ? parsed : [];
+                          } catch {
+                            rowNotes = [];
+                          }
+                        }
+
+                        return (
+                          <tr
+                            key={t.id}
+                            className="hover:bg-slate-50 transition-colors"
+                          >
                           <td className="px-4 py-3 text-slate-500 font-medium">
                             {new Date(t.created_at).toLocaleDateString(
                               "en-GB",
@@ -1852,15 +1985,22 @@ export default function Header() {
                           <td className="px-4 py-3 text-slate-500 font-medium">
                             {t.recorder}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${t.notes && t.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-400 border-slate-200"}`}
-                            >
-                              {t.notes && t.notes.length > 0
-                                ? `${t.notes.length} Messages`
-                                : "No Notes"}
-                            </span>
-                          </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() =>
+                                  setSelectedHistoryTicketForNotes({
+                                    ...t,
+                                    notes: rowNotes,
+                                  })
+                                }
+                                className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${rowNotes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
+                                title="View chat history"
+                              >
+                                {rowNotes.length > 0
+                                  ? `${rowNotes.length} Messages`
+                                  : "No Notes"}
+                              </button>
+                            </td>
                           <td className="px-4 py-3 text-center">
                             <span
                               className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -1872,11 +2012,275 @@ export default function Header() {
                               {t.status}
                             </span>
                           </td>
-                        </tr>
-                      ))
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInfoModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[520px] max-w-[95vw] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 text-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold tracking-wide flex items-center gap-2">
+                  <CircleHelp size={16} /> RiskOps Info Center
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1">Version {APP_VERSION}</p>
+              </div>
+              <button
+                onClick={closeInfoModal}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 bg-slate-50">
+              {infoView === "menu" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={openManual}
+                    className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                      <BookOpen size={16} className="text-indigo-600" />
+                      RiskOps Manual
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Open usage and SOP manual.</p>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setInfoView("bug");
+                      setFeedbackText("");
+                      setFeedbackNotice({ text: "", type: "" });
+                    }}
+                    className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-rose-300 hover:bg-rose-50/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                      <Bug size={16} className="text-rose-600" />
+                      Report a Bug
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Send issue details to the team.</p>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setInfoView("feature");
+                      setFeedbackText("");
+                      setFeedbackNotice({ text: "", type: "" });
+                    }}
+                    className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                      <Sparkles size={16} className="text-emerald-600" />
+                      Suggest New Feature
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Share improvements for RiskOps.</p>
+                  </button>
+
+                  <button
+                    onClick={() => setInfoView("versions")}
+                    className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-amber-300 hover:bg-amber-50/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                      <History size={16} className="text-amber-600" />
+                      Version History
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">View release changes.</p>
+                  </button>
+                </div>
+              )}
+
+              {(infoView === "bug" || infoView === "feature") && (
+                <div className="bg-white border border-slate-200 rounded-xl p-4">
+                  <h4 className="text-sm font-bold text-slate-800 mb-1">
+                    {infoView === "bug" ? "Report a Bug" : "Suggest New Feature"}
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-3">
+                    {infoView === "bug"
+                      ? "Describe what happened, steps to reproduce, and expected behavior."
+                      : "Describe your idea, use case, and expected benefit."}
+                  </p>
+
+                  <textarea
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder={
+                      infoView === "bug"
+                        ? "Example: In TicketForm, clicking Create during shift handover..."
+                        : "Example: Add bulk status update for selected tickets..."
+                    }
+                    className="w-full h-36 resize-none px-3 py-2 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-400"
+                  />
+
+                  {feedbackNotice.text && (
+                    <div
+                      className={`mt-3 text-xs font-bold px-3 py-2 rounded-lg ${feedbackNotice.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}
+                    >
+                      {feedbackNotice.text}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center justify-between">
+                    <button
+                      onClick={() => {
+                        setInfoView("menu");
+                        setFeedbackText("");
+                        setFeedbackNotice({ text: "", type: "" });
+                      }}
+                      className="px-3 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={() => submitFeedback(infoView)}
+                      disabled={isSendingFeedback}
+                      className="px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-lg transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                    >
+                      <Send size={13} />
+                      {isSendingFeedback ? "Submitting..." : "Submit"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {infoView === "versions" && (
+                <div className="bg-white border border-slate-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-slate-800">Version History</h4>
+                    <button
+                      onClick={() => setInfoView("menu")}
+                      className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                      Back
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {VERSION_HISTORY_ITEMS.map((entry) => (
+                      <div
+                        key={entry.version}
+                        className="border border-slate-200 rounded-lg p-3 bg-slate-50"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-800">v{entry.version}</span>
+                          <span className="text-[10px] font-medium text-slate-500">{entry.date}</span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">{entry.notes}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedHistoryTicketForNotes && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[120] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-slate-50 w-[420px] h-[560px] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div
+              className={`px-5 py-4 ${historyModalHeaderClass} flex items-center justify-between text-white shadow-md`}
+            >
+              <div>
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <MessageCircle size={16} /> Chat History
+                </h3>
+                <p className="text-[11px] font-medium text-white/80 mt-1">
+                  Player: {selectedHistoryTicketForNotes.member_id}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedHistoryTicketForNotes(null)}
+                className="p-1.5 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {activeHistoryNotes.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-60">
+                  <MessageCircle size={32} className="text-slate-400 mb-2" />
+                  <p className="text-xs text-slate-500 font-medium">
+                    No chat history for this ticket.
+                  </p>
+                </div>
+              ) : (
+                activeHistoryNotes.map((note, idx) => (
+                  <div
+                    key={idx}
+                    className="flex flex-col items-start w-full animate-in slide-in-from-bottom-2 duration-300"
+                  >
+                    <div className="flex items-center gap-2 mb-1 ml-2">
+                      <span className="text-[10px] font-bold text-slate-600">
+                        {note.author || "Unknown"}
+                      </span>
+                      <span className="text-[9px] font-medium text-slate-400">
+                        {note.timestamp || ""}
+                      </span>
+                    </div>
+                    <div className="bg-white border border-slate-200 shadow-sm text-slate-700 text-xs px-4 py-2.5 rounded-2xl rounded-tl-sm max-w-[88%] leading-relaxed whitespace-pre-wrap">
+                      {note.text || "-"}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-3 bg-white border-t border-slate-200 text-[10px] text-slate-500 font-medium text-center">
+              Read-only archive view for {historyModalDutyKey || "Unknown Duty"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDutySwitchConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[130] flex items-center justify-center animate-in fade-in duration-200 p-4">
+          <div className="bg-white w-[420px] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <AlertTriangle size={16} className="text-amber-500" />
+                Confirm Duty Switch
+              </h3>
+              <button
+                onClick={() => setShowDutySwitchConfirm(false)}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Are you sure you want to switch duty? This will return you to the duty selector page.
+              </p>
+
+              <div className="mt-5 flex items-center justify-end gap-2.5">
+                <button
+                  onClick={() => setShowDutySwitchConfirm(false)}
+                  className="px-3.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDutySwitch}
+                  className="px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-lg transition-colors"
+                >
+                  Yes, Switch Duty
+                </button>
               </div>
             </div>
           </div>

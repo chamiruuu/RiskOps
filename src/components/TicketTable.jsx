@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
   MessageSquare,
@@ -137,10 +137,36 @@ const checkIsHandoverWindow = () => {
   );
 };
 
+const getHandoverShiftPair = () => {
+  const now = getGMT8Time();
+  const h = now.getHours();
+  const m = now.getMinutes();
+
+  if (h === 14 && m >= 15 && m <= 45) {
+    return { outgoing: "Morning", incoming: "Afternoon" };
+  }
+
+  if (h === 22 && m >= 15 && m <= 45) {
+    return { outgoing: "Afternoon", incoming: "Night" };
+  }
+
+  if ((h === 6 && m >= 45) || (h === 7 && m <= 15)) {
+    return { outgoing: "Night", incoming: "Morning" };
+  }
+
+  return null;
+};
+
 const getNextShift = (current) => {
   if (current === "Morning") return "Afternoon";
   if (current === "Afternoon") return "Night";
   return "Morning";
+};
+
+const getPreviousShift = (current) => {
+  if (current === "Morning") return "Night";
+  if (current === "Afternoon") return "Morning";
+  return "Afternoon";
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -213,9 +239,9 @@ export default function TicketTable({
 }) {
   const {
     user,
-    workName,
     userRole,
     onlineUsers,
+    myAssignedShift,
     isMyShiftActive,
     currentActiveShift,
     activeRoster,
@@ -223,7 +249,6 @@ export default function TicketTable({
     transferResponse,
     resetTransferResponse,
     setDuty,
-    selectedDuty,
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
@@ -268,11 +293,19 @@ export default function TicketTable({
   // --- TRACKING ID REMINDER STATES ---
   const [showReminderToast, setShowReminderToast] = useState(false);
   const [lastReminderHour, setLastReminderHour] = useState(null);
+  const [reminderToast, setReminderToast] = useState({
+    title: "Handover Reminder",
+    text: "Handover opens in 5 minutes. Make sure your handover is correctly recorded for all entries.",
+  });
 
-  const dutyArray = Array.isArray(dutyNumber) ? dutyNumber : [];
+  const dutyArray = useMemo(
+    () => (Array.isArray(dutyNumber) ? dutyNumber : []),
+    [dutyNumber],
+  );
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(
     checkIsHandoverWindow(),
   );
+  const autoHandoverLoggedRef = useRef("");
 
   // --- SMART 5-MIN HANDOVER REMINDER ---
   useEffect(() => {
@@ -299,24 +332,34 @@ export default function TicketTable({
             t.tracking_no.trim() === "",
         );
 
-        // Only trigger if they actually have messy tickets!
-        if (missing.length > 0) {
-          setLastReminderHour(h);
-          setShowReminderToast(true);
+        const reminderText =
+          missing.length > 0
+            ? `You have ${missing.length} pending ticket(s) missing Tracking ID. Handover opens in 5 minutes.`
+            : "Handover opens in 5 minutes. Make sure your handover is correctly recorded for all entries.";
 
-          // Play Sound
-          const audio = new Audio(notificationSound);
-          audio.play().catch((e) => console.log("Audio blocked by browser"));
+        setLastReminderHour(h);
+        setReminderToast({
+          title: missing.length > 0 ? "Missing Tracking IDs" : "Handover Reminder",
+          text: reminderText,
+        });
+        setShowReminderToast(true);
 
-          // Send invisible signal to Notification Bell in Header
-          const event = new CustomEvent("tracking-reminder-alert", {
-            detail: { missingCount: missing.length, time: Date.now() },
-          });
-          window.dispatchEvent(event);
+        // Play Sound
+        const audio = new Audio(notificationSound);
+        audio.play().catch(() => console.log("Audio blocked by browser"));
 
-          // Hide local toast after 8 seconds
-          setTimeout(() => setShowReminderToast(false), 8000);
-        }
+        // Send signal to Notification Bell in Header
+        const event = new CustomEvent("tracking-reminder-alert", {
+          detail: {
+            missingCount: missing.length,
+            time: Date.now(),
+            text: reminderText,
+          },
+        });
+        window.dispatchEvent(event);
+
+        // Hide local toast after 8 seconds
+        setTimeout(() => setShowReminderToast(false), 8000);
       }
     };
 
@@ -422,6 +465,100 @@ export default function TicketTable({
     return () => clearInterval(interval);
   }, [tickets]);
 
+  const appendHandoverTicketsToSheet = useCallback(
+    async (handoverTickets) => {
+      if (!handoverTickets || handoverTickets.length === 0) return;
+
+      try {
+        await supabase.functions.invoke("sync-sheets", {
+          body: {
+            action: "APPEND",
+            tickets: handoverTickets,
+            handoverBy: shortWorkName,
+          },
+        });
+      } catch (e) {
+        console.error("Sheet Handover Error:", e);
+      }
+    },
+    [shortWorkName],
+  );
+
+  const syncHandoverAndNotify = useCallback(
+    async (pendingTix, mode = "Manual") => {
+      const nextShift = getNextShift(currentActiveShift);
+      const msg = `${shortWorkName} completed ${mode.toLowerCase()} handover for ${dutyArray.join(", ")}. ${pendingTix.length} pending ticket(s) handed over successfully.`;
+
+      await supabase.from("shift_notifications").insert({
+        target_shift: nextShift,
+        message: msg,
+        duties: dutyArray,
+      });
+
+      const completedIds = tickets
+        .filter((t) => t.status !== "Pending")
+        .map((t) => t.id);
+
+      if (completedIds.length > 0) {
+        await supabase
+          .from("tickets")
+          .update({ is_archived: true })
+          .in("id", completedIds);
+      }
+
+      await appendHandoverTicketsToSheet(pendingTix);
+
+      window.dispatchEvent(
+        new CustomEvent("handover-completed", {
+          detail: {
+            mode,
+            duties: dutyArray,
+            at: Date.now(),
+          },
+        }),
+      );
+    },
+    [appendHandoverTicketsToSheet, currentActiveShift, dutyArray, shortWorkName, tickets],
+  );
+
+  useEffect(() => {
+    const isOutgoingShift =
+      myAssignedShift &&
+      currentActiveShift &&
+      myAssignedShift === getPreviousShift(currentActiveShift);
+
+    // Auto handover at cutoff: once outgoing shift window has closed.
+    if (
+      isAdminOrLeader ||
+      !isOutgoingShift ||
+      isInHandoverWindow ||
+      dutyArray.length === 0
+    ) {
+      return;
+    }
+
+    const pendingTix = tickets.filter((t) => t.status === "Pending");
+    if (pendingTix.length === 0) return;
+
+    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+      .slice()
+      .sort()
+      .join(",")}`;
+
+    if (autoHandoverLoggedRef.current === marker) return;
+    autoHandoverLoggedRef.current = marker;
+
+    syncHandoverAndNotify(pendingTix, "Auto");
+  }, [
+    myAssignedShift,
+    currentActiveShift,
+    isInHandoverWindow,
+    isAdminOrLeader,
+    tickets,
+    dutyArray,
+    syncHandoverAndNotify,
+  ]);
+
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
   const checkHandoverEligibility = () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
@@ -456,40 +593,14 @@ export default function TicketTable({
 
   const executeHandover = async () => {
     const pendingTix = tickets.filter((t) => t.status === "Pending");
-    const nextShift = getNextShift(currentActiveShift);
+    await syncHandoverAndNotify(pendingTix, "Manual");
 
-    const msg = `${shortWorkName} handed over ${dutyArray.join(", ")}. There are ${pendingTix.length} pending tickets.`;
+    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+      .slice()
+      .sort()
+      .join(",")}`;
+    autoHandoverLoggedRef.current = marker;
 
-    await supabase.from("shift_notifications").insert({
-      target_shift: nextShift,
-      message: msg,
-      duties: dutyArray,
-    });
-
-    const completedIds = tickets
-      .filter((t) => t.status !== "Pending")
-      .map((t) => t.id);
-    if (completedIds.length > 0) {
-      await supabase
-        .from("tickets")
-        .update({ is_archived: true })
-        .in("id", completedIds);
-    }
-
-    // --- NEW: TRIGGER GOOGLE SHEETS APPEND ---
-    if (pendingTix.length > 0) {
-      supabase.functions
-        .invoke("sync-sheets", {
-          body: {
-            action: "APPEND",
-            tickets: pendingTix,
-            handoverBy: shortWorkName,
-          },
-        })
-        .catch((e) => console.error("Sheet Handover Error:", e)); // Fired in background so UI doesn't freeze
-    }
-
-    setDuty([]);
     setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
   };
 
@@ -503,8 +614,16 @@ export default function TicketTable({
     ? tickets.find((t) => t.id === selectedTicketForNotes.id)?.notes || []
     : [];
 
+  const handoverPair = getHandoverShiftPair();
+  const isHandoverPairViewer =
+    !!handoverPair &&
+    (myAssignedShift === handoverPair.outgoing ||
+      myAssignedShift === handoverPair.incoming);
+  const canViewTickets =
+    isMyShiftActive || (isInHandoverWindow && isHandoverPairViewer) || isAdminOrLeader;
+
   const filteredTickets = tickets.filter((ticket) => {
-    if (!isMyShiftActive && !isAdminOrLeader) return false;
+    if (!canViewTickets) return false;
 
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
@@ -523,7 +642,7 @@ export default function TicketTable({
   const getGeneratedScript = () => {
     const { type, abnormalType, ticket } = completeModal;
     if (type === "Normal") {
-      return `Hi sir as we checked, the member bet is normal. Thank you - ${shortWorkName}.`;
+      return `Hi sir as we checked, the member bet is normal in provider ${ticket?.provider || "-"}. Thank you - ${shortWorkName}.`;
     } else {
       return `Hello team, this is ${shortWorkName}. Please refer to the below information from provider, Thank You.\n\nAnnouncement：【${ticket?.provider || "Provider"}】 confirm this member is【${abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${ticket?.member_id || "Unknown"}`;
     }
@@ -656,15 +775,17 @@ export default function TicketTable({
   }
 
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
-  // Re-enabled lock: Button is disabled if it's not your shift OR not the handover window
-  const isHandoverDisabled =
-    (!isMyShiftActive && !isAdminOrLeader) || !isInHandoverWindow;
+  const isOutgoingForWindow =
+    !!handoverPair && myAssignedShift === handoverPair.outgoing;
+  const canInitiateHandover =
+    isAdminOrLeader || (isInHandoverWindow && isOutgoingForWindow);
+  const isHandoverDisabled = !canInitiateHandover || !isInHandoverWindow;
 
   let handoverTooltip = "Handover Shift";
-  if (!isMyShiftActive && !isAdminOrLeader)
-    handoverTooltip = "You can only handover during your assigned shift time.";
-  else if (!isInHandoverWindow)
+  if (!isInHandoverWindow)
     handoverTooltip = "Only available during shift handover times (:15 to :45)";
+  else if (!isOutgoingForWindow && !isAdminOrLeader)
+    handoverTooltip = "Only the outgoing shift can handover in this window.";
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
@@ -680,10 +801,9 @@ export default function TicketTable({
               <AlertTriangle size={18} className="text-amber-50" />
             </div>
             <div>
-              <h4 className="font-bold text-sm mb-0.5">Missing Tracking IDs</h4>
+              <h4 className="font-bold text-sm mb-0.5">{reminderToast.title}</h4>
               <p className="text-xs font-medium text-amber-50 leading-snug">
-                Handover window opens in 5 minutes! Please update your pending
-                tickets.
+                {reminderToast.text}
               </p>
             </div>
           </div>
@@ -792,7 +912,7 @@ export default function TicketTable({
       </div>
 
       {!dutyArray.includes("IC0") &&
-        !isMyShiftActive &&
+        !canViewTickets &&
         currentActiveShift &&
         !isAdminOrLeader && (
           <div className="mx-6 mt-4 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 text-indigo-700">
@@ -841,7 +961,7 @@ export default function TicketTable({
                   colSpan={showDutyColumn ? "12" : "11"}
                   className="px-6 py-12 text-center text-slate-400"
                 >
-                  {!isMyShiftActive && !isAdminOrLeader
+                  {!canViewTickets
                     ? "Waiting for the previous shift to handover..."
                     : searchTerm
                       ? `No tickets found matching "${searchTerm}"`
@@ -875,8 +995,14 @@ export default function TicketTable({
                     <td className="px-4 py-3 font-mono font-semibold text-slate-700">
                       {ticket.merchant_name}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {ticket.login_id}
+                    <td className="px-4 py-2">
+                      <EditableField
+                        ticket={ticket}
+                        fieldKey="login_id"
+                        placeholder="Login ID"
+                        addText="+ Add Login"
+                        onUpdateTicket={onUpdateTicket}
+                      />
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
@@ -1256,17 +1382,29 @@ export default function TicketTable({
                   Handover Completed
                 </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  This is the{" "}
-                  <strong>{getNextShift(currentActiveShift)}</strong> shift now.
                   Your handover has been sent securely to the incoming team.
-                  Your shift is officially done!
+                  You may continue viewing during the handover grace window.
                 </p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="w-full py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-lg transition-colors"
-                >
-                  Return to Login
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() =>
+                      setHandoverModal({
+                        isOpen: false,
+                        step: "",
+                        missingTickets: [],
+                      })
+                    }
+                    className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Continue
+                  </button>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Return to Login
+                  </button>
+                </div>
               </div>
             )}
           </div>

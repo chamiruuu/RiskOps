@@ -97,9 +97,11 @@ export default function TicketForm({ onAddTicket }) {
   });
 
   // --- SHIFT LOCKOUT STATE ---
+  const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(
     checkIsHandoverWindow(),
   );
+  const [isPostHandoverLocked, setIsPostHandoverLocked] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -108,8 +110,27 @@ export default function TicketForm({ onAddTicket }) {
     return () => clearInterval(timer);
   }, []);
 
-  const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
-  const canCreate = isMyShiftActive || isAdminOrLeader || isInHandoverWindow;
+  useEffect(() => {
+    const handleHandoverCompleted = () => {
+      if (!isAdminOrLeader) {
+        setIsPostHandoverLocked(true);
+      }
+    };
+
+    window.addEventListener("handover-completed", handleHandoverCompleted);
+    return () =>
+      window.removeEventListener("handover-completed", handleHandoverCompleted);
+  }, [isAdminOrLeader]);
+
+  useEffect(() => {
+    if (isAdminOrLeader || isMyShiftActive || !isInHandoverWindow) {
+      setIsPostHandoverLocked(false);
+    }
+  }, [isAdminOrLeader, isMyShiftActive, isInHandoverWindow]);
+
+  const canCreate =
+    (isMyShiftActive || isAdminOrLeader || isInHandoverWindow) &&
+    !isPostHandoverLocked;
 
   const [formData, setFormData] = useState({
     loginId: "",
@@ -387,7 +408,11 @@ export default function TicketForm({ onAddTicket }) {
           {!canCreate && (
             <span
               className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
-              title="You cannot create tickets until the handover window opens"
+              title={
+                isPostHandoverLocked
+                  ? "Handover completed. Outgoing shift cannot create new tickets."
+                  : "You cannot create tickets until the handover window opens"
+              }
             >
               <Lock size={10} /> Shift Locked
             </span>
@@ -839,7 +864,9 @@ export default function TicketForm({ onAddTicket }) {
                     <Plus size={18} />
                   )}
                   {!canCreate
-                    ? "Locked until Handover"
+                    ? isPostHandoverLocked
+                      ? "Locked after Handover"
+                      : "Locked until Handover"
                     : isCheckingPgSoft
                       ? "Checking Database..."
                       : "Create Ticket"}
@@ -1064,7 +1091,7 @@ export default function TicketForm({ onAddTicket }) {
             {formData.provider === 'BTi' && (
               <button
                 type="button"
-                onClick={() => handleCopy(btiRules, 'bti_rules')}
+                onClick={() => handleCopyField(btiRules, 'bti_rules')}
                 title="Copy BTi Query Conditions"
                 className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
               >
@@ -1077,7 +1104,7 @@ export default function TicketForm({ onAddTicket }) {
             {(formData.provider === 'PKQ' || formData.provider === 'PokerQ') && (
               <button
                 type="button"
-                onClick={() => handleCopy(pkqRules, 'pkq_rules')}
+                onClick={() => handleCopyField(pkqRules, 'pkq_rules')}
                 title="Copy PKQ Query Conditions"
                 className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
               >

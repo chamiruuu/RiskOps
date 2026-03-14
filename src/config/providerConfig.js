@@ -1419,6 +1419,45 @@ ACTION REQUIRED:
       "Submit queries via the Teams group normally.",
       "If TEAMS is unavailable, you MUST use Email or a Ticket to inquire.",
       "Email queries are only serviced on weekdays.",
+      "Note: The script automatically adds the required 'ZP_' prefix to the Provider Account.",
+    ],
+    process: [
+      "Check member details in BO.",
+      "Submit the generated script to the Teams Group: Zapport + Opus + SB2(new)",
+      "IF TEAMS IS DOWN: Send an email using the details below (Email is suggested over Tickets).",
+      {
+        text: "Email Fallback Details:",
+        copyText: `Title: Check if the member is normal  [O-Sport]
+To: ic.csduty@368media.com
+BCC: support@opus-gaming.com`,
+      },
+    ],
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
+    generateScript: (data, workName) => {
+      const { providerAccount, timeRange } = data;
+
+      if (providerAccount && timeRange) {
+        // Automatically appending the A1_ prefix as requested
+        return `Hello sir this is ${workName},
+Please help us check member betting normal or not. Thank you.
+
+Member ID：ZP_${providerAccount}
+Time period：${timeRange}`;
+      }
+      return "// fill in the required input feilds..";
+    },
+  },
+
+  // --- 48. OPUS SPORT ---
+  "OPUS SPORT OLD": {
+    channel: "Zapport + Opus + SB2(new)",
+    sla: "Standard (Email fallback on Weekdays only)",
+    conditions: [
+      "Submit queries via the Teams group normally.",
+      "If TEAMS is unavailable, you MUST use Email or a Ticket to inquire.",
+      "Email queries are only serviced on weekdays.",
       "Note: The script automatically adds the required 'A1_' prefix to the Provider Account.",
     ],
     process: [
