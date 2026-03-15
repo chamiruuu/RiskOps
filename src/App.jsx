@@ -1,4 +1,10 @@
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  HashRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -13,11 +19,11 @@ const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
 function Dashboard() {
   // FIX: Grab workName from Context
   const { selectedDuty, user, workName, myAssignedShift } = useDuty();
-  const dutyNumber = selectedDuty || []; 
-  
+  const dutyNumber = selectedDuty || [];
+
   // FIX: This takes "Fernando IPCS" and just keeps "Fernando" for your scripts
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
-  
+
   const [tickets, setTickets] = useState([]);
   const realtimeIssueRef = useRef(false);
   const degradedTimerRef = useRef(null);
@@ -40,21 +46,24 @@ function Dashboard() {
     }
   }, []);
 
-  const broadcastEditActivity = useCallback((ticketId, field) => {
-    if (!ownershipChannelRef.current || !user?.id) return;
+  const broadcastEditActivity = useCallback(
+    (ticketId, field) => {
+      if (!ownershipChannelRef.current || !user?.id) return;
 
-    ownershipChannelRef.current.send({
-      type: "broadcast",
-      event: "ticket_edit_activity",
-      payload: {
-        userId: user.id,
-        userName: shortWorkName,
-        ticketId,
-        field,
-        at: Date.now(),
-      },
-    });
-  }, [shortWorkName, user]);
+      ownershipChannelRef.current.send({
+        type: "broadcast",
+        event: "ticket_edit_activity",
+        payload: {
+          userId: user.id,
+          userName: shortWorkName,
+          ticketId,
+          field,
+          at: Date.now(),
+        },
+      });
+    },
+    [shortWorkName, user],
+  );
 
   // 1. Define fetchTickets FIRST so React knows what it is
   const fetchTickets = useCallback(async () => {
@@ -97,8 +106,8 @@ function Dashboard() {
         (payload) => {
           console.log("Live update received from Supabase!", payload);
           // Whenever ANY change happens in the database, silently refresh the list instantly!
-          fetchTickets(); 
-        }
+          fetchTickets();
+        },
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -193,7 +202,8 @@ function Dashboard() {
         if (now - localEdit.at > OWNERSHIP_CONFLICT_WINDOW_MS) return;
 
         const cooldownKey = `${ticketKey}|${payload.userId}`;
-        const lastAlert = ownershipAlertCooldownRef.current.get(cooldownKey) || 0;
+        const lastAlert =
+          ownershipAlertCooldownRef.current.get(cooldownKey) || 0;
         if (now - lastAlert < 20 * 1000) return;
 
         ownershipAlertCooldownRef.current.set(cooldownKey, now);
@@ -225,11 +235,14 @@ function Dashboard() {
     const time = gmt8.getHours() + gmt8.getMinutes() / 60;
 
     // 07:10 - 07:30 (Night is Outgoing)
-    if (time >= 7.1666 && time < 7.5 && myAssignedShift === "Night") return true;
+    if (time >= 7.1666 && time < 7.5 && myAssignedShift === "Night")
+      return true;
     // 14:40 - 15:00 (Morning is Outgoing)
-    if (time >= 14.6666 && time < 15.0 && myAssignedShift === "Morning") return true;
+    if (time >= 14.6666 && time < 15.0 && myAssignedShift === "Morning")
+      return true;
     // 22:40 - 23:00 (Afternoon is Outgoing)
-    if (time >= 22.6666 && time < 23.0 && myAssignedShift === "Afternoon") return true;
+    if (time >= 22.6666 && time < 23.0 && myAssignedShift === "Afternoon")
+      return true;
 
     return false;
   }, [myAssignedShift]);
@@ -259,7 +272,28 @@ function Dashboard() {
 
         console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
 
-        // --- ADD YOUR GOOGLE SHEET BATCH PUSH SCRIPT HERE ---
+        console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
+
+        // 1. Grab all tickets currently marked as "Pending"
+        const pendingTickets = tickets.filter(
+          (t) => t.status === "Pending" || t.status === "PENDING",
+        );
+
+        // 2. If there are pending tickets, push the whole array to the Sheet via Edge Function
+        if (pendingTickets.length > 0) {
+          supabase.functions
+            .invoke("sync-sheets", {
+              body: {
+                action: "APPEND",
+                tickets: pendingTickets,
+                handoverBy: workName || "System Auto",
+              },
+            })
+            .then(({ data, error }) => {
+              if (error) console.error("Batch Push Error:", error);
+              else console.log("Batch Push Success:", data);
+            });
+        }
         // Get all pending tickets for this user and push them to the Sheet
       }
     };
@@ -273,10 +307,10 @@ function Dashboard() {
     // --- STRICT RULE: Player ID is absolutely required ---
     if (!newTicket.member_id || newTicket.member_id.trim() === "") {
       alert("⚠️ Cannot proceed: Player ID is required to create a ticket!");
-      return; 
+      return;
     }
 
-    // Since TicketForm.jsx now pulls the exact merchant_name and ic_account 
+    // Since TicketForm.jsx now pulls the exact merchant_name and ic_account
     // straight from the live Google Sheet, we completely bypass the database lookup!
     // We just save the exact ticket payload directly to Supabase.
     const { data, error } = await supabase
@@ -293,7 +327,15 @@ function Dashboard() {
       // NEW: Send to Google Sheet if created by outgoing shift in Shared Zone
       if (isSharedZoneHandover()) {
         console.log("Pushing NEW ticket to Google Sheet Handover:", data[0]);
-        // fetch('YOUR_WEBHOOK_URL', { method: 'POST', body: JSON.stringify(data[0]) })
+        
+        // Edge function expects an array of tickets even for a single insert
+        supabase.functions.invoke('sync-sheets', {
+          body: {
+            action: 'APPEND',
+            tickets: [data[0]], 
+            handoverBy: workName || "Agent"
+          }
+        }).catch(err => console.error("Sheet Create Error:", err));
       }
     }
   };
@@ -304,21 +346,38 @@ function Dashboard() {
     broadcastEditActivity(id, field);
 
     // Optimistic UI update (makes the UI feel instantly fast)
-    setTickets(tickets.map(t => t.id === id ? { ...t, [field]: value } : t));
+    setTickets(
+      tickets.map((t) => (t.id === id ? { ...t, [field]: value } : t)),
+    );
 
     // NEW: Send edit to Google Sheet if edited by outgoing shift in Shared Zone
     if (isSharedZoneHandover()) {
-      console.log("Pushing UPDATED ticket to Google Sheet Handover:", { id, field, value });
-      // fetch('YOUR_WEBHOOK_URL', { method: 'POST', body: JSON.stringify({id, field, value}) })
+      // The Edge function only supports updating the 'status' column
+      if (field === 'status') {
+        console.log("Pushing UPDATED ticket to Google Sheet Handover:", { id, field, value });
+        
+        supabase.functions.invoke('sync-sheets', {
+          body: {
+            action: 'UPDATE',
+            ticketId: id,      
+            status: value       
+          }
+        }).catch(err => console.error("Sheet Update Error:", err));
+      }
     }
-    
+
     // Background DB update
-    const { error } = await supabase.from("tickets").update({ [field]: value }).eq("id", id);
-    
+    const { error } = await supabase
+      .from("tickets")
+      .update({ [field]: value })
+      .eq("id", id);
+
     // Check if Supabase rejected the update
     if (error) {
       console.error(`Failed to update ${field} in Supabase:`, error);
-      alert(`Could not save changes to ${field}. Please refresh and try again.`);
+      alert(
+        `Could not save changes to ${field}. Please refresh and try again.`,
+      );
       fetchTickets(); // Revert the UI if it failed to save
     }
   };
@@ -326,11 +385,11 @@ function Dashboard() {
   // --- NEW: 4. Delete Ticket ---
   const handleDeleteTicket = async (id) => {
     // Optimistic UI update: instantly remove it from the screen
-    setTickets(tickets.filter(t => t.id !== id));
+    setTickets(tickets.filter((t) => t.id !== id));
 
     // Tell Supabase to permanently delete it
     const { error } = await supabase.from("tickets").delete().eq("id", id);
-    
+
     if (error) {
       console.error("Failed to delete ticket in Supabase:", error);
       alert("Could not delete ticket. Please check your connection.");
@@ -343,15 +402,19 @@ function Dashboard() {
     registerLocalEdit(id, "notes");
     broadcastEditActivity(id, "notes");
 
-    const ticket = tickets.find(t => t.id === id);
-    
+    const ticket = tickets.find((t) => t.id === id);
+
     // Format the date (e.g., "Feb 16")
     const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    
+    const dateStr = now.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+
     // Shift logic (A, M, N) based on time
     const hour = now.getHours();
-    const shift = hour >= 6 && hour < 14 ? "M" : hour >= 14 && hour < 22 ? "A" : "N";
+    const shift =
+      hour >= 6 && hour < 14 ? "M" : hour >= 14 && hour < 22 ? "A" : "N";
 
     // Create the new note object with edit tracking
     const newNote = {
@@ -360,13 +423,15 @@ function Dashboard() {
       timestamp: `${dateStr} ${shift}`,
       createdAt: Date.now(), // Exact timestamp for 3-hour edit window
       createdByUserId: user?.id, // Track who created it
-      isEdited: false // Flag to show if note has been edited
+      isEdited: false, // Flag to show if note has been edited
     };
 
     const updatedNotes = [...(ticket.notes || []), newNote];
 
     // Update UI and DB
-    setTickets(tickets.map(t => t.id === id ? { ...t, notes: updatedNotes } : t));
+    setTickets(
+      tickets.map((t) => (t.id === id ? { ...t, notes: updatedNotes } : t)),
+    );
     await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", id);
   };
 
@@ -375,7 +440,7 @@ function Dashboard() {
     registerLocalEdit(ticketId, "notes");
     broadcastEditActivity(ticketId, "notes");
 
-    const ticket = tickets.find(t => t.id === ticketId);
+    const ticket = tickets.find((t) => t.id === ticketId);
     if (!ticket?.notes || !ticket.notes[noteIndex]) return;
 
     const updatedNotes = [...ticket.notes];
@@ -383,12 +448,19 @@ function Dashboard() {
       ...updatedNotes[noteIndex],
       text: newText,
       isEdited: true,
-      editedAt: Date.now()
+      editedAt: Date.now(),
     };
 
     // Update UI and DB
-    setTickets(tickets.map(t => t.id === ticketId ? { ...t, notes: updatedNotes } : t));
-    await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", ticketId);
+    setTickets(
+      tickets.map((t) =>
+        t.id === ticketId ? { ...t, notes: updatedNotes } : t,
+      ),
+    );
+    await supabase
+      .from("tickets")
+      .update({ notes: updatedNotes })
+      .eq("id", ticketId);
   };
 
   // 7. Delete a note
@@ -396,14 +468,21 @@ function Dashboard() {
     registerLocalEdit(ticketId, "notes");
     broadcastEditActivity(ticketId, "notes");
 
-    const ticket = tickets.find(t => t.id === ticketId);
+    const ticket = tickets.find((t) => t.id === ticketId);
     if (!ticket?.notes) return;
 
     const updatedNotes = ticket.notes.filter((_, idx) => idx !== noteIndex);
 
     // Update UI and DB
-    setTickets(tickets.map(t => t.id === ticketId ? { ...t, notes: updatedNotes } : t));
-    await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", ticketId);
+    setTickets(
+      tickets.map((t) =>
+        t.id === ticketId ? { ...t, notes: updatedNotes } : t,
+      ),
+    );
+    await supabase
+      .from("tickets")
+      .update({ notes: updatedNotes })
+      .eq("id", ticketId);
   };
 
   return (
@@ -411,14 +490,14 @@ function Dashboard() {
       <Header />
       <div className="flex flex-1 overflow-hidden p-6 gap-6">
         <TicketForm onAddTicket={handleAddTicket} />
-        <TicketTable 
-          tickets={tickets} 
-          onUpdateTicket={handleUpdateTicket} 
+        <TicketTable
+          tickets={tickets}
+          onUpdateTicket={handleUpdateTicket}
           onAddNote={handleAddNote}
           onEditNote={handleEditNote}
           onDeleteNote={handleDeleteNote}
           onDeleteTicket={handleDeleteTicket}
-          dutyNumber={dutyNumber} 
+          dutyNumber={dutyNumber}
           shortWorkName={shortWorkName}
         />
       </div>
@@ -428,31 +507,39 @@ function Dashboard() {
 
 function ProtectedRoute({ children }) {
   const { user, loading, selectedDuty } = useDuty();
-  
+
   if (loading)
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
-    
+
   // --- MODIFIED: Added check for empty array ---
   if (!user || !selectedDuty || selectedDuty.length === 0) {
     return <Navigate to="/login" />;
   }
-  
+
   return children;
 }
 
 export default function App() {
-  const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
+  const Router =
+    window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
   return (
     <DutyProvider>
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Router>
