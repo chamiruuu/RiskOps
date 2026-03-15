@@ -9,6 +9,9 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
+const shouldShowSystemNotification = () =>
+  document.visibilityState !== "visible" || !document.hasFocus();
+
 // Keep users visible for a short grace window to survive background-tab throttling.
 const PRESENCE_GRACE_MS = 1 * 60 * 1000;
 
@@ -316,14 +319,15 @@ export const DutyProvider = ({ children }) => {
     channel.on('broadcast', { event: 'transfer_request' }, ({ payload }) => {
       if (payload.targetId === user.id) {
         setPendingTransferRequest(payload);
+
+        const audio = new Audio(notificationSound);
+        audio.play().catch(() => console.log("Audio blocked by browser"));
         
-        if (Notification.permission === "granted") {
+        if (shouldShowSystemNotification() && Notification.permission === "granted") {
           new Notification("🔄 Duty Transfer Request", {
             body: `${payload.fromName} wants to transfer ${payload.duties.join(', ')} to you.`,
             icon: "/vite.svg" 
           });
-          const audio = new Audio(notificationSound); 
-          audio.play().catch(e => console.log("Audio blocked by browser"));
         }
       }
     });

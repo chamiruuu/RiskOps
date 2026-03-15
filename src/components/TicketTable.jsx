@@ -629,10 +629,12 @@ export default function TicketTable({
       myAssignedShift === getPreviousShift(currentActiveShift);
 
     // Auto handover at cutoff: once outgoing shift window has closed.
+    // CHECK REAL-TIME instead of stale isInHandoverWindow state (which updates every 60s).
+    const isActuallyInWindow = checkIsHandoverWindow();
     if (
       isAdminOrLeader ||
       !isOutgoingShift ||
-      isInHandoverWindow ||
+      isActuallyInWindow ||
       dutyArray.length === 0
     ) {
       return;
@@ -653,7 +655,6 @@ export default function TicketTable({
   }, [
     myAssignedShift,
     currentActiveShift,
-    isInHandoverWindow,
     isAdminOrLeader,
     tickets,
     dutyArray,
@@ -893,13 +894,15 @@ export default function TicketTable({
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
   const isOutgoingForWindow =
     !!handoverPair && myAssignedShift === handoverPair.outgoing;
+  // CHECK REAL-TIME window instead of stale state (updates every 60s), to avoid button disable race condition.
+  const isActuallyInWindow = checkIsHandoverWindow();
   const canInitiateHandover =
-    isAdminOrLeader || (isInHandoverWindow && isOutgoingForWindow);
+    isAdminOrLeader || (isActuallyInWindow && isOutgoingForWindow);
   const isHandoverDisabled =
-    !canInitiateHandover || !isInHandoverWindow || isHandoverProcessing;
+    !canInitiateHandover || !isActuallyInWindow || isHandoverProcessing;
 
   let handoverTooltip = "Handover Shift";
-  if (!isInHandoverWindow)
+  if (!isActuallyInWindow)
     handoverTooltip = "Only available during shift handover times (:15 to :45)";
   else if (!isOutgoingForWindow && !isAdminOrLeader)
     handoverTooltip = "Only the outgoing shift can handover in this window.";
@@ -933,6 +936,7 @@ export default function TicketTable({
         </div>
 
         <div className="flex items-center gap-2">
+
           {(isMyShiftActive || isAdminOrLeader) && (
             <div
               className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg shadow-sm"

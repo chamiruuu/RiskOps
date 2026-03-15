@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Calendar,
   Clock,
@@ -75,7 +75,7 @@ export default function Header() {
   const [copiedPwd, setCopiedPwd] = useState(false);
 
   const [shiftNotifications, setShiftNotifications] = useState([]);
-  const { myAssignedShift } = useDuty();
+  const { myAssignedShift, currentActiveShift } = useDuty();
 
   // --- Emergency Handover States ---
   const [emergencyRequests, setEmergencyRequests] = useState([]);
@@ -97,6 +97,9 @@ export default function Header() {
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [connectionNotification, setConnectionNotification] = useState(null);
   const [showConnectionToast, setShowConnectionToast] = useState(false);
+  const [opsNotification, setOpsNotification] = useState(null);
+  const [showOpsToast, setShowOpsToast] = useState(false);
+  const shiftStartPingKeyRef = useRef("");
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -115,6 +118,26 @@ export default function Header() {
   const [feedbackNotice, setFeedbackNotice] = useState({ text: "", type: "" });
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+
+  const playAlertSound = useCallback(() => {
+    const audio = new Audio(notificationSound);
+    audio.play().catch(() => console.log("Audio blocked by browser"));
+  }, []);
+
+  const shouldShowSystemNotification = useCallback(
+    () => document.visibilityState !== "visible" || !document.hasFocus(),
+    [],
+  );
+
+  const maybeShowSystemNotification = useCallback((title, body) => {
+    if (!shouldShowSystemNotification()) return;
+    if (Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+        icon: "/vite.svg",
+      });
+    }
+  }, [shouldShowSystemNotification]);
 
   const getDutyTextColorOnly = (dutyName) => {
     switch (dutyName) {
@@ -136,7 +159,7 @@ export default function Header() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [maybeShowSystemNotification, playAlertSound]);
 
   useEffect(() => {
     if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
@@ -159,6 +182,8 @@ export default function Header() {
 
       setUpdaterNotification(notification);
       setShowUpdaterToast(true);
+      playAlertSound();
+      maybeShowSystemNotification("Update Ready", notification.text);
     });
 
     return () => {
@@ -166,7 +191,7 @@ export default function Header() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [maybeShowSystemNotification, playAlertSound]);
 
   useEffect(() => {
     if (!showUpdaterToast) {
@@ -193,6 +218,66 @@ export default function Header() {
   }, [showConnectionToast]);
 
   useEffect(() => {
+    if (!showOpsToast) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setShowOpsToast(false);
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [showOpsToast]);
+
+  useEffect(() => {
+    const getGMT8Now = () => {
+      const d = new Date();
+      const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+      return new Date(utc + 3600000 * 8);
+    };
+
+    const checkShiftStartPing = () => {
+      if (!myAssignedShift || myAssignedShift === "Off" || !currentActiveShift) return;
+
+      const now = getGMT8Now();
+      const h = now.getHours();
+      const m = now.getMinutes();
+
+      const slots = [
+        { h: 7, m: 0, shift: "Morning" },
+        { h: 14, m: 30, shift: "Afternoon" },
+        { h: 22, m: 30, shift: "Night" },
+      ];
+
+      const slot = slots.find((s) => s.h === h && s.m === m);
+      if (!slot) return;
+      if (myAssignedShift !== slot.shift || currentActiveShift !== slot.shift) return;
+
+      const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const marker = `${dayKey}|${slot.shift}`;
+      if (shiftStartPingKeyRef.current === marker) return;
+      shiftStartPingKeyRef.current = marker;
+
+      const notification = {
+        id: `shift-start-${Date.now()}`,
+        type: "shift-start",
+        text: "Your shift has started. Please take over pending investigations.",
+        time: Date.now(),
+      };
+
+      setOpsNotification(notification);
+      setShowOpsToast(true);
+
+      playAlertSound();
+      maybeShowSystemNotification("Shift Started", notification.text);
+    };
+
+    checkShiftStartPing();
+    const timer = setInterval(checkShiftStartPing, 15000);
+    return () => clearInterval(timer);
+  }, [myAssignedShift, currentActiveShift, maybeShowSystemNotification, playAlertSound]);
+
+  useEffect(() => {
     if (showAdminModal || showShiftModal) {
       fetchTeam();
     }
@@ -200,7 +285,7 @@ export default function Header() {
 
   useEffect(() => {
     fetchCyclesList();
-  }, []);
+  }, [maybeShowSystemNotification, playAlertSound]);
 
   useEffect(() => {
     if (selectedCycle && showShiftModal) {
@@ -211,14 +296,19 @@ export default function Header() {
   // --- TRACKING ID EVENT LISTENER ---
   useEffect(() => {
     const handleReminder = (e) => {
+      const text =
+        e.detail.text ||
+        `You have ${e.detail.missingCount} pending ticket(s) missing a Tracking ID. Handover opens in 5 minutes!`;
+
       setTrackingReminder({
         id: "tracking-reminder-" + e.detail.time,
         type: "action-reminder",
-        text:
-          e.detail.text ||
-          `You have ${e.detail.missingCount} pending ticket(s) missing a Tracking ID. Handover opens in 5 minutes!`,
+        text,
         time: e.detail.time,
       });
+
+      // TicketTable handles local sound; this handles background OS popups.
+      maybeShowSystemNotification("Handover Reminder", text);
     };
     const clearReminder = () => setTrackingReminder(null);
     const handleRealtimeError = (e) => {
@@ -234,8 +324,8 @@ export default function Header() {
       setConnectionNotification(notification);
       setShowConnectionToast(true);
 
-      const audio = new Audio(notificationSound);
-      audio.play().catch(() => console.log("Audio blocked by browser"));
+      playAlertSound();
+      maybeShowSystemNotification("Live Sync Issue", notification.text);
     };
     const handleRealtimeRestored = (e) => {
       const notification = {
@@ -249,20 +339,57 @@ export default function Header() {
 
       setConnectionNotification(notification);
       setShowConnectionToast(true);
+      playAlertSound();
+      maybeShowSystemNotification("Live Sync Restored", notification.text);
+    };
+    const handleRealtimeDegraded = (e) => {
+      const notification = {
+        id: `tickets-connection-degraded-${e.detail?.time || Date.now()}`,
+        type: "connection-degraded",
+        text:
+          e.detail?.text ||
+          "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+        time: e.detail?.time || Date.now(),
+      };
+
+      setConnectionNotification(notification);
+      setShowConnectionToast(true);
+      playAlertSound();
+      maybeShowSystemNotification("Realtime Degraded", notification.text);
+    };
+    const handleOwnershipConflict = (e) => {
+      const notification = {
+        id: `ownership-conflict-${e.detail?.time || Date.now()}`,
+        type: "ownership-conflict",
+        text:
+          e.detail?.text ||
+          "Another user edited the same ticket while you were editing. Please review latest data.",
+        time: e.detail?.time || Date.now(),
+      };
+
+      setOpsNotification(notification);
+      setShowOpsToast(true);
+
+      playAlertSound();
+      maybeShowSystemNotification("Ownership Conflict", notification.text);
     };
 
     window.addEventListener("tracking-reminder-alert", handleReminder);
     window.addEventListener("clear-tracking-reminder", clearReminder);
     window.addEventListener("tickets-realtime-error", handleRealtimeError);
     window.addEventListener("tickets-realtime-restored", handleRealtimeRestored);
+    window.addEventListener("tickets-realtime-degraded", handleRealtimeDegraded);
+    window.addEventListener("ownership-conflict-alert", handleOwnershipConflict);
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
       window.removeEventListener("clear-tracking-reminder", clearReminder);
       window.removeEventListener("tickets-realtime-error", handleRealtimeError);
       window.removeEventListener("tickets-realtime-restored", handleRealtimeRestored);
+      window.removeEventListener("tickets-realtime-degraded", handleRealtimeDegraded);
+      window.removeEventListener("ownership-conflict-alert", handleOwnershipConflict);
     };
-  }, []);
+  }, [maybeShowSystemNotification, playAlertSound]);
 
   const fetchCyclesList = async () => {
     const { data } = await supabase
@@ -372,23 +499,18 @@ export default function Header() {
           if (payload.new.target_shift === myAssignedShift) {
             setShiftNotifications((prev) => [payload.new, ...prev]);
 
-            if (Notification.permission === "granted") {
-              new Notification("🚨 Shift Handover Received", {
-                body: payload.new.message,
-                icon: "/vite.svg",
-              });
-              const audio = new Audio(notificationSound);
-              audio
-                .play()
-                .catch((e) => console.log("Audio blocked by browser"));
-            }
+            playAlertSound();
+            maybeShowSystemNotification(
+              "Shift Handover Received",
+              payload.new.message,
+            );
           }
         },
       )
       .subscribe();
 
     return () => supabase.removeChannel(sub);
-  }, [myAssignedShift]);
+  }, [myAssignedShift, maybeShowSystemNotification, playAlertSound]);
 
   const fetchShiftDataForCycle = async (cycle) => {
     const { data } = await supabase
@@ -871,6 +993,10 @@ export default function Header() {
     globalNotifications.push(connectionNotification);
   }
 
+  if (opsNotification) {
+    globalNotifications.push(opsNotification);
+  }
+
   if (isAdminOrLeader && cycleWarning) {
     globalNotifications.push({
       id: "warning",
@@ -1272,6 +1398,96 @@ export default function Header() {
                                   {notif.text}
                                 </p>
                                 <span className="text-[9px] text-emerald-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "connection-degraded") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-amber-50 border border-amber-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle
+                                size={16}
+                                className="text-amber-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-amber-800 mb-0.5">
+                                  Realtime Degraded
+                                </h4>
+                                <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-amber-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "shift-start") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-blue-50 border border-blue-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                            <div className="flex items-start gap-2">
+                              <Clock
+                                size={16}
+                                className="text-blue-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-blue-800 mb-0.5">
+                                  Shift Started
+                                </h4>
+                                <p className="text-xs text-blue-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-blue-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "ownership-conflict") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-orange-50 border border-orange-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle
+                                size={16}
+                                className="text-orange-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-orange-800 mb-0.5">
+                                  Ownership Conflict
+                                </h4>
+                                <p className="text-xs text-orange-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-orange-500 mt-1 block">
                                   {new Date(notif.time).toLocaleTimeString([], {
                                     hour: "2-digit",
                                     minute: "2-digit",
@@ -1767,6 +1983,41 @@ export default function Header() {
               onClick={() => setShowConnectionToast(false)}
               className="text-slate-400 hover:text-slate-600"
               aria-label="Close connection toast"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showOpsToast && opsNotification && (
+        <div
+          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : "border-blue-200"}`}
+        >
+          <div className="p-3 flex items-start gap-2">
+            <div
+              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : "text-blue-600"}`}
+            >
+              {opsNotification.type === "ownership-conflict" ? (
+                <AlertTriangle size={16} />
+              ) : (
+                <Clock size={16} />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-slate-900">
+                {opsNotification.type === "ownership-conflict"
+                  ? "Ownership Conflict"
+                  : "Shift Started"}
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                {opsNotification.text}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowOpsToast(false)}
+              className="text-slate-400 hover:text-slate-600"
+              aria-label="Close operations toast"
             >
               <X size={14} />
             </button>

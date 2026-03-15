@@ -6,6 +6,13 @@ const isDev = !app.isPackaged;
 let mainWindow;
 let updaterInitialized = false;
 
+const appIconPath =
+  process.platform === 'darwin'
+    ? (app.isPackaged
+        ? path.join(process.resourcesPath, 'icon.icns')
+        : path.join(__dirname, 'assets', 'icon.icns'))
+    : path.join(__dirname, 'assets', 'icon.ico');
+
 // Required on Windows so taskbar/pinned icon uses the app identity instead of Electron default.
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.riskops.icdro');
@@ -28,7 +35,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 768,
-    icon: path.join(__dirname, 'assets', 'icon.ico'),
+    icon: process.platform === 'darwin' ? undefined : appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -107,7 +114,14 @@ function setupAutoUpdater() {
     });
   });
 
-  autoUpdater.checkForUpdates();
+  autoUpdater.checkForUpdates().catch((error) => {
+    const message = error == null ? 'unknown error' : error.message;
+    console.error('Auto update check failed:', message);
+    emitUpdaterStatus({
+      type: 'error',
+      message: `Update check failed: ${message}`,
+    });
+  });
 }
 
 async function checkForUpdatesManually() {

@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "electron:dev": "vite build && electron .",
     "electron:build": "vite build && electron-builder --win",
+    "electron:build:mac": "vite build && electron-builder --mac",
     "electron:build:portable": "vite build && electron-builder --win --config.win.target=portable",
     "electron:build:nsis": "vite build && electron-builder --win --config.win.target=nsis",
     "electron:build:dir": "vite build && electron-builder --win --dir",
@@ -22,6 +23,7 @@
   "build": {
     "appId": "com.riskops.icdro",
     "productName": "RiskOps",
+    "afterPack": "scripts/after-pack-sign-mac.cjs",
     "directories": {
       "output": "release"
     },
@@ -41,6 +43,19 @@
       ],
       "icon": "electron/assets/icon.ico",
       "artifactName": "RiskOps-TMS-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "electron/assets/icon.icns",
+      "artifactName": "RiskOps-TMS-${version}-${arch}.${ext}"
     },
     "publish": [
       {

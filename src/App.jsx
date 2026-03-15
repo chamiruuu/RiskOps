@@ -8,6 +8,8 @@ import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
 import TicketTable from "./components/TicketTable";
 
+const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
+
 function Dashboard() {
   // FIX: Grab workName from Context
   const { selectedDuty, user, workName } = useDuty();
@@ -18,6 +20,41 @@ function Dashboard() {
   
   const [tickets, setTickets] = useState([]);
   const realtimeIssueRef = useRef(false);
+  const degradedTimerRef = useRef(null);
+  const degradedAnnouncedRef = useRef(false);
+  const recentLocalTicketEditsRef = useRef(new Map());
+  const ownershipAlertCooldownRef = useRef(new Map());
+  const ownershipChannelRef = useRef(null);
+
+  const registerLocalEdit = useCallback((ticketId, field) => {
+    const now = Date.now();
+    const key = String(ticketId);
+    const map = recentLocalTicketEditsRef.current;
+
+    map.set(key, { at: now, field });
+
+    for (const [k, v] of map.entries()) {
+      if (now - v.at > OWNERSHIP_CONFLICT_WINDOW_MS) {
+        map.delete(k);
+      }
+    }
+  }, []);
+
+  const broadcastEditActivity = useCallback((ticketId, field) => {
+    if (!ownershipChannelRef.current || !user?.id) return;
+
+    ownershipChannelRef.current.send({
+      type: "broadcast",
+      event: "ticket_edit_activity",
+      payload: {
+        userId: user.id,
+        userName: shortWorkName,
+        ticketId,
+        field,
+        at: Date.now(),
+      },
+    });
+  }, [shortWorkName, user]);
 
   // 1. Define fetchTickets FIRST so React knows what it is
   const fetchTickets = useCallback(async () => {
@@ -65,6 +102,11 @@ function Dashboard() {
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
+          if (degradedTimerRef.current) {
+            clearTimeout(degradedTimerRef.current);
+            degradedTimerRef.current = null;
+          }
+
           if (realtimeIssueRef.current) {
             window.dispatchEvent(
               new CustomEvent("tickets-realtime-restored", {
@@ -76,6 +118,8 @@ function Dashboard() {
             );
             realtimeIssueRef.current = false;
           }
+
+          degradedAnnouncedRef.current = false;
           fetchTickets();
         }
 
@@ -91,6 +135,24 @@ function Dashboard() {
               }),
             );
           }
+
+          if (!degradedTimerRef.current && !degradedAnnouncedRef.current) {
+            degradedTimerRef.current = setTimeout(() => {
+              if (realtimeIssueRef.current && !degradedAnnouncedRef.current) {
+                degradedAnnouncedRef.current = true;
+                window.dispatchEvent(
+                  new CustomEvent("tickets-realtime-degraded", {
+                    detail: {
+                      time: Date.now(),
+                      text: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+                    },
+                  }),
+                );
+              }
+              degradedTimerRef.current = null;
+            }, 60 * 1000);
+          }
+
           realtimeIssueRef.current = true;
           fetchTickets();
         }
@@ -103,9 +165,54 @@ function Dashboard() {
     return () => {
       clearTimeout(initialFetchTimer);
       clearInterval(fallbackTimer);
+      if (degradedTimerRef.current) {
+        clearTimeout(degradedTimerRef.current);
+        degradedTimerRef.current = null;
+      }
       supabase.removeChannel(subscription);
     };
   }, [fetchTickets, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase.channel("ticket-edit-activity");
+
+    channel
+      .on("broadcast", { event: "ticket_edit_activity" }, ({ payload }) => {
+        if (!payload || payload.userId === user.id) return;
+
+        const now = Date.now();
+        const ticketKey = String(payload.ticketId);
+        const localEdit = recentLocalTicketEditsRef.current.get(ticketKey);
+
+        if (!localEdit) return;
+        if (now - localEdit.at > OWNERSHIP_CONFLICT_WINDOW_MS) return;
+
+        const cooldownKey = `${ticketKey}|${payload.userId}`;
+        const lastAlert = ownershipAlertCooldownRef.current.get(cooldownKey) || 0;
+        if (now - lastAlert < 20 * 1000) return;
+
+        ownershipAlertCooldownRef.current.set(cooldownKey, now);
+
+        window.dispatchEvent(
+          new CustomEvent("ownership-conflict-alert", {
+            detail: {
+              time: now,
+              text: `${payload.userName || "Another user"} updated ticket ${payload.ticketId} while you were editing it. Please review latest values before continuing.`,
+            },
+          }),
+        );
+      })
+      .subscribe();
+
+    ownershipChannelRef.current = channel;
+
+    return () => {
+      ownershipChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   // 2. Insert new ticket to Supabase
   // 2. Insert new ticket to Supabase
@@ -178,6 +285,9 @@ function Dashboard() {
 
   // 3. Update existing ticket (Tracking No or Status)
   const handleUpdateTicket = async (id, field, value) => {
+    registerLocalEdit(id, field);
+    broadcastEditActivity(id, field);
+
     // Optimistic UI update (makes the UI feel instantly fast)
     setTickets(tickets.map(t => t.id === id ? { ...t, [field]: value } : t));
     
@@ -209,6 +319,9 @@ function Dashboard() {
 
   // 5. Add a timeline note
   const handleAddNote = async (id, noteText) => {
+    registerLocalEdit(id, "notes");
+    broadcastEditActivity(id, "notes");
+
     const ticket = tickets.find(t => t.id === id);
     
     // Format the date (e.g., "Feb 16")
