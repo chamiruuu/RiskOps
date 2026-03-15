@@ -173,7 +173,7 @@ export default function TicketForm({ onAddTicket }) {
     p.toLowerCase().includes(providerSearch.toLowerCase()),
   );
 
-  const { name: merchantName, error: dutyError } = useMerchantData(
+  const { name: merchantName, duty: merchantDuty, error: dutyError } = useMerchantData(
     formData.memberId,
     selectedDuty,
   );
@@ -309,12 +309,11 @@ export default function TicketForm({ onAddTicket }) {
       : "-";
 
     const newTicket = {
-      merchant_name: extractedMerchantId,
-      ic_account: selectedDuty,
+      merchant_name: extractedMerchantId || "-",
+      ic_account: merchantDuty || "IC3",                  
       login_id: formData.loginId || "-",
       member_id: formData.memberId,
-      provider_id: formData.providerAccount || "-",
-      provider_account: formData.providerAccount || "-",
+      provider_account: formData.providerAccount || "-",   // <--- Now this is the ONLY one we need!
       provider: formData.provider,
       time_range: formData.timeRange || "-",
       tracking_no: "",
@@ -324,6 +323,7 @@ export default function TicketForm({ onAddTicket }) {
     };
 
     onAddTicket(newTicket);
+// ... keep the rest of the function the same
 
     setFormData({
       loginId: "",

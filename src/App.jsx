@@ -215,7 +215,6 @@ function Dashboard() {
   }, [user]);
 
   // 2. Insert new ticket to Supabase
-  // 2. Insert new ticket to Supabase
   const handleAddTicket = async (newTicket) => {
     // --- STRICT RULE: Player ID is absolutely required ---
     if (!newTicket.member_id || newTicket.member_id.trim() === "") {
@@ -223,56 +222,12 @@ function Dashboard() {
       return; 
     }
 
-    const memberId = newTicket.member_id.trim();
-    
-    // 1. Determine Merchant ID: Extract from @xxx, OR default to "-"
-    let extractedMerchant = memberId.includes("@") ? memberId.split("@")[1].trim() : "-";
-    
-    // Use the form input if the user typed one manually, otherwise use the extracted one
-    let parsedMerchantId = String(newTicket.merchant_name || "").trim();
-    if (!parsedMerchantId || parsedMerchantId === "-") {
-      parsedMerchantId = extractedMerchant;
-    }
-
-    let finalIcAccount = "IC3"; // Default fallback duty
-    let finalMerchantName = parsedMerchantId;
-
-    // 2. Look up the Merchant ID in the database (only if it's not "-")
-    if (parsedMerchantId !== "-") {
-      console.log("1. Searching database for Merchant ID:", parsedMerchantId);
-      const { data: merchantData, error: lookupError } = await supabase
-        .from("merchants")
-        .select("ic_account")
-        .eq("merchant_id", parsedMerchantId)
-        .maybeSingle();
-
-      if (lookupError) {
-        console.error("Lookup Error:", lookupError);
-        alert("Network Error: Could not verify the Merchant ID. The ticket was NOT saved. Please check your connection and try again.");
-        return; 
-      }
-
-      if (merchantData && merchantData.ic_account) {
-        console.log("2. Database found this IC Account:", merchantData.ic_account);
-        finalIcAccount = merchantData.ic_account;
-      } else {
-        console.log("2. Merchant ID not found in DB. Defaulting duty to IC3.");
-        finalIcAccount = "IC3";
-      }
-    } else {
-      console.log("No @xxx found in Player ID and no manual Merchant ID provided. Defaulting to '-' and IC3.");
-    }
-
-    const ticketToInsert = {
-      ...newTicket,
-      merchant_name: finalMerchantName, // Will save "012" or "-"
-      ic_account: finalIcAccount        // Will save mapped DB account or "IC3"
-    };
-
-    // 3. Save to database
+    // Since TicketForm.jsx now pulls the exact merchant_name and ic_account 
+    // straight from the live Google Sheet, we completely bypass the database lookup!
+    // We just save the exact ticket payload directly to Supabase.
     const { data, error } = await supabase
       .from("tickets")
-      .insert([ticketToInsert])
+      .insert([newTicket])
       .select();
 
     if (error) {
@@ -332,11 +287,14 @@ function Dashboard() {
     const hour = now.getHours();
     const shift = hour >= 6 && hour < 14 ? "M" : hour >= 14 && hour < 22 ? "A" : "N";
 
-    // Create the new note object
+    // Create the new note object with edit tracking
     const newNote = {
       text: noteText,
       author: workName,
-      timestamp: `${dateStr} ${shift}`
+      timestamp: `${dateStr} ${shift}`,
+      createdAt: Date.now(), // Exact timestamp for 3-hour edit window
+      createdByUserId: user?.id, // Track who created it
+      isEdited: false // Flag to show if note has been edited
     };
 
     const updatedNotes = [...(ticket.notes || []), newNote];
@@ -344,6 +302,42 @@ function Dashboard() {
     // Update UI and DB
     setTickets(tickets.map(t => t.id === id ? { ...t, notes: updatedNotes } : t));
     await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", id);
+  };
+
+  // 6. Edit an existing note (within 3-hour window)
+  const handleEditNote = async (ticketId, noteIndex, newText) => {
+    registerLocalEdit(ticketId, "notes");
+    broadcastEditActivity(ticketId, "notes");
+
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket?.notes || !ticket.notes[noteIndex]) return;
+
+    const updatedNotes = [...ticket.notes];
+    updatedNotes[noteIndex] = {
+      ...updatedNotes[noteIndex],
+      text: newText,
+      isEdited: true,
+      editedAt: Date.now()
+    };
+
+    // Update UI and DB
+    setTickets(tickets.map(t => t.id === ticketId ? { ...t, notes: updatedNotes } : t));
+    await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", ticketId);
+  };
+
+  // 7. Delete a note
+  const handleDeleteNote = async (ticketId, noteIndex) => {
+    registerLocalEdit(ticketId, "notes");
+    broadcastEditActivity(ticketId, "notes");
+
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket?.notes) return;
+
+    const updatedNotes = ticket.notes.filter((_, idx) => idx !== noteIndex);
+
+    // Update UI and DB
+    setTickets(tickets.map(t => t.id === ticketId ? { ...t, notes: updatedNotes } : t));
+    await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", ticketId);
   };
 
   return (
@@ -355,9 +349,11 @@ function Dashboard() {
           tickets={tickets} 
           onUpdateTicket={handleUpdateTicket} 
           onAddNote={handleAddNote}
-          onDeleteTicket={handleDeleteTicket} // <-- NEW: Passed the delete function here!
+          onEditNote={handleEditNote}
+          onDeleteNote={handleDeleteNote}
+          onDeleteTicket={handleDeleteTicket}
           dutyNumber={dutyNumber} 
-          shortWorkName={shortWorkName} // <-- NEW PROP
+          shortWorkName={shortWorkName}
         />
       </div>
     </div>

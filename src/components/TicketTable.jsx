@@ -233,6 +233,8 @@ export default function TicketTable({
   tickets,
   onUpdateTicket,
   onAddNote,
+  onEditNote,
+  onDeleteNote,
   onDeleteTicket,
   dutyNumber,
   shortWorkName,
@@ -252,6 +254,23 @@ export default function TicketTable({
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
+  // Helper function to check if a note can be edited (within 3 hours and authored by current user or admin/leader)
+  const canEditNote = (note) => {
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    const now = Date.now();
+    const noteAge = now - (note.createdAt || 0);
+    const isWithinEditWindow = noteAge <= THREE_HOURS_MS;
+    const isNoteAuthor = note.createdByUserId === user?.id;
+    
+    return isWithinEditWindow && (isNoteAuthor || isAdminOrLeader);
+  };
+
+  // Helper function to check if a note can be deleted
+  const canDeleteNote = (note) => {
+    const isNoteAuthor = note.createdByUserId === user?.id;
+    return isNoteAuthor || isAdminOrLeader;
+  };
+
   // --- SENDER TRANSFER MODAL STATES (MULTI-SEND) ---
   const [transferModal, setTransferModal] = useState({
     isOpen: false,
@@ -262,6 +281,7 @@ export default function TicketTable({
 
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
   const [newNoteText, setNewNoteText] = useState("");
+  const [editingNoteState, setEditingNoteState] = useState({ ticketId: null, noteIndex: null, text: "" });
   const [searchTerm, setSearchTerm] = useState("");
 
   const [deletingRowId, setDeletingRowId] = useState(null);
@@ -342,7 +362,8 @@ export default function TicketTable({
 
         setLastReminderHour(h);
         setReminderToast({
-          title: missing.length > 0 ? "Missing Tracking IDs" : "Handover Reminder",
+          title:
+            missing.length > 0 ? "Missing Tracking IDs" : "Handover Reminder",
           text: reminderText,
         });
         setShowReminderToast(true);
@@ -575,7 +596,9 @@ export default function TicketTable({
         .join(",")}`;
       const handedOverSet =
         handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
-      const uniquePendingTix = pendingTix.filter((t) => !handedOverSet.has(t.id));
+      const uniquePendingTix = pendingTix.filter(
+        (t) => !handedOverSet.has(t.id),
+      );
 
       // Stop duplicate appends/notifications when handover is clicked repeatedly.
       if (uniquePendingTix.length === 0) {
@@ -619,7 +642,13 @@ export default function TicketTable({
 
       return { skipped: false, count: uniquePendingTix.length, marker };
     },
-    [appendHandoverTicketsToSheet, currentActiveShift, dutyArray, shortWorkName, tickets],
+    [
+      appendHandoverTicketsToSheet,
+      currentActiveShift,
+      dutyArray,
+      shortWorkName,
+      tickets,
+    ],
   );
 
   useEffect(() => {
@@ -737,7 +766,9 @@ export default function TicketTable({
     (myAssignedShift === handoverPair.outgoing ||
       myAssignedShift === handoverPair.incoming);
   const canViewTickets =
-    isMyShiftActive || (isInHandoverWindow && isHandoverPairViewer) || isAdminOrLeader;
+    isMyShiftActive ||
+    (isInHandoverWindow && isHandoverPairViewer) ||
+    isAdminOrLeader;
 
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;
@@ -921,7 +952,9 @@ export default function TicketTable({
               <AlertTriangle size={18} className="text-amber-50" />
             </div>
             <div>
-              <h4 className="font-bold text-sm mb-0.5">{reminderToast.title}</h4>
+              <h4 className="font-bold text-sm mb-0.5">
+                {reminderToast.title}
+              </h4>
               <p className="text-xs font-medium text-amber-50 leading-snug">
                 {reminderToast.text}
               </p>
@@ -936,7 +969,6 @@ export default function TicketTable({
         </div>
 
         <div className="flex items-center gap-2">
-
           {(isMyShiftActive || isAdminOrLeader) && (
             <div
               className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg shadow-sm"
@@ -1114,7 +1146,9 @@ export default function TicketTable({
                       })}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-slate-700">
-                      {ticket.merchant_name}
+                      {ticket.member_id && ticket.member_id.includes("@")
+                        ? ticket.member_id.split("@")[1]
+                        : "-"}
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
@@ -1503,8 +1537,8 @@ export default function TicketTable({
                   Handover Completed
                 </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  Your handover has been sent securely to the incoming team.
-                  You may continue viewing during the handover grace window.
+                  Your handover has been sent securely to the incoming team. You
+                  may continue viewing during the handover grace window.
                 </p>
                 <div className="flex items-center gap-3">
                   <button
@@ -1564,24 +1598,92 @@ export default function TicketTable({
                   </p>
                 </div>
               ) : (
-                activeNotes.map((note, idx) => (
-                  <div
-                    key={idx}
-                    className="flex flex-col items-start w-full animate-in slide-in-from-bottom-2 duration-300"
-                  >
-                    <div className="flex items-center gap-2 mb-1 ml-2">
-                      <span className="text-[10px] font-bold text-slate-600">
-                        {note.author}
-                      </span>
-                      <span className="text-[9px] font-medium text-slate-400">
-                        {note.timestamp}
-                      </span>
+                activeNotes.map((note, idx) => {
+                  const isEditing = editingNoteState.ticketId === selectedTicketForNotes.id && editingNoteState.noteIndex === idx;
+                  const canEdit = canEditNote(note);
+                  const canDelete = canDeleteNote(note);
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-col items-start w-full animate-in slide-in-from-bottom-2 duration-300"
+                    >
+                      <div className="flex items-center gap-2 mb-1 ml-2">
+                        <span className="text-[10px] font-bold text-slate-600">
+                          {note.author}
+                        </span>
+                        <span className="text-[9px] font-medium text-slate-400">
+                          {note.timestamp}
+                        </span>
+                        {note.isEdited && (
+                          <span className="text-[8px] text-slate-400 italic">(edited)</span>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <div className="bg-white border-2 border-blue-400 shadow-sm rounded-2xl rounded-tl-sm max-w-[85%] p-2.5 flex gap-2 items-end">
+                          <textarea
+                            value={editingNoteState.text}
+                            onChange={(e) => setEditingNoteState({ ...editingNoteState, text: e.target.value })}
+                            className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                            rows="2"
+                            autoFocus
+                          />
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => {
+                                onEditNote(selectedTicketForNotes.id, idx, editingNoteState.text);
+                                setEditingNoteState({ ticketId: null, noteIndex: null, text: "" });
+                              }}
+                              className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
+                              title="Save edit"
+                            >
+                              <CheckCircle2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditingNoteState({ ticketId: null, noteIndex: null, text: "" })}
+                              className="p-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 rounded transition-colors"
+                              title="Cancel"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 group">
+                          <div className="bg-white border border-slate-200 shadow-sm text-slate-700 text-xs px-4 py-2.5 rounded-2xl rounded-tl-sm max-w-[85%] leading-relaxed">
+                            {note.text}
+                          </div>
+                          {(canEdit || canDelete) && (
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
+                              {canEdit && (
+                                <button
+                                  onClick={() => setEditingNoteState({ ticketId: selectedTicketForNotes.id, noteIndex: idx, text: note.text })}
+                                  className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded transition-colors"
+                                  title="Edit note (3 hours window)"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm("Delete this note?")) {
+                                      onDeleteNote(selectedTicketForNotes.id, idx);
+                                    }
+                                  }}
+                                  className="p-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded transition-colors"
+                                  title="Delete note"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="bg-white border border-slate-200 shadow-sm text-slate-700 text-xs px-4 py-2.5 rounded-2xl rounded-tl-sm max-w-[85%] leading-relaxed">
-                      {note.text}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
             <div className="p-4 bg-white border-t border-slate-200">

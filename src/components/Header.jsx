@@ -129,15 +129,18 @@ export default function Header() {
     [],
   );
 
-  const maybeShowSystemNotification = useCallback((title, body) => {
-    if (!shouldShowSystemNotification()) return;
-    if (Notification.permission === "granted") {
-      new Notification(title, {
-        body,
-        icon: "/vite.svg",
-      });
-    }
-  }, [shouldShowSystemNotification]);
+  const maybeShowSystemNotification = useCallback(
+    (title, body) => {
+      if (!shouldShowSystemNotification()) return;
+      if (Notification.permission === "granted") {
+        new Notification(title, {
+          body,
+          icon: "/vite.svg",
+        });
+      }
+    },
+    [shouldShowSystemNotification],
+  );
 
   const getDutyTextColorOnly = (dutyName) => {
     switch (dutyName) {
@@ -162,7 +165,10 @@ export default function Header() {
   }, [maybeShowSystemNotification, playAlertSound]);
 
   useEffect(() => {
-    if (!window.electronAPI || typeof window.electronAPI.onUpdaterStatus !== "function") {
+    if (
+      !window.electronAPI ||
+      typeof window.electronAPI.onUpdaterStatus !== "function"
+    ) {
       return undefined;
     }
 
@@ -237,7 +243,8 @@ export default function Header() {
     };
 
     const checkShiftStartPing = () => {
-      if (!myAssignedShift || myAssignedShift === "Off" || !currentActiveShift) return;
+      if (!myAssignedShift || myAssignedShift === "Off" || !currentActiveShift)
+        return;
 
       const now = getGMT8Now();
       const h = now.getHours();
@@ -251,7 +258,8 @@ export default function Header() {
 
       const slot = slots.find((s) => s.h === h && s.m === m);
       if (!slot) return;
-      if (myAssignedShift !== slot.shift || currentActiveShift !== slot.shift) return;
+      if (myAssignedShift !== slot.shift || currentActiveShift !== slot.shift)
+        return;
 
       const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const marker = `${dayKey}|${slot.shift}`;
@@ -275,7 +283,12 @@ export default function Header() {
     checkShiftStartPing();
     const timer = setInterval(checkShiftStartPing, 15000);
     return () => clearInterval(timer);
-  }, [myAssignedShift, currentActiveShift, maybeShowSystemNotification, playAlertSound]);
+  }, [
+    myAssignedShift,
+    currentActiveShift,
+    maybeShowSystemNotification,
+    playAlertSound,
+  ]);
 
   useEffect(() => {
     if (showAdminModal || showShiftModal) {
@@ -377,17 +390,35 @@ export default function Header() {
     window.addEventListener("tracking-reminder-alert", handleReminder);
     window.addEventListener("clear-tracking-reminder", clearReminder);
     window.addEventListener("tickets-realtime-error", handleRealtimeError);
-    window.addEventListener("tickets-realtime-restored", handleRealtimeRestored);
-    window.addEventListener("tickets-realtime-degraded", handleRealtimeDegraded);
-    window.addEventListener("ownership-conflict-alert", handleOwnershipConflict);
+    window.addEventListener(
+      "tickets-realtime-restored",
+      handleRealtimeRestored,
+    );
+    window.addEventListener(
+      "tickets-realtime-degraded",
+      handleRealtimeDegraded,
+    );
+    window.addEventListener(
+      "ownership-conflict-alert",
+      handleOwnershipConflict,
+    );
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
       window.removeEventListener("clear-tracking-reminder", clearReminder);
       window.removeEventListener("tickets-realtime-error", handleRealtimeError);
-      window.removeEventListener("tickets-realtime-restored", handleRealtimeRestored);
-      window.removeEventListener("tickets-realtime-degraded", handleRealtimeDegraded);
-      window.removeEventListener("ownership-conflict-alert", handleOwnershipConflict);
+      window.removeEventListener(
+        "tickets-realtime-restored",
+        handleRealtimeRestored,
+      );
+      window.removeEventListener(
+        "tickets-realtime-degraded",
+        handleRealtimeDegraded,
+      );
+      window.removeEventListener(
+        "ownership-conflict-alert",
+        handleOwnershipConflict,
+      );
     };
   }, [maybeShowSystemNotification, playAlertSound]);
 
@@ -1033,7 +1064,8 @@ export default function Header() {
     {
       version: "1.0.3",
       date: "2026-03",
-      notes: "UI refinements, archive chat modal improvements, and quality fixes.",
+      notes:
+        "UI refinements, archive chat modal improvements, and quality fixes.",
     },
     {
       version: "1.0.2",
@@ -1088,7 +1120,10 @@ export default function Header() {
 
   const submitFeedback = async (type) => {
     if (!feedbackText.trim()) {
-      setFeedbackNotice({ text: "Please enter details before submitting.", type: "error" });
+      setFeedbackNotice({
+        text: "Please enter details before submitting.",
+        type: "error",
+      });
       return;
     }
 
@@ -1107,13 +1142,16 @@ export default function Header() {
         },
       };
 
-      const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        "https://api.emailjs.com/api/v1.0/email/send",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
         },
-        body: JSON.stringify(payload),
-      });
+      );
 
       if (!response.ok) {
         throw new Error("Failed to submit");
@@ -1341,7 +1379,9 @@ export default function Header() {
                                   disabled={isInstallingUpdate}
                                   className="mt-2 text-[10px] font-bold text-emerald-700 hover:text-emerald-900 underline disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  {isInstallingUpdate ? "Restarting..." : "Restart Now"}
+                                  {isInstallingUpdate
+                                    ? "Restarting..."
+                                    : "Restart Now"}
                                 </button>
                               </div>
                             </div>
@@ -2479,42 +2519,44 @@ export default function Header() {
                             key={t.id}
                             className="hover:bg-slate-50 transition-colors"
                           >
-                          <td className="px-4 py-3 text-slate-500 font-medium">
-                            {new Date(t.created_at).toLocaleDateString(
-                              "en-GB",
-                              { month: "short", day: "2-digit" },
-                            )}{" "}
-                            <span className="text-slate-400 ml-1">
-                              {new Date(t.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-slate-700">
-                            {t.ic_account}
-                          </td>
-                          <td className="px-4 py-3 font-mono font-semibold text-slate-700">
-                            {t.merchant_name}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {t.login_id || "-"}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">
-                            {t.member_id}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-600">
-                            {t.provider_account || "-"}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 font-medium">
-                            {t.provider}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-600">
-                            {t.tracking_no || "-"}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 font-medium">
-                            {t.recorder}
-                          </td>
+                            <td className="px-4 py-3 text-slate-500 font-medium">
+                              {new Date(t.created_at).toLocaleDateString(
+                                "en-GB",
+                                { month: "short", day: "2-digit" },
+                              )}{" "}
+                              <span className="text-slate-400 ml-1">
+                                {new Date(t.created_at).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-bold text-slate-700">
+                              {t.ic_account}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-semibold text-slate-700">
+                              {t.member_id && t.member_id.includes("@")
+                                ? t.member_id.split("@")[1]
+                                : "-"}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {t.login_id || "-"}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-indigo-700 font-bold">
+                              {t.member_id}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-slate-600">
+                              {t.provider_account || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 font-medium">
+                              {t.provider}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-slate-600">
+                              {t.tracking_no || "-"}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 font-medium">
+                              {t.recorder}
+                            </td>
                             <td className="px-4 py-3 text-center">
                               <button
                                 onClick={() =>
@@ -2531,17 +2573,17 @@ export default function Header() {
                                   : "No Notes"}
                               </button>
                             </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                t.status === "Normal" || t.status === "NORMAL"
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                  : "bg-rose-50 text-rose-700 border border-rose-200"
-                              }`}
-                            >
-                              {t.status}
-                            </span>
-                          </td>
+                            <td className="px-4 py-3 text-center">
+                              <span
+                                className={`inline-block px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  t.status === "Normal" || t.status === "NORMAL"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-rose-50 text-rose-700 border border-rose-200"
+                                }`}
+                              >
+                                {t.status}
+                              </span>
+                            </td>
                           </tr>
                         );
                       })
@@ -2562,7 +2604,9 @@ export default function Header() {
                 <h3 className="text-sm font-bold tracking-wide flex items-center gap-2">
                   <CircleHelp size={16} /> RiskOps Info Center
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-1">Version {APP_VERSION}</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Version {APP_VERSION}
+                </p>
               </div>
               <button
                 onClick={closeInfoModal}
@@ -2584,7 +2628,9 @@ export default function Header() {
                       <BookOpen size={16} className="text-indigo-600" />
                       RiskOps Manual
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Open usage and SOP manual.</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Open usage and SOP manual.
+                    </p>
                   </button>
 
                   <button
@@ -2599,7 +2645,9 @@ export default function Header() {
                       <Bug size={16} className="text-rose-600" />
                       Report a Bug
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Send issue details to the team.</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Send issue details to the team.
+                    </p>
                   </button>
 
                   <button
@@ -2614,7 +2662,9 @@ export default function Header() {
                       <Sparkles size={16} className="text-emerald-600" />
                       Suggest New Feature
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">Share improvements for RiskOps.</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Share improvements for RiskOps.
+                    </p>
                   </button>
 
                   <button
@@ -2625,7 +2675,9 @@ export default function Header() {
                       <History size={16} className="text-amber-600" />
                       Version History
                     </div>
-                    <p className="mt-1 text-xs text-slate-500">View release changes.</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      View release changes.
+                    </p>
                   </button>
                 </div>
               )}
@@ -2633,7 +2685,9 @@ export default function Header() {
               {(infoView === "bug" || infoView === "feature") && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <h4 className="text-sm font-bold text-slate-800 mb-1">
-                    {infoView === "bug" ? "Report a Bug" : "Suggest New Feature"}
+                    {infoView === "bug"
+                      ? "Report a Bug"
+                      : "Suggest New Feature"}
                   </h4>
                   <p className="text-xs text-slate-500 mb-3">
                     {infoView === "bug"
@@ -2686,7 +2740,9 @@ export default function Header() {
               {infoView === "versions" && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-bold text-slate-800">Version History</h4>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      Version History
+                    </h4>
                     <button
                       onClick={() => setInfoView("menu")}
                       className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
@@ -2702,10 +2758,16 @@ export default function Header() {
                         className="border border-slate-200 rounded-lg p-3 bg-slate-50"
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-slate-800">v{entry.version}</span>
-                          <span className="text-[10px] font-medium text-slate-500">{entry.date}</span>
+                          <span className="text-xs font-bold text-slate-800">
+                            v{entry.version}
+                          </span>
+                          <span className="text-[10px] font-medium text-slate-500">
+                            {entry.date}
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-600 leading-relaxed">{entry.notes}</p>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {entry.notes}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -2795,7 +2857,8 @@ export default function Header() {
 
             <div className="px-5 py-4">
               <p className="text-sm text-slate-700 leading-relaxed">
-                Are you sure you want to switch duty? This will return you to the duty selector page.
+                Are you sure you want to switch duty? This will return you to
+                the duty selector page.
               </p>
 
               <div className="mt-5 flex items-center justify-end gap-2.5">
