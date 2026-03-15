@@ -110,6 +110,7 @@ export default function Header() {
   const [opsNotification, setOpsNotification] = useState(null);
   const [showOpsToast, setShowOpsToast] = useState(false);
   const shiftStartPingKeyRef = useRef("");
+  const handoverAvailablePingKeyRef = useRef("");
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -219,6 +220,38 @@ export default function Header() {
     });
     window.dispatchEvent(event);
   };
+
+  useEffect(() => {
+    if (!canHandover || hasHandovered || !myAssignedShift || myAssignedShift === "Off") {
+      return;
+    }
+
+    const now = getGMT8Time();
+    const marker = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}|${myAssignedShift}|${now.getHours()}`;
+    if (handoverAvailablePingKeyRef.current === marker) {
+      return;
+    }
+    handoverAvailablePingKeyRef.current = marker;
+
+    const notification = {
+      id: `handover-available-${Date.now()}`,
+      type: "handover-available",
+      text: "Your shift is ending soon. Please complete your pending tasks and initiate the handover.",
+      time: Date.now(),
+    };
+
+    setOpsNotification(notification);
+    setShowOpsToast(true);
+
+    playAlertSound();
+    maybeShowSystemNotification("Shift Handover Available", notification.text);
+  }, [
+    canHandover,
+    hasHandovered,
+    myAssignedShift,
+    maybeShowSystemNotification,
+    playAlertSound,
+  ]);
 
   useEffect(() => {
     if (
@@ -1232,33 +1265,7 @@ export default function Header() {
   return (
     <>
       <header className="bg-white rounded-2xl shadow-sm border border-slate-100 mx-6 mt-6 px-6 h-16 flex items-center justify-between shrink-0 z-40 relative">
-        {/* 1. OUTGOING SHIFT ALERT (Handover Prompt) */}
-        {canHandover && !hasHandovered && (
-          <div className="absolute top-20 right-0 z-50 animate-in slide-in-from-top-2 fade-in duration-300">
-            <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl shadow-lg flex items-start gap-3 w-[320px]">
-              <div className="bg-indigo-100 p-2 rounded-full shrink-0">
-                <Bell size={18} className="text-indigo-600" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-indigo-900 mb-1">
-                  Shift Handover Available
-                </h4>
-                <p className="text-xs text-indigo-700 leading-relaxed mb-3">
-                  Your shift is ending soon. Please complete your pending tasks
-                  and initiate the handover.
-                </p>
-                <button
-                  onClick={handleHandover}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
-                >
-                  Complete Handover
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 2. INCOMING SHIFT ALERT (Waiting for Handover) */}
+        {/* 1. INCOMING SHIFT ALERT (Waiting for Handover) */}
         {isIncomingWaiting && (
           <div className="absolute top-20 right-0 z-50 flex items-center gap-3 bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">
             <AlertCircle size={20} className="text-amber-500 shrink-0" />
@@ -1607,6 +1614,36 @@ export default function Header() {
                                   {notif.text}
                                 </p>
                                 <span className="text-[9px] text-blue-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "handover-available") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-indigo-50 border border-indigo-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+                            <div className="flex items-start gap-2">
+                              <Bell
+                                size={16}
+                                className="text-indigo-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-indigo-800 mb-0.5">
+                                  Shift Handover Available
+                                </h4>
+                                <p className="text-xs text-indigo-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-indigo-500 mt-1 block">
                                   {new Date(notif.time).toLocaleTimeString([], {
                                     hour: "2-digit",
                                     minute: "2-digit",
@@ -2141,14 +2178,16 @@ export default function Header() {
 
       {showOpsToast && opsNotification && (
         <div
-          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : "border-blue-200"}`}
+          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : opsNotification.type === "handover-available" ? "border-indigo-200" : "border-blue-200"}`}
         >
           <div className="p-3 flex items-start gap-2">
             <div
-              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : "text-blue-600"}`}
+              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : opsNotification.type === "handover-available" ? "text-indigo-600" : "text-blue-600"}`}
             >
               {opsNotification.type === "ownership-conflict" ? (
                 <AlertTriangle size={16} />
+              ) : opsNotification.type === "handover-available" ? (
+                <Bell size={16} />
               ) : (
                 <Clock size={16} />
               )}
@@ -2157,7 +2196,9 @@ export default function Header() {
               <p className="text-xs font-bold text-slate-900">
                 {opsNotification.type === "ownership-conflict"
                   ? "Ownership Conflict"
-                  : "Shift Started"}
+                  : opsNotification.type === "handover-available"
+                    ? "Shift Handover Available"
+                    : "Shift Started"}
               </p>
               <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
                 {opsNotification.text}
