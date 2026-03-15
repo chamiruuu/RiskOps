@@ -271,9 +271,6 @@ function Dashboard() {
         localStorage.setItem(marker, "done"); // Prevent double-firing
 
         console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
-
-        console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
-
         // 1. Grab all tickets currently marked as "Pending"
         const pendingTickets = tickets.filter(
           (t) => t.status === "Pending" || t.status === "PENDING",
@@ -327,15 +324,17 @@ function Dashboard() {
       // NEW: Send to Google Sheet if created by outgoing shift in Shared Zone
       if (isSharedZoneHandover()) {
         console.log("Pushing NEW ticket to Google Sheet Handover:", data[0]);
-        
+
         // Edge function expects an array of tickets even for a single insert
-        supabase.functions.invoke('sync-sheets', {
-          body: {
-            action: 'APPEND',
-            tickets: [data[0]], 
-            handoverBy: workName || "Agent"
-          }
-        }).catch(err => console.error("Sheet Create Error:", err));
+        supabase.functions
+          .invoke("sync-sheets", {
+            body: {
+              action: "APPEND",
+              tickets: [data[0]],
+              handoverBy: workName || "Agent",
+            },
+          })
+          .catch((err) => console.error("Sheet Create Error:", err));
       }
     }
   };
@@ -353,16 +352,22 @@ function Dashboard() {
     // NEW: Send edit to Google Sheet if edited by outgoing shift in Shared Zone
     if (isSharedZoneHandover()) {
       // The Edge function only supports updating the 'status' column
-      if (field === 'status') {
-        console.log("Pushing UPDATED ticket to Google Sheet Handover:", { id, field, value });
-        
-        supabase.functions.invoke('sync-sheets', {
-          body: {
-            action: 'UPDATE',
-            ticketId: id,      
-            status: value       
-          }
-        }).catch(err => console.error("Sheet Update Error:", err));
+      if (field === "status") {
+        console.log("Pushing UPDATED ticket to Google Sheet Handover:", {
+          id,
+          field,
+          value,
+        });
+
+        supabase.functions
+          .invoke("sync-sheets", {
+            body: {
+              action: "UPDATE",
+              ticketId: id,
+              status: value,
+            },
+          })
+          .catch((err) => console.error("Sheet Update Error:", err));
       }
     }
 
@@ -546,3 +551,4 @@ export default function App() {
     </DutyProvider>
   );
 }
+``
