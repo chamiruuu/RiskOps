@@ -671,10 +671,10 @@ export default function TicketForm({ onAddTicket }) {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => applyQuickDate(3)}
+                                onClick={() => applyQuickDate(2)}
                                 className="py-2 text-xs font-bold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-200 text-slate-700 rounded-lg transition-colors"
                               >
-                                Last 3 Days
+                                Last 2 Days
                               </button>
                               <button
                                 type="button"

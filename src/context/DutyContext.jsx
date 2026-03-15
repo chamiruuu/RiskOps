@@ -48,6 +48,9 @@ export const DutyProvider = ({ children }) => {
     return [];
   });
 
+  // --- NEW: Connection Refresh Trigger ---
+  const [presenceTrigger, setPresenceTrigger] = useState(0);
+
   const fetchUserProfile = async (userId) => {
     try {
       const { data, error } = await supabase
@@ -226,12 +229,15 @@ export const DutyProvider = ({ children }) => {
   }, [selectedDuty]);
 
   // --- 3. STATIC PRESENCE TRACKING ARCHITECTURE ---
-  // 3a. Initialize the Channel ONLY ONCE when the user ID is available
+  // 3a. Initialize the Channel ONLY ONCE (OR when forced to refresh)
   useEffect(() => {
     if (!user?.id) return;
 
-    // If channel already exists, don't recreate it
-    if (presenceChannelRef.current) return;
+    // 1. Force completely clean up old connection if we are refreshing
+    if (presenceChannelRef.current) {
+      supabase.removeChannel(presenceChannelRef.current);
+      presenceChannelRef.current = null;
+    }
 
     const channel = supabase.channel("online-users", {
       config: { presence: { key: user.id } },
@@ -245,8 +251,10 @@ export const DutyProvider = ({ children }) => {
         Object.keys(newState).forEach((key) => {
           const userRecords = newState[key];
           if (userRecords && userRecords.length > 0) {
-            // Push the most recent data payload for this user key
-            activeUsers.push(userRecords[0]);
+            // --- NEW FIX: Sort by timestamp to ALWAYS grab the newest record ---
+            // This guarantees we ignore old ghost records from Supabase
+            const latestRecord = [...userRecords].sort((a, b) => (b._timestamp || 0) - (a._timestamp || 0))[0];
+            activeUsers.push(latestRecord);
           }
         });
 
@@ -256,21 +264,19 @@ export const DutyProvider = ({ children }) => {
 
     presenceChannelRef.current = channel;
 
-    // Cleanup ONLY happens if the component fully unmounts
     return () => {
       if (presenceChannelRef.current) {
         supabase.removeChannel(presenceChannelRef.current);
         presenceChannelRef.current = null;
       }
     };
-  }, [user?.id]); // Only runs once when user.id is set
+  }, [user?.id, presenceTrigger]); // <-- Rebuilds connection when presenceTrigger changes!
 
   // 3b. Push state updates dynamically without breaking the connection
   useEffect(() => {
     if (!user?.id || !workName || !userRole || !presenceChannelRef.current)
       return;
 
-    // The channel is static, we just push the new payload to the existing connection
     const updatePresence = async () => {
       try {
         await presenceChannelRef.current.track({
@@ -278,22 +284,27 @@ export const DutyProvider = ({ children }) => {
           workName: workName || user.email?.split("@")[0] || "Unknown User",
           duties: selectedDuty || [],
           role: userRole || "User",
+          _timestamp: Date.now() // Forces Madee's screen to recognize this as the newest
         });
       } catch (error) {
         // Silently ignore tracking errors if socket is temporarily busy
       }
     };
 
-    // We use a small timeout to ensure the socket is 'SUBSCRIBED' before tracking
-    const timeoutId = setTimeout(updatePresence, 500);
+    const timeoutId = setTimeout(updatePresence, 300);
     return () => clearTimeout(timeoutId);
-  }, [user, workName, userRole, selectedDuty]); // Runs whenever these exact states change
+  }, [user?.id, workName, userRole, selectedDuty, presenceTrigger]); // <-- Triggers here too
 
-  // --- 4. REAL-TIME HANDSHAKE BROADCASTING ---
+  // --- 4. STATIC REAL-TIME HANDSHAKE BROADCASTING ---
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
-    const channel = supabase.channel("duty-transfers");
+    // Prevent connection tearing by only opening this channel ONCE per session
+    if (transferChannelRef.current) return;
+
+    const channel = supabase.channel("duty-transfers", {
+      config: { broadcast: { ack: true } } // Forces Supabase to guarantee delivery!
+    });
 
     channel.on("broadcast", { event: "transfer_request" }, ({ payload }) => {
       if (payload.targetId === user.id) {
@@ -317,6 +328,15 @@ export const DutyProvider = ({ children }) => {
     channel.on("broadcast", { event: "transfer_response" }, ({ payload }) => {
       if (payload.targetId === user.id) {
         setTransferResponse({ ...payload, _ts: Date.now() });
+        
+        // --- NEW FIX: Instantly drop the duties from the Sender if Accepted ---
+        if (payload.status === "accepted") {
+          setSelectedDuty((prev) =>
+            (prev || []).filter((duty) => !payload.duties.includes(duty))
+          );
+          // REFRESH THE CONNECTION to clear ghosts!
+          setTimeout(() => setPresenceTrigger(prev => prev + 1), 600);
+        }
       }
     });
 
@@ -324,17 +344,21 @@ export const DutyProvider = ({ children }) => {
     transferChannelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      if (transferChannelRef.current) {
+        supabase.removeChannel(transferChannelRef.current);
+        transferChannelRef.current = null;
+      }
     };
-  }, [user]);
+  }, [user?.id]); // Only runs once when user.id is set
 
   const sendTransferRequest = async (targetId, duties) => {
+    if (!transferChannelRef.current) return;
     await transferChannelRef.current.send({
       type: "broadcast",
       event: "transfer_request",
       payload: {
         fromId: user.id,
-        fromName: workName || user.email.split("@")[0],
+        fromName: workName || user.email?.split("@")[0] || "Agent",
         targetId,
         duties,
       },
@@ -342,6 +366,7 @@ export const DutyProvider = ({ children }) => {
   };
 
   const respondToTransferRequest = async (targetId, status, duties) => {
+    if (!transferChannelRef.current) return;
     await transferChannelRef.current.send({
       type: "broadcast",
       event: "transfer_response",
@@ -353,6 +378,8 @@ export const DutyProvider = ({ children }) => {
       setSelectedDuty((prev) =>
         Array.from(new Set([...(prev || []), ...duties])),
       );
+      // REFRESH THE CONNECTION to clear ghosts!
+      setTimeout(() => setPresenceTrigger(prev => prev + 1), 600);
     }
   };
 
