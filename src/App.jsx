@@ -12,7 +12,7 @@ const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
 
 function Dashboard() {
   // FIX: Grab workName from Context
-  const { selectedDuty, user, workName } = useDuty();
+  const { selectedDuty, user, workName, myAssignedShift } = useDuty();
   const dutyNumber = selectedDuty || []; 
   
   // FIX: This takes "Fernando IPCS" and just keeps "Fernando" for your scripts
@@ -217,6 +217,57 @@ function Dashboard() {
     };
   }, [user]);
 
+  // --- GOOGLE SHEET SHARED ZONE DETECTOR ---
+  const isSharedZoneHandover = useCallback(() => {
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const gmt8 = new Date(utc + 3600000 * 8);
+    const time = gmt8.getHours() + gmt8.getMinutes() / 60;
+
+    // 07:10 - 07:30 (Night is Outgoing)
+    if (time >= 7.1666 && time < 7.5 && myAssignedShift === "Night") return true;
+    // 14:40 - 15:00 (Morning is Outgoing)
+    if (time >= 14.6666 && time < 15.0 && myAssignedShift === "Morning") return true;
+    // 22:40 - 23:00 (Afternoon is Outgoing)
+    if (time >= 22.6666 && time < 23.0 && myAssignedShift === "Afternoon") return true;
+
+    return false;
+  }, [myAssignedShift]);
+
+  // --- AUTOMATIC HANDOVER TRIGGER ---
+  useEffect(() => {
+    const checkAutoHandover = () => {
+      if (!myAssignedShift || myAssignedShift === "Off") return;
+      if (!isSharedZoneHandover()) return;
+
+      const now = new Date();
+      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+      const gmt8 = new Date(utc + 3600000 * 8);
+      const h = gmt8.getHours();
+      const m = gmt8.getMinutes();
+
+      // Trigger exact Auto-Handover at 07:10, 14:40, 22:40
+      const isAutoTime =
+        (h === 7 && m === 10 && myAssignedShift === "Night") ||
+        (h === 14 && m === 40 && myAssignedShift === "Morning") ||
+        (h === 22 && m === 40 && myAssignedShift === "Afternoon");
+
+      if (isAutoTime) {
+        const marker = `${gmt8.toDateString()}-${h}:${m}-AutoHandover`;
+        if (localStorage.getItem(marker)) return;
+        localStorage.setItem(marker, "done"); // Prevent double-firing
+
+        console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
+
+        // --- ADD YOUR GOOGLE SHEET BATCH PUSH SCRIPT HERE ---
+        // Get all pending tickets for this user and push them to the Sheet
+      }
+    };
+
+    const timer = setInterval(checkAutoHandover, 30000);
+    return () => clearInterval(timer);
+  }, [myAssignedShift, tickets, isSharedZoneHandover]);
+
   // 2. Insert new ticket to Supabase
   const handleAddTicket = async (newTicket) => {
     // --- STRICT RULE: Player ID is absolutely required ---
@@ -238,6 +289,12 @@ function Dashboard() {
       alert("DATABASE ERROR: " + error.message);
     } else if (data) {
       setTickets([data[0], ...tickets]); // Instantly update the UI
+
+      // NEW: Send to Google Sheet if created by outgoing shift in Shared Zone
+      if (isSharedZoneHandover()) {
+        console.log("Pushing NEW ticket to Google Sheet Handover:", data[0]);
+        // fetch('YOUR_WEBHOOK_URL', { method: 'POST', body: JSON.stringify(data[0]) })
+      }
     }
   };
 
@@ -248,6 +305,12 @@ function Dashboard() {
 
     // Optimistic UI update (makes the UI feel instantly fast)
     setTickets(tickets.map(t => t.id === id ? { ...t, [field]: value } : t));
+
+    // NEW: Send edit to Google Sheet if edited by outgoing shift in Shared Zone
+    if (isSharedZoneHandover()) {
+      console.log("Pushing UPDATED ticket to Google Sheet Handover:", { id, field, value });
+      // fetch('YOUR_WEBHOOK_URL', { method: 'POST', body: JSON.stringify({id, field, value}) })
+    }
     
     // Background DB update
     const { error } = await supabase.from("tickets").update({ [field]: value }).eq("id", id);

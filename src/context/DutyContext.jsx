@@ -84,12 +84,14 @@ export const DutyProvider = ({ children }) => {
       const m = now.getMinutes();
       const timeInHours = h + m / 60;
 
-      if (timeInHours >= 7 && timeInHours < 14.5)
+      // THE BIG SWITCH TIMES: 07:10 (7.166), 14:40 (14.666), 22:40 (22.666)
+      if (timeInHours >= 7.1666 && timeInHours < 14.6666)
         setCurrentActiveShift("Morning");
-      else if (timeInHours >= 14.5 && timeInHours < 22.5)
+      else if (timeInHours >= 14.6666 && timeInHours < 22.6666)
         setCurrentActiveShift("Afternoon");
       else setCurrentActiveShift("Night");
     };
+    
     checkShiftPeriod();
     const timer = setInterval(checkShiftPeriod, 60000);
     return () => clearInterval(timer);

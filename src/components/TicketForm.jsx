@@ -38,21 +38,10 @@ const getFormattedDate = (date) => {
   return `${y}-${m}-${d}`;
 };
 
-// HELPER: Check if time is currently inside the handover window
-const checkIsHandoverWindow = () => {
-  const now = getGMT8Time();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  return (
-    (h === 14 && m >= 15 && m <= 45) ||
-    (h === 22 && m >= 15 && m <= 45) ||
-    (h === 6 && m >= 45) ||
-    (h === 7 && m <= 15)
-  );
-};
+
 
 export default function TicketForm({ onAddTicket }) {
-  const { selectedDuty, user, workName, isMyShiftActive, userRole } = useDuty();
+  const { selectedDuty, workName, userRole, myAssignedShift } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
@@ -96,41 +85,35 @@ export default function TicketForm({ onAddTicket }) {
     providerAcc: "",
   });
 
-  // --- SHIFT LOCKOUT STATE ---
-  const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
-  const [isInHandoverWindow, setIsInHandoverWindow] = useState(
-    checkIsHandoverWindow(),
-  );
-  const [isPostHandoverLocked, setIsPostHandoverLocked] = useState(false);
+  // --- STRICT 30-MIN SHARED ZONE CREATION LOCKS ---
+  const [canCreate, setCanCreate] = useState(false);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setIsInHandoverWindow(checkIsHandoverWindow());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
+    const checkCreationRights = () => {
+      if (userRole === "Admin" || userRole === "Leader") return true;
 
-  useEffect(() => {
-    const handleHandoverCompleted = () => {
-      if (!isAdminOrLeader) {
-        setIsPostHandoverLocked(true);
+      const now = getGMT8Time();
+      const time = now.getHours() + now.getMinutes() / 60;
+
+      if (myAssignedShift === "Morning") {
+        // Unlocks at 07:10, Locks at 15:00
+        return time >= 7.1666 && time < 15.0;
       }
+      if (myAssignedShift === "Afternoon") {
+        // Unlocks at 14:40, Locks at 23:00
+        return time >= 14.6666 && time < 23.0;
+      }
+      if (myAssignedShift === "Night") {
+        // Unlocks at 22:40, Locks at 07:30 (next day)
+        return time >= 22.6666 || time < 7.5;
+      }
+      return false;
     };
 
-    window.addEventListener("handover-completed", handleHandoverCompleted);
-    return () =>
-      window.removeEventListener("handover-completed", handleHandoverCompleted);
-  }, [isAdminOrLeader]);
-
-  useEffect(() => {
-    if (isAdminOrLeader || isMyShiftActive || !isInHandoverWindow) {
-      setIsPostHandoverLocked(false);
-    }
-  }, [isAdminOrLeader, isMyShiftActive, isInHandoverWindow]);
-
-  const canCreate =
-    (isMyShiftActive || isAdminOrLeader || isInHandoverWindow) &&
-    !isPostHandoverLocked;
+    setCanCreate(checkCreationRights());
+    const timer = setInterval(() => setCanCreate(checkCreationRights()), 15000);
+    return () => clearInterval(timer);
+  }, [myAssignedShift, userRole]);
 
   const [formData, setFormData] = useState({
     loginId: "",
@@ -408,11 +391,7 @@ export default function TicketForm({ onAddTicket }) {
           {!canCreate && (
             <span
               className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
-              title={
-                isPostHandoverLocked
-                  ? "Handover completed. Outgoing shift cannot create new tickets."
-                  : "You cannot create tickets until the handover window opens"
-              }
+              title="You are outside your ticket creation window for this shift."
             >
               <Lock size={10} /> Shift Locked
             </span>
@@ -864,9 +843,7 @@ export default function TicketForm({ onAddTicket }) {
                     <Plus size={18} />
                   )}
                   {!canCreate
-                    ? isPostHandoverLocked
-                      ? "Locked after Handover"
-                      : "Locked until Handover"
+                    ? "Shift Locked"
                     : isCheckingPgSoft
                       ? "Checking Database..."
                       : "Create Ticket"}
