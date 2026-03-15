@@ -182,6 +182,9 @@ function Dashboard() {
       .on("broadcast", { event: "ticket_edit_activity" }, ({ payload }) => {
         if (!payload || payload.userId === user.id) return;
 
+        // Skip ownership conflict for note edits (multiple users can edit notes concurrently)
+        if (payload.field === "notes") return;
+
         const now = Date.now();
         const ticketKey = String(payload.ticketId);
         const localEdit = recentLocalTicketEditsRef.current.get(ticketKey);
