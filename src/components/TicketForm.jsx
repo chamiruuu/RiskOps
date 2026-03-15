@@ -133,6 +133,11 @@ export default function TicketForm({ onAddTicket }) {
   const isStrictProvider =
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
 
+  const gmt8Now = getGMT8Time();
+  const gmt8TimeLabel = `${String(gmt8Now.getHours()).padStart(2, "0")}:${String(
+    gmt8Now.getMinutes(),
+  ).padStart(2, "0")}:${String(gmt8Now.getSeconds()).padStart(2, "0")}`;
+
   useEffect(() => {
     setProviderSearch(formData.provider);
   }, [formData.provider]);
@@ -396,6 +401,9 @@ export default function TicketForm({ onAddTicket }) {
               <Lock size={10} /> Shift Locked
             </span>
           )}
+        </div>
+        <div className="mb-2 text-[10px] text-slate-500 font-medium">
+          Debug: Assigned {myAssignedShift || "Off"} | GMT+8 {gmt8TimeLabel}
         </div>
         <div className="flex p-1 bg-slate-100 rounded-lg mb-2">
           <button
