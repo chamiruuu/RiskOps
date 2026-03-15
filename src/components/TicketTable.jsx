@@ -305,7 +305,10 @@ export default function TicketTable({
   const [isInHandoverWindow, setIsInHandoverWindow] = useState(
     checkIsHandoverWindow(),
   );
+  const [isHandoverProcessing, setIsHandoverProcessing] = useState(false);
   const autoHandoverLoggedRef = useRef("");
+  const lastPostStartReminderMinuteRef = useRef("");
+  const handedOverTicketIdsByMarkerRef = useRef(new Map());
 
   // --- SMART 5-MIN HANDOVER REMINDER ---
   useEffect(() => {
@@ -367,6 +370,86 @@ export default function TicketTable({
     const timer = setInterval(checkReminder, 30000); // Check every 30s
     return () => clearInterval(timer);
   }, [isAdminOrLeader, isMyShiftActive, tickets, lastReminderHour]);
+
+  // --- POST-START HANDOVER REMINDER (REPEATS EVERY MINUTE) ---
+  useEffect(() => {
+    const checkPostStartReminder = () => {
+      // Outgoing shift users only (no admin/leader broadcast).
+      if (isAdminOrLeader || !myAssignedShift || myAssignedShift === "Off") {
+        return;
+      }
+
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+
+      // New reminder schedule requested by ops:
+      // 07:00-07:15, 14:30-14:45, 22:30-22:45.
+      const isPostStartWindow =
+        (h === 7 && m >= 0 && m <= 15) ||
+        (h === 14 && m >= 30 && m <= 45) ||
+        (h === 22 && m >= 30 && m <= 45);
+
+      if (!isPostStartWindow) {
+        return;
+      }
+
+      const handoverPair = getHandoverShiftPair();
+      const isOutgoingForWindow =
+        !!handoverPair && myAssignedShift === handoverPair.outgoing;
+
+      if (!isOutgoingForWindow) {
+        return;
+      }
+
+      const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+        .slice()
+        .sort()
+        .join(",")}`;
+
+      // Stop reminders for this shift once handover is completed.
+      if (autoHandoverLoggedRef.current === marker) {
+        return;
+      }
+
+      const minuteKey = `${h}:${String(m).padStart(2, "0")}|${marker}`;
+      if (lastPostStartReminderMinuteRef.current === minuteKey) {
+        return;
+      }
+      lastPostStartReminderMinuteRef.current = minuteKey;
+
+      const pendingTix = tickets.filter((t) => t.status === "Pending");
+      const reminderText =
+        pendingTix.length > 0
+          ? `Handover reminder: ${pendingTix.length} pending ticket(s) still require handover to ${handoverPair.incoming} shift.`
+          : `Handover reminder: please complete your shift handover to ${handoverPair.incoming} shift.`;
+
+      setReminderToast({
+        title: "Handover Required",
+        text: reminderText,
+      });
+      setShowReminderToast(true);
+
+      const audio = new Audio(notificationSound);
+      audio.play().catch(() => console.log("Audio blocked by browser"));
+
+      window.dispatchEvent(
+        new CustomEvent("tracking-reminder-alert", {
+          detail: {
+            missingCount: 0,
+            time: Date.now(),
+            text: reminderText,
+          },
+        }),
+      );
+
+      setTimeout(() => setShowReminderToast(false), 8000);
+    };
+
+    checkPostStartReminder();
+    const timer = setInterval(checkPostStartReminder, 30000);
+    return () => clearInterval(timer);
+  }, [isAdminOrLeader, myAssignedShift, dutyArray, tickets]);
 
   // --- AUTO-CLEAR BELL REMINDER IF FIXED ---
   useEffect(() => {
@@ -486,8 +569,21 @@ export default function TicketTable({
 
   const syncHandoverAndNotify = useCallback(
     async (pendingTix, mode = "Manual") => {
+      const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+        .slice()
+        .sort()
+        .join(",")}`;
+      const handedOverSet =
+        handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
+      const uniquePendingTix = pendingTix.filter((t) => !handedOverSet.has(t.id));
+
+      // Stop duplicate appends/notifications when handover is clicked repeatedly.
+      if (uniquePendingTix.length === 0) {
+        return { skipped: true, count: 0, marker };
+      }
+
       const nextShift = getNextShift(currentActiveShift);
-      const msg = `${shortWorkName} completed ${mode.toLowerCase()} handover for ${dutyArray.join(", ")}. ${pendingTix.length} pending ticket(s) handed over successfully.`;
+      const msg = `${shortWorkName} completed ${mode.toLowerCase()} handover for ${dutyArray.join(", ")}. ${uniquePendingTix.length} pending ticket(s) handed over successfully.`;
 
       await supabase.from("shift_notifications").insert({
         target_shift: nextShift,
@@ -506,7 +602,10 @@ export default function TicketTable({
           .in("id", completedIds);
       }
 
-      await appendHandoverTicketsToSheet(pendingTix);
+      await appendHandoverTicketsToSheet(uniquePendingTix);
+
+      uniquePendingTix.forEach((t) => handedOverSet.add(t.id));
+      handedOverTicketIdsByMarkerRef.current.set(marker, handedOverSet);
 
       window.dispatchEvent(
         new CustomEvent("handover-completed", {
@@ -517,6 +616,8 @@ export default function TicketTable({
           },
         }),
       );
+
+      return { skipped: false, count: uniquePendingTix.length, marker };
     },
     [appendHandoverTicketsToSheet, currentActiveShift, dutyArray, shortWorkName, tickets],
   );
@@ -561,6 +662,8 @@ export default function TicketTable({
 
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
   const checkHandoverEligibility = () => {
+    if (isHandoverProcessing) return;
+
     const pendingTix = tickets.filter((t) => t.status === "Pending");
     const missing = pendingTix.filter(
       (t) =>
@@ -592,16 +695,29 @@ export default function TicketTable({
   };
 
   const executeHandover = async () => {
-    const pendingTix = tickets.filter((t) => t.status === "Pending");
-    await syncHandoverAndNotify(pendingTix, "Manual");
+    if (isHandoverProcessing) return;
+    setIsHandoverProcessing(true);
 
-    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
-      .slice()
-      .sort()
-      .join(",")}`;
-    autoHandoverLoggedRef.current = marker;
+    try {
+      const pendingTix = tickets.filter((t) => t.status === "Pending");
+      const result = await syncHandoverAndNotify(pendingTix, "Manual");
 
-    setHandoverModal({ isOpen: true, step: "shift_done", missingTickets: [] });
+      const marker =
+        result?.marker ||
+        `${getLastShiftChangeTime().toISOString()}|${dutyArray
+          .slice()
+          .sort()
+          .join(",")}`;
+      autoHandoverLoggedRef.current = marker;
+
+      setHandoverModal({
+        isOpen: true,
+        step: "shift_done",
+        missingTickets: [],
+      });
+    } finally {
+      setIsHandoverProcessing(false);
+    }
   };
 
   const handleSendNote = () => {
@@ -779,7 +895,8 @@ export default function TicketTable({
     !!handoverPair && myAssignedShift === handoverPair.outgoing;
   const canInitiateHandover =
     isAdminOrLeader || (isInHandoverWindow && isOutgoingForWindow);
-  const isHandoverDisabled = !canInitiateHandover || !isInHandoverWindow;
+  const isHandoverDisabled =
+    !canInitiateHandover || !isInHandoverWindow || isHandoverProcessing;
 
   let handoverTooltip = "Handover Shift";
   if (!isInHandoverWindow)

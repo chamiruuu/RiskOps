@@ -9,6 +9,9 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
+// Keep users visible for a short grace window to survive background-tab throttling.
+const PRESENCE_GRACE_MS = 1 * 60 * 1000;
+
 const DutyContext = createContext();
 
 export const DutyProvider = ({ children }) => {
@@ -99,7 +102,14 @@ export const DutyProvider = ({ children }) => {
       if (allCycles) {
         const uniqueCycles = [...new Set(allCycles.map(d => d.cycle_period))].filter(Boolean);
         const today = getGMT8Time();
-        if (today.getHours() < 7) today.setDate(today.getDate() - 1);
+        const h = today.getHours();
+        const m = today.getMinutes();
+
+        // Keep using the previous operational day through 07:15 so
+        // Night -> Morning handover can still resolve the outgoing roster.
+        if (h < 7 || (h === 7 && m <= 15)) {
+          today.setDate(today.getDate() - 1);
+        }
         today.setHours(0, 0, 0, 0);
 
         for (const c of uniqueCycles) {
@@ -197,6 +207,7 @@ export const DutyProvider = ({ children }) => {
 
   // --- 3. BULLETPROOF PRESENCE TRACKING ARCHITECTURE ---
   const presenceDataRef = useRef({});
+  const presenceCacheRef = useRef(new Map());
 
   // 3a. Always keep the ref perfectly synced with the absolute latest state
   useEffect(() => {
@@ -240,8 +251,34 @@ export const DutyProvider = ({ children }) => {
       .on('presence', { event: 'sync' }, () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
+          const now = Date.now();
           const newState = channel.presenceState();
-          const activeUsers = Object.keys(newState).map(key => newState[key][0]);
+          const cache = presenceCacheRef.current;
+
+          // Refresh cache from current presence state.
+          Object.keys(newState).forEach((key) => {
+            const metas = newState[key] || [];
+            if (!metas.length) return;
+
+            const latestMeta = [...metas].sort(
+              (a, b) => (b?._ping || 0) - (a?._ping || 0),
+            )[0];
+
+            const cacheKey = latestMeta?.id || key;
+            cache.set(cacheKey, {
+              user: latestMeta,
+              lastSeenAt: now,
+            });
+          });
+
+          // Drop truly stale users (logout/closed/disconnected past grace window).
+          for (const [cacheKey, value] of cache.entries()) {
+            if (now - value.lastSeenAt > PRESENCE_GRACE_MS) {
+              cache.delete(cacheKey);
+            }
+          }
+
+          const activeUsers = Array.from(cache.values()).map((v) => v.user);
           setOnlineUsers(activeUsers);
         }, 300); 
       })
@@ -266,6 +303,7 @@ export const DutyProvider = ({ children }) => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       supabase.removeChannel(channel);
       window._triggerPresenceUpdate = null;
+      presenceCacheRef.current.clear();
     };
   }, [user?.id]); // <-- THE MAGIC FIX: This entirely prevents connection tearing!
 

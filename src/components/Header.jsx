@@ -95,6 +95,8 @@ export default function Header() {
   const [updaterNotification, setUpdaterNotification] = useState(null);
   const [showUpdaterToast, setShowUpdaterToast] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [connectionNotification, setConnectionNotification] = useState(null);
+  const [showConnectionToast, setShowConnectionToast] = useState(false);
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -179,6 +181,18 @@ export default function Header() {
   }, [showUpdaterToast]);
 
   useEffect(() => {
+    if (!showConnectionToast) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setShowConnectionToast(false);
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [showConnectionToast]);
+
+  useEffect(() => {
     if (showAdminModal || showShiftModal) {
       fetchTeam();
     }
@@ -207,13 +221,46 @@ export default function Header() {
       });
     };
     const clearReminder = () => setTrackingReminder(null);
+    const handleRealtimeError = (e) => {
+      const notification = {
+        id: `tickets-connection-error-${e.detail?.time || Date.now()}`,
+        type: "connection-error",
+        text:
+          e.detail?.text ||
+          "Live ticket sync connection issue detected. Trying to reconnect...",
+        time: e.detail?.time || Date.now(),
+      };
+
+      setConnectionNotification(notification);
+      setShowConnectionToast(true);
+
+      const audio = new Audio(notificationSound);
+      audio.play().catch(() => console.log("Audio blocked by browser"));
+    };
+    const handleRealtimeRestored = (e) => {
+      const notification = {
+        id: `tickets-connection-restored-${e.detail?.time || Date.now()}`,
+        type: "connection-restored",
+        text:
+          e.detail?.text ||
+          "Live ticket sync reconnected. Realtime updates restored.",
+        time: e.detail?.time || Date.now(),
+      };
+
+      setConnectionNotification(notification);
+      setShowConnectionToast(true);
+    };
 
     window.addEventListener("tracking-reminder-alert", handleReminder);
     window.addEventListener("clear-tracking-reminder", clearReminder);
+    window.addEventListener("tickets-realtime-error", handleRealtimeError);
+    window.addEventListener("tickets-realtime-restored", handleRealtimeRestored);
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
       window.removeEventListener("clear-tracking-reminder", clearReminder);
+      window.removeEventListener("tickets-realtime-error", handleRealtimeError);
+      window.removeEventListener("tickets-realtime-restored", handleRealtimeRestored);
     };
   }, []);
 
@@ -820,6 +867,10 @@ export default function Header() {
     globalNotifications.push(updaterNotification);
   }
 
+  if (connectionNotification) {
+    globalNotifications.push(connectionNotification);
+  }
+
   if (isAdminOrLeader && cycleWarning) {
     globalNotifications.push({
       id: "warning",
@@ -1166,6 +1217,66 @@ export default function Header() {
                                 >
                                   {isInstallingUpdate ? "Restarting..." : "Restart Now"}
                                 </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "connection-error") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-rose-50 border border-rose-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle
+                                size={16}
+                                className="text-rose-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-rose-800 mb-0.5">
+                                  Connection Issue
+                                </h4>
+                                <p className="text-xs text-rose-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-rose-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "connection-restored") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-emerald-50 border border-emerald-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+                            <div className="flex items-start gap-2">
+                              <CheckCircle2
+                                size={16}
+                                className="text-emerald-600 shrink-0 mt-0.5"
+                              />
+                              <div>
+                                <h4 className="text-xs font-bold text-emerald-800 mb-0.5">
+                                  Connection Restored
+                                </h4>
+                                <p className="text-xs text-emerald-700 font-medium leading-relaxed">
+                                  {notif.text}
+                                </p>
+                                <span className="text-[9px] text-emerald-500 mt-1 block">
+                                  {new Date(notif.time).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1621,6 +1732,41 @@ export default function Header() {
               onClick={() => setShowUpdaterToast(false)}
               className="text-slate-400 hover:text-slate-600"
               aria-label="Close update toast"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showConnectionToast && connectionNotification && (
+        <div
+          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast ? "bottom-28" : "bottom-4"} ${connectionNotification.type === "connection-error" ? "border-rose-200" : "border-emerald-200"}`}
+        >
+          <div className="p-3 flex items-start gap-2">
+            <div
+              className={`mt-0.5 ${connectionNotification.type === "connection-error" ? "text-rose-600" : "text-emerald-600"}`}
+            >
+              {connectionNotification.type === "connection-error" ? (
+                <AlertTriangle size={16} />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-slate-900">
+                {connectionNotification.type === "connection-error"
+                  ? "Live Sync Issue"
+                  : "Live Sync Restored"}
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
+                {connectionNotification.text}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowConnectionToast(false)}
+              className="text-slate-400 hover:text-slate-600"
+              aria-label="Close connection toast"
             >
               <X size={14} />
             </button>

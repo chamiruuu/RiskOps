@@ -1,7 +1,7 @@
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 
 import Header from "./components/Header";
@@ -17,13 +17,15 @@ function Dashboard() {
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
   
   const [tickets, setTickets] = useState([]);
+  const realtimeIssueRef = useRef(false);
 
   // 1. Define fetchTickets FIRST so React knows what it is
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     let query = supabase
       .from("tickets")
       .select("*")
-      .eq('is_archived', false)
+      // Include rows where is_archived is NULL as active tickets too.
+      .not("is_archived", "is", true)
       .order("created_at", { ascending: false });
 
     // --- MODIFIED: Handle array of duties ---
@@ -39,16 +41,19 @@ function Dashboard() {
     } else {
       console.error("Error fetching tickets:", error);
     }
-  };
+  }, [selectedDuty]);
 
   // 1. Fetch tickets and listen for LIVE updates!
   useEffect(() => {
-    // Grab the initial data
-    fetchTickets();
+    // Grab initial data on next tick to avoid synchronous setState-in-effect lint warning.
+    const initialFetchTimer = setTimeout(() => {
+      fetchTickets();
+    }, 0);
 
     // --- SUPABASE REAL-TIME LISTENER ---
+    const channelName = `tickets-channel-${user?.id || "anon"}`;
     const subscription = supabase
-      .channel("tickets-channel")
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "tickets" },
@@ -58,14 +63,49 @@ function Dashboard() {
           fetchTickets(); 
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (realtimeIssueRef.current) {
+            window.dispatchEvent(
+              new CustomEvent("tickets-realtime-restored", {
+                detail: {
+                  time: Date.now(),
+                  text: "Live ticket sync reconnected. Realtime updates restored.",
+                },
+              }),
+            );
+            realtimeIssueRef.current = false;
+          }
+          fetchTickets();
+        }
+
+        // If realtime socket is unstable, force refresh so UIs stay in sync.
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          if (!realtimeIssueRef.current) {
+            window.dispatchEvent(
+              new CustomEvent("tickets-realtime-error", {
+                detail: {
+                  time: Date.now(),
+                  text: "Live ticket sync connection issue detected. Trying to reconnect...",
+                },
+              }),
+            );
+          }
+          realtimeIssueRef.current = true;
+          fetchTickets();
+        }
+      });
+
+    // Fallback polling to keep all screens synced even if realtime drops.
+    const fallbackTimer = setInterval(fetchTickets, 15000);
 
     // Cleanup the listener if the user logs out or closes the component
     return () => {
+      clearTimeout(initialFetchTimer);
+      clearInterval(fallbackTimer);
       supabase.removeChannel(subscription);
     };
-  // FIX: Use JSON.stringify so React knows the duties haven't actually changed!
-  }, [JSON.stringify(selectedDuty)]);
+  }, [fetchTickets, user?.id]);
 
   // 2. Insert new ticket to Supabase
   // 2. Insert new ticket to Supabase
