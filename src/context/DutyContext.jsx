@@ -119,20 +119,29 @@ export const DutyProvider = ({ children }) => {
         const h = today.getHours();
         const m = today.getMinutes();
 
-        // Keep using the previous operational day through 07:15 so
-        // Night -> Morning handover can still resolve the outgoing roster.
+        // Keep using the previous operational day through 07:15
         if (h < 7 || (h === 7 && m <= 15)) {
           today.setDate(today.getDate() - 1);
         }
         today.setHours(0, 0, 0, 0);
 
+        // --- NEW: BULLETPROOF DATE PARSER ---
+        const parseDateSafe = (dateStr) => {
+          const mMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+          const p = dateStr.trim().split(" ");
+          // If it matches "22 Feb 2026", parse it safely manually
+          if (p.length === 3) return new Date(p[2], mMap[p[1]], p[0]);
+          return new Date(dateStr); // Fallback
+        };
+
         for (const c of uniqueCycles) {
           const parts = c.split(" - ");
           if (parts.length === 2) {
-            const start = new Date(parts[0]);
-            const end = new Date(parts[1]);
+            const start = parseDateSafe(parts[0]);
+            const end = parseDateSafe(parts[1]);
             start.setHours(0, 0, 0, 0);
             end.setHours(23, 59, 59, 999);
+            
             if (today >= start && today <= end) {
               currentLiveCycle = c;
               break;

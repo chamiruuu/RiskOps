@@ -35,6 +35,13 @@ import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3";
 
+// --- HELPER: Get Current GMT+8 Time ---
+const getGMT8Time = () => {
+  const d = new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
 export default function Header() {
   const {
     selectedDuty,
@@ -47,6 +54,9 @@ export default function Header() {
     setDuty,
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // --- NEW: Handover Status State ---
+  const [hasHandovered, setHasHandovered] = useState(false);
 
   // --- Admin Modal States ---
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -163,6 +173,52 @@ export default function Header() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, [maybeShowSystemNotification, playAlertSound]);
+
+  // --- NEW: Reset Handover when shift changes naturally ---
+  useEffect(() => {
+    setHasHandovered(false);
+  }, [currentActiveShift]);
+
+  // --- NEW: STRICT HANDOVER WINDOW CHECKER ---
+  const checkCanHandover = () => {
+    const now = getGMT8Time();
+    const time = now.getHours() + now.getMinutes() / 60;
+
+    if (myAssignedShift === "Night" && time >= 7.0 && time < 7.5) return true;
+    if (myAssignedShift === "Morning" && time >= 14.5 && time < 15.0)
+      return true;
+    if (myAssignedShift === "Afternoon" && time >= 22.5 && time < 23.0)
+      return true;
+
+    return false;
+  };
+
+  // --- NEW: INCOMING SHIFT WAITING CHECKER ---
+  const checkIsIncomingWaiting = () => {
+    const now = getGMT8Time();
+    const time = now.getHours() + now.getMinutes() / 60;
+
+    if (myAssignedShift === "Morning" && time >= 7.0 && time < 7.1666)
+      return true;
+    if (myAssignedShift === "Afternoon" && time >= 14.5 && time < 14.6666)
+      return true;
+    if (myAssignedShift === "Night" && time >= 22.5 && time < 22.6666)
+      return true;
+
+    return false;
+  };
+
+  const canHandover = checkCanHandover();
+  const isIncomingWaiting = checkIsIncomingWaiting();
+
+  const handleHandover = () => {
+    setHasHandovered(true);
+    // Tell the rest of the app that a manual handover just happened
+    const event = new CustomEvent("handover-completed", {
+      detail: { shift: myAssignedShift, time: Date.now() },
+    });
+    window.dispatchEvent(event);
+  };
 
   useEffect(() => {
     if (
@@ -1176,6 +1232,42 @@ export default function Header() {
   return (
     <>
       <header className="bg-white rounded-2xl shadow-sm border border-slate-100 mx-6 mt-6 px-6 h-16 flex items-center justify-between shrink-0 z-40 relative">
+        {/* 1. OUTGOING SHIFT ALERT (Handover Prompt) */}
+        {canHandover && !hasHandovered && (
+          <div className="absolute top-20 right-0 z-50 animate-in slide-in-from-top-2 fade-in duration-300">
+            <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl shadow-lg flex items-start gap-3 w-[320px]">
+              <div className="bg-indigo-100 p-2 rounded-full shrink-0">
+                <Bell size={18} className="text-indigo-600" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-indigo-900 mb-1">
+                  Shift Handover Available
+                </h4>
+                <p className="text-xs text-indigo-700 leading-relaxed mb-3">
+                  Your shift is ending soon. Please complete your pending tasks
+                  and initiate the handover.
+                </p>
+                <button
+                  onClick={handleHandover}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                >
+                  Complete Handover
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. INCOMING SHIFT ALERT (Waiting for Handover) */}
+        {isIncomingWaiting && (
+          <div className="absolute top-20 right-0 z-50 flex items-center gap-3 bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">
+            <AlertCircle size={20} className="text-amber-500 shrink-0" />
+            <p className="text-sm font-semibold text-amber-800">
+              Please wait for the previous shift to complete their Handover.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-center gap-3">
           <div
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-300 ${useGradientLogoIcon ? "text-white" : `${style.container} ${style.text}`}`}
@@ -1201,6 +1293,23 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* --- HANDOVER BUTTON IN TOOLBAR --- */}
+          <button
+            disabled={!canHandover || hasHandovered}
+            onClick={handleHandover}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm
+              ${
+                hasHandovered
+                  ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                  : canHandover
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-md animate-pulse"
+                    : "hidden"
+              }`}
+          >
+            {hasHandovered ? <CheckCircle2 size={14} /> : <Bell size={14} />}
+            {hasHandovered ? "Handover Complete" : "Handover"}
+          </button>
+
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
           {!isAdminOrLeader && (
             <button
