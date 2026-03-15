@@ -110,7 +110,6 @@ export default function Header() {
   const [opsNotification, setOpsNotification] = useState(null);
   const [showOpsToast, setShowOpsToast] = useState(false);
   const shiftStartPingKeyRef = useRef("");
-  const handoverAvailablePingKeyRef = useRef("");
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -220,38 +219,6 @@ export default function Header() {
     });
     window.dispatchEvent(event);
   };
-
-  useEffect(() => {
-    if (!canHandover || hasHandovered || !myAssignedShift || myAssignedShift === "Off") {
-      return;
-    }
-
-    const now = getGMT8Time();
-    const marker = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}|${myAssignedShift}|${now.getHours()}`;
-    if (handoverAvailablePingKeyRef.current === marker) {
-      return;
-    }
-    handoverAvailablePingKeyRef.current = marker;
-
-    const notification = {
-      id: `handover-available-${Date.now()}`,
-      type: "handover-available",
-      text: "Your shift is ending soon. Please complete your pending tasks and initiate the handover.",
-      time: Date.now(),
-    };
-
-    setOpsNotification(notification);
-    setShowOpsToast(true);
-
-    playAlertSound();
-    maybeShowSystemNotification("Shift Handover Available", notification.text);
-  }, [
-    canHandover,
-    hasHandovered,
-    myAssignedShift,
-    maybeShowSystemNotification,
-    playAlertSound,
-  ]);
 
   useEffect(() => {
     if (
@@ -1624,36 +1591,6 @@ export default function Header() {
                           </div>
                         );
                       }
-                      if (notif.type === "handover-available") {
-                        return (
-                          <div
-                            key={notif.id}
-                            className="p-3 mb-2 bg-indigo-50 border border-indigo-200 shadow-sm rounded-lg relative overflow-hidden"
-                          >
-                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                            <div className="flex items-start gap-2">
-                              <Bell
-                                size={16}
-                                className="text-indigo-600 shrink-0 mt-0.5"
-                              />
-                              <div>
-                                <h4 className="text-xs font-bold text-indigo-800 mb-0.5">
-                                  Shift Handover Available
-                                </h4>
-                                <p className="text-xs text-indigo-700 font-medium leading-relaxed">
-                                  {notif.text}
-                                </p>
-                                <span className="text-[9px] text-indigo-500 mt-1 block">
-                                  {new Date(notif.time).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
                       if (notif.type === "ownership-conflict") {
                         return (
                           <div
@@ -2178,16 +2115,14 @@ export default function Header() {
 
       {showOpsToast && opsNotification && (
         <div
-          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : opsNotification.type === "handover-available" ? "border-indigo-200" : "border-blue-200"}`}
+          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : "border-blue-200"}`}
         >
           <div className="p-3 flex items-start gap-2">
             <div
-              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : opsNotification.type === "handover-available" ? "text-indigo-600" : "text-blue-600"}`}
+              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : "text-blue-600"}`}
             >
               {opsNotification.type === "ownership-conflict" ? (
                 <AlertTriangle size={16} />
-              ) : opsNotification.type === "handover-available" ? (
-                <Bell size={16} />
               ) : (
                 <Clock size={16} />
               )}
@@ -2196,9 +2131,7 @@ export default function Header() {
               <p className="text-xs font-bold text-slate-900">
                 {opsNotification.type === "ownership-conflict"
                   ? "Ownership Conflict"
-                  : opsNotification.type === "handover-available"
-                    ? "Shift Handover Available"
-                    : "Shift Started"}
+                  : "Shift Started"}
               </p>
               <p className="text-xs text-slate-600 leading-relaxed mt-0.5">
                 {opsNotification.text}
