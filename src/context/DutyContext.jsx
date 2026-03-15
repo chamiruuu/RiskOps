@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import notificationSound from "../assets/Notification.mp3";
 
@@ -97,94 +97,127 @@ export const DutyProvider = ({ children }) => {
     return () => clearInterval(timer);
   }, []);
 
-  // --- 2. FETCH SCHEDULE & ROSTER ---
-  useEffect(() => {
-    const fetchScheduleAndRoster = async () => {
-      if (!user) {
-        setActiveRoster({});
-        setMyAssignedShift("Off");
-        return;
+  const fetchScheduleAndRoster = useCallback(async () => {
+    if (!user) {
+      setActiveRoster({});
+      setMyAssignedShift("Off");
+      return;
+    }
+
+    const { data: allCycles } = await supabase
+      .from("shift_assignments")
+      .select("cycle_period");
+    let currentLiveCycle = null;
+
+    if (allCycles) {
+      const uniqueCycles = [...new Set(allCycles.map((d) => d.cycle_period))].filter(
+        Boolean,
+      );
+      const today = getGMT8Time();
+      const h = today.getHours();
+      const m = today.getMinutes();
+
+      // Keep using the previous operational day through 07:15
+      if (h < 7 || (h === 7 && m <= 15)) {
+        today.setDate(today.getDate() - 1);
       }
+      today.setHours(0, 0, 0, 0);
 
-      const { data: allCycles } = await supabase
-        .from("shift_assignments")
-        .select("cycle_period");
-      let currentLiveCycle = null;
-
-      if (allCycles) {
-        const uniqueCycles = [
-          ...new Set(allCycles.map((d) => d.cycle_period)),
-        ].filter(Boolean);
-        const today = getGMT8Time();
-        const h = today.getHours();
-        const m = today.getMinutes();
-
-        // Keep using the previous operational day through 07:15
-        if (h < 7 || (h === 7 && m <= 15)) {
-          today.setDate(today.getDate() - 1);
-        }
-        today.setHours(0, 0, 0, 0);
-
-        // --- NEW: BULLETPROOF DATE PARSER ---
-        const parseDateSafe = (dateStr) => {
-          const mMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
-          const p = dateStr.trim().split(" ");
-          // If it matches "22 Feb 2026", parse it safely manually
-          if (p.length === 3) return new Date(p[2], mMap[p[1]], p[0]);
-          return new Date(dateStr); // Fallback
+      // Parse "22 Feb 2026" safely across browsers/timezones.
+      const parseDateSafe = (dateStr) => {
+        const mMap = {
+          Jan: 0,
+          Feb: 1,
+          Mar: 2,
+          Apr: 3,
+          May: 4,
+          Jun: 5,
+          Jul: 6,
+          Aug: 7,
+          Sep: 8,
+          Oct: 9,
+          Nov: 10,
+          Dec: 11,
         };
+        const p = dateStr.trim().split(" ");
+        if (p.length === 3) return new Date(p[2], mMap[p[1]], p[0]);
+        return new Date(dateStr);
+      };
 
-        for (const c of uniqueCycles) {
-          const parts = c.split(" - ");
-          if (parts.length === 2) {
-            const start = parseDateSafe(parts[0]);
-            const end = parseDateSafe(parts[1]);
-            start.setHours(0, 0, 0, 0);
-            end.setHours(23, 59, 59, 999);
-            
-            if (today >= start && today <= end) {
-              currentLiveCycle = c;
-              break;
-            }
+      for (const c of uniqueCycles) {
+        const parts = c.split(" - ");
+        if (parts.length === 2) {
+          const start = parseDateSafe(parts[0]);
+          const end = parseDateSafe(parts[1]);
+          start.setHours(0, 0, 0, 0);
+          end.setHours(23, 59, 59, 999);
+
+          if (today >= start && today <= end) {
+            currentLiveCycle = c;
+            break;
           }
         }
       }
+    }
 
-      if (currentLiveCycle) {
-        const { data: assignments } = await supabase
-          .from("shift_assignments")
-          .select("user_id, shift_type")
-          .eq("cycle_period", currentLiveCycle);
+    if (currentLiveCycle) {
+      const { data: assignments } = await supabase
+        .from("shift_assignments")
+        .select("user_id, shift_type")
+        .eq("cycle_period", currentLiveCycle);
 
-        const { data: profiles } = await supabase
-          .from("profiles")
-          .select("id, work_name");
+      const { data: profiles } = await supabase.from("profiles").select("id, work_name");
 
-        if (assignments && profiles) {
-          const rosterMap = {};
-          let myShift = "Off";
+      if (assignments && profiles) {
+        const profileById = new Map(profiles.map((p) => [p.id, p]));
+        const rosterMap = {};
+        let myShift = "Off";
 
-          assignments.forEach((a) => {
-            const prof = profiles.find((p) => p.id === a.user_id);
-            if (prof && prof.work_name) {
-              rosterMap[prof.work_name] = a.shift_type;
-            }
-            if (a.user_id === user.id) {
-              myShift = a.shift_type;
-            }
-          });
+        assignments.forEach((a) => {
+          const prof = profileById.get(a.user_id);
+          if (prof && prof.work_name) {
+            rosterMap[prof.work_name] = a.shift_type;
+          }
+          if (a.user_id === user.id) {
+            myShift = a.shift_type;
+          }
+        });
 
-          setActiveRoster(rosterMap);
-          setMyAssignedShift(myShift);
-        }
-      } else {
-        setActiveRoster({});
-        setMyAssignedShift("Off");
+        setActiveRoster(rosterMap);
+        setMyAssignedShift(myShift);
+        return;
       }
-    };
+    }
 
-    fetchScheduleAndRoster();
+    setActiveRoster({});
+    setMyAssignedShift("Off");
   }, [user]);
+
+  // --- 2. FETCH SCHEDULE & ROSTER ---
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchScheduleAndRoster();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchScheduleAndRoster]);
+
+  // Keep schedule fresh when admin edits shifts while users are online.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel("shift-assignments-live-refresh")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "shift_assignments" },
+        () => fetchScheduleAndRoster(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, fetchScheduleAndRoster]);
 
   const isMyShiftActive = myAssignedShift === currentActiveShift;
 
@@ -408,6 +441,7 @@ export const DutyProvider = ({ children }) => {
         onlineUsers,
         loading,
         isMyShiftActive,
+        myAssignedShift,
         currentActiveShift,
         activeRoster,
         pendingTransferRequest,
