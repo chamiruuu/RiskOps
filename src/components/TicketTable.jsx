@@ -133,7 +133,7 @@ const checkIsHandoverWindow = () => {
     (h === 14 && m >= 15 && m <= 45) ||
     (h === 22 && m >= 15 && m <= 45) ||
     (h === 6 && m >= 45) ||
-    (h === 7 && m <= 15)
+    (h === 7 && m <= 30)
   );
 };
 
@@ -150,7 +150,7 @@ const getHandoverShiftPair = () => {
     return { outgoing: "Afternoon", incoming: "Night" };
   }
 
-  if ((h === 6 && m >= 45) || (h === 7 && m <= 15)) {
+  if ((h === 6 && m >= 45) || (h === 7 && m <= 30)) {
     return { outgoing: "Night", incoming: "Morning" };
   }
 
@@ -405,9 +405,9 @@ export default function TicketTable({
       const m = now.getMinutes();
 
       // New reminder schedule requested by ops:
-      // 07:00-07:15, 14:30-14:45, 22:30-22:45.
+      // 07:00-07:30, 14:30-14:45, 22:30-22:45.
       const isPostStartWindow =
-        (h === 7 && m >= 0 && m <= 15) ||
+        (h === 7 && m >= 0 && m <= 30) ||
         (h === 14 && m >= 30 && m <= 45) ||
         (h === 22 && m >= 30 && m <= 45);
 

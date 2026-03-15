@@ -55,9 +55,6 @@ export default function Header() {
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // --- NEW: Handover Status State ---
-  const [hasHandovered, setHasHandovered] = useState(false);
-
   // --- Admin Modal States ---
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [activeTab, setActiveTab] = useState("list");
@@ -174,25 +171,6 @@ export default function Header() {
     return () => clearInterval(timer);
   }, [maybeShowSystemNotification, playAlertSound]);
 
-  // --- NEW: Reset Handover when shift changes naturally ---
-  useEffect(() => {
-    setHasHandovered(false);
-  }, [currentActiveShift]);
-
-  // --- NEW: STRICT HANDOVER WINDOW CHECKER ---
-  const checkCanHandover = () => {
-    const now = getGMT8Time();
-    const time = now.getHours() + now.getMinutes() / 60;
-
-    if (myAssignedShift === "Night" && time >= 7.0 && time < 7.5) return true;
-    if (myAssignedShift === "Morning" && time >= 14.5 && time < 15.0)
-      return true;
-    if (myAssignedShift === "Afternoon" && time >= 22.5 && time < 23.0)
-      return true;
-
-    return false;
-  };
-
   // --- NEW: INCOMING SHIFT WAITING CHECKER ---
   const checkIsIncomingWaiting = () => {
     const now = getGMT8Time();
@@ -208,17 +186,7 @@ export default function Header() {
     return false;
   };
 
-  const canHandover = checkCanHandover();
   const isIncomingWaiting = checkIsIncomingWaiting();
-
-  const handleHandover = () => {
-    setHasHandovered(true);
-    // Tell the rest of the app that a manual handover just happened
-    const event = new CustomEvent("handover-completed", {
-      detail: { shift: myAssignedShift, time: Date.now() },
-    });
-    window.dispatchEvent(event);
-  };
 
   useEffect(() => {
     if (
@@ -1267,23 +1235,6 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* --- HANDOVER BUTTON IN TOOLBAR --- */}
-          <button
-            disabled={!canHandover || hasHandovered}
-            onClick={handleHandover}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm
-              ${
-                hasHandovered
-                  ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                  : canHandover
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-md animate-pulse"
-                    : "hidden"
-              }`}
-          >
-            {hasHandovered ? <CheckCircle2 size={14} /> : <Bell size={14} />}
-            {hasHandovered ? "Handover Complete" : "Handover"}
-          </button>
-
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
           {!isAdminOrLeader && (
             <button
