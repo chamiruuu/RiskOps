@@ -176,23 +176,6 @@ export default function Header() {
     return () => clearInterval(timer);
   }, [maybeShowSystemNotification, playAlertSound]);
 
-  // --- NEW: INCOMING SHIFT WAITING CHECKER ---
-  const checkIsIncomingWaiting = () => {
-    const now = getGMT8Time();
-    const time = now.getHours() + now.getMinutes() / 60;
-
-    if (myAssignedShift === "Morning" && time >= 7.0 && time < 7.1666)
-      return true;
-    if (myAssignedShift === "Afternoon" && time >= 14.5 && time < 14.6666)
-      return true;
-    if (myAssignedShift === "Night" && time >= 22.5 && time < 22.6666)
-      return true;
-
-    return false;
-  };
-
-  const isIncomingWaiting = checkIsIncomingWaiting();
-
   useEffect(() => {
     if (
       !window.electronAPI ||
@@ -1235,16 +1218,6 @@ export default function Header() {
   return (
     <>
       <header className="bg-white rounded-2xl shadow-sm border border-slate-100 mx-6 mt-6 px-6 h-16 flex items-center justify-between shrink-0 z-40 relative">
-        {/* 1. INCOMING SHIFT ALERT (Waiting for Handover) */}
-        {isIncomingWaiting && (
-          <div className="absolute top-20 right-0 z-50 flex items-center gap-3 bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">
-            <AlertCircle size={20} className="text-amber-500 shrink-0" />
-            <p className="text-sm font-semibold text-amber-800">
-              Please wait for the previous shift to complete their Handover.
-            </p>
-          </div>
-        )}
-
         <div className="flex items-center gap-3">
           <div
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors duration-300 ${useGradientLogoIcon ? "text-white" : `${style.container} ${style.text}`}`}
