@@ -728,23 +728,27 @@ export default function TicketTable({
     if (isHandoverProcessing) return;
     setIsHandoverProcessing(true);
 
+    // Set marker BEFORE the async DB operations so that realtime ticket
+    // updates arriving during the await don't retrigger the reminder check.
+    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+      .slice()
+      .sort()
+      .join(",")}`;
+    autoHandoverLoggedRef.current = marker;
+
     try {
       const pendingTix = tickets.filter((t) => t.status === "Pending");
-      const result = await syncHandoverAndNotify(pendingTix, "Manual");
-
-      const marker =
-        result?.marker ||
-        `${getLastShiftChangeTime().toISOString()}|${dutyArray
-          .slice()
-          .sort()
-          .join(",")}`;
-      autoHandoverLoggedRef.current = marker;
+      await syncHandoverAndNotify(pendingTix, "Manual");
 
       setHandoverModal({
         isOpen: true,
         step: "shift_done",
         missingTickets: [],
       });
+    } catch (e) {
+      // Handover failed — clear marker so reminders resume correctly.
+      autoHandoverLoggedRef.current = "";
+      console.error("Handover execute error:", e);
     } finally {
       setIsHandoverProcessing(false);
     }

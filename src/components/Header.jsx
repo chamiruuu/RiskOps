@@ -28,6 +28,7 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   ArchiveRestore,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
