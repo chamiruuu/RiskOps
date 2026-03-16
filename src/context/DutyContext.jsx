@@ -328,7 +328,7 @@ export const DutyProvider = ({ children }) => {
           workName: workName || user.email?.split("@")[0] || "Unknown User",
           duties: selectedDuty || [],
           role: userRole || "User",
-          _timestamp: Date.now() // Forces Madee's screen to recognize this as the newest
+          _timestamp: Date.now(), // Forces screen to recognize this as the newest
         });
       } catch (error) {
         // Silently ignore tracking errors if socket is temporarily busy
@@ -337,7 +337,7 @@ export const DutyProvider = ({ children }) => {
 
     const timeoutId = setTimeout(updatePresence, 300);
     return () => clearTimeout(timeoutId);
-  }, [user?.id, workName, userRole, selectedDuty, presenceTrigger]); // <-- Triggers here too
+  }, [user?.id, workName, userRole, selectedDuty, presenceTrigger]);
 
   // --- 4. STATIC REAL-TIME HANDSHAKE BROADCASTING ---
   useEffect(() => {

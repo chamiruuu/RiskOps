@@ -191,89 +191,154 @@ function Dashboard() {
       fetchTickets();
     }, 0);
 
-    // --- SUPABASE REAL-TIME LISTENER ---
-    const channelName = `tickets-channel-${user?.id || "anon"}`;
-    const subscription = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tickets" },
-        (payload) => {
-          console.log("Live update received from Supabase!", payload);
-          // Whenever ANY change happens in the database, silently refresh the list instantly!
-          fetchTickets();
-        },
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          if (degradedTimerRef.current) {
-            clearTimeout(degradedTimerRef.current);
-            degradedTimerRef.current = null;
-          }
+    let subscription = null;
+    let reconnectTimer = null;
+    let isComponentMounted = true;
 
-          if (realtimeIssueRef.current) {
-            window.dispatchEvent(
-              new CustomEvent("tickets-realtime-restored", {
-                detail: {
-                  time: Date.now(),
-                  text: "Live ticket sync reconnected. Realtime updates restored.",
-                },
-              }),
-            );
-            realtimeIssueRef.current = false;
-          }
+    const setupRealtimeSubscription = () => {
+      if (!isComponentMounted) return;
 
-          degradedAnnouncedRef.current = false;
-          fetchTickets();
-        }
+      // --- SUPABASE REAL-TIME LISTENER ---
+      const channelName = `tickets-channel-${user?.id || "anon"}`;
+      subscription = supabase
+        .channel(channelName, {
+          config: {
+            broadcast: { self: true },
+            presence: { key: user?.id || "anon" },
+          },
+        })
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "tickets" },
+          (payload) => {
+            console.log("Live update received from Supabase!", payload);
+            // Whenever ANY change happens in the database, silently refresh the list instantly!
+            if (isComponentMounted) fetchTickets();
+          },
+        )
+        .subscribe(async (status) => {
+          // Ensure component is still mounted before state updates
+          if (!isComponentMounted) return;
 
-        // If realtime socket is unstable, force refresh so UIs stay in sync.
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          if (!realtimeIssueRef.current) {
-            window.dispatchEvent(
-              new CustomEvent("tickets-realtime-error", {
-                detail: {
-                  time: Date.now(),
-                  text: "Live ticket sync connection issue detected. Trying to reconnect...",
-                },
-              }),
-            );
-          }
+          if (status === "SUBSCRIBED") {
+            console.log("✅ Real-time subscription SUBSCRIBED");
 
-          if (!degradedTimerRef.current && !degradedAnnouncedRef.current) {
-            degradedTimerRef.current = setTimeout(() => {
-              if (realtimeIssueRef.current && !degradedAnnouncedRef.current) {
-                degradedAnnouncedRef.current = true;
-                window.dispatchEvent(
-                  new CustomEvent("tickets-realtime-degraded", {
-                    detail: {
-                      time: Date.now(),
-                      text: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
-                    },
-                  }),
-                );
-              }
+            // Clear any pending degraded timers
+            if (degradedTimerRef.current) {
+              clearTimeout(degradedTimerRef.current);
               degradedTimerRef.current = null;
-            }, 60 * 1000);
+            }
+
+            // If we were previously experiencing issues, dispatch restored event
+            if (realtimeIssueRef.current) {
+              window.dispatchEvent(
+                new CustomEvent("tickets-realtime-restored", {
+                  detail: {
+                    time: Date.now(),
+                    text: "Live ticket sync reconnected. Realtime updates restored.",
+                  },
+                }),
+              );
+              realtimeIssueRef.current = false;
+            }
+
+            degradedAnnouncedRef.current = false;
+
+            // Clear any pending reconnect timers
+            if (reconnectTimer) {
+              clearTimeout(reconnectTimer);
+              reconnectTimer = null;
+            }
+
+            // Fetch latest data on successful subscription
+            if (isComponentMounted) fetchTickets();
           }
 
-          realtimeIssueRef.current = true;
-          fetchTickets();
-        }
-      });
+          // If realtime socket is unstable, force refresh so UIs stay in sync.
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn(`⚠️ Real-time status: ${status}`);
 
-    // Fallback polling to keep all screens synced even if realtime drops.
-    const fallbackTimer = setInterval(fetchTickets, 15000);
+            if (!realtimeIssueRef.current) {
+              window.dispatchEvent(
+                new CustomEvent("tickets-realtime-error", {
+                  detail: {
+                    time: Date.now(),
+                    text: "Live ticket sync connection issue detected. Trying to reconnect...",
+                  },
+                }),
+              );
+            }
+
+            // Setup degraded notification timeout (only trigger once)
+            if (!degradedTimerRef.current && !degradedAnnouncedRef.current) {
+              degradedTimerRef.current = setTimeout(() => {
+                if (
+                  isComponentMounted &&
+                  realtimeIssueRef.current &&
+                  !degradedAnnouncedRef.current
+                ) {
+                  degradedAnnouncedRef.current = true;
+                  window.dispatchEvent(
+                    new CustomEvent("tickets-realtime-degraded", {
+                      detail: {
+                        time: Date.now(),
+                        text: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+                      },
+                    }),
+                  );
+                }
+                degradedTimerRef.current = null;
+              }, 60 * 1000);
+            }
+
+            realtimeIssueRef.current = true;
+
+            // Fetch immediately on error
+            if (isComponentMounted) fetchTickets();
+
+            // Attempt to unsubscribe and reconnect after a delay
+            if (!reconnectTimer) {
+              reconnectTimer = setTimeout(() => {
+                if (isComponentMounted && subscription) {
+                  console.log("🔄 Attempting to reconnect real-time subscription...");
+                  supabase.removeChannel(subscription);
+                  subscription = null;
+                  reconnectTimer = null;
+                  setupRealtimeSubscription(); // Recursively retry
+                }
+              }, 5000); // Wait 5 seconds before reconnecting
+            }
+          }
+        });
+    };
+
+    setupRealtimeSubscription();
+
+    // Fallback polling to keep all screens synced even if realtime drops (more frequent).
+    const fallbackTimer = setInterval(() => {
+      if (isComponentMounted) fetchTickets();
+    }, 12000); // Increased from 15s to 12s for better sync
 
     // Cleanup the listener if the user logs out or closes the component
     return () => {
+      isComponentMounted = false;
       clearTimeout(initialFetchTimer);
       clearInterval(fallbackTimer);
+
       if (degradedTimerRef.current) {
         clearTimeout(degradedTimerRef.current);
         degradedTimerRef.current = null;
       }
-      supabase.removeChannel(subscription);
+
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      if (subscription) {
+        supabase.removeChannel(subscription);
+        subscription = null;
+      }
     };
   }, [fetchTickets, user?.id]);
 
