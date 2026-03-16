@@ -62,8 +62,6 @@ export default function TicketForm({ onAddTicket }) {
   const [copiedLoss, setCopiedLoss] = useState(false);
   const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
-  const [copiedBti, setCopiedBti] = useState(false);
-  const [copiedPkq, setCopiedPkq] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
 
   const handleCopyField = (text, fieldId) => {
@@ -181,9 +179,9 @@ export default function TicketForm({ onAddTicket }) {
   }, []);
 
   useEffect(() => {
-    if (validationNotice.text) {
-      setValidationNotice({ type: "", text: "" });
-    }
+    setValidationNotice((prev) =>
+      prev.text ? { type: "", text: "" } : prev,
+    );
   }, [formData.provider, formData.memberId, formData.providerAccount]);
 
   // Handle clicking outside custom dropdowns
@@ -403,18 +401,6 @@ export default function TicketForm({ onAddTicket }) {
     setTimeout(() => setCopiedHold(false), 2000);
   };
 
-  const handleCopyBti = () => {
-    navigator.clipboard.writeText(btiRules);
-    setCopiedBti(true);
-    setTimeout(() => setCopiedBti(false), 2000);
-  };
-
-  const handleCopyPkq = () => {
-    navigator.clipboard.writeText(pkqRules);
-    setCopiedPkq(true);
-    setTimeout(() => setCopiedPkq(false), 2000);
-  };
-
   // --- SMART DATE PICKER LOGIC ---
   const applyQuickDate = (daysBack) => {
     const today = getGMT8Time();
@@ -486,7 +472,7 @@ export default function TicketForm({ onAddTicket }) {
     });
 
     const audio = new Audio(notificationSound);
-    audio.play().catch((e) => console.log("Audio blocked by browser"));
+    audio.play().catch(() => console.log("Audio blocked by browser"));
 
     setShowSuccessToast(true);
     setTimeout(() => setShowSuccessToast(false), 3000);

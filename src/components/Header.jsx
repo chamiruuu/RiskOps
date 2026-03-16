@@ -37,13 +37,6 @@ import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3";
 
-// --- HELPER: Get Current GMT+8 Time ---
-const getGMT8Time = () => {
-  const d = new Date();
-  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
-  return new Date(utc + 3600000 * 8);
-};
-
 export default function Header() {
   const {
     selectedDuty,
@@ -51,6 +44,8 @@ export default function Header() {
     userRole,
     workName,
     onlineUsers,
+    recentlyOfflineUsers,
+    presenceDebug,
     pendingTransferRequest,
     respondToTransferRequest,
     setDuty,
@@ -131,6 +126,15 @@ export default function Header() {
   const [feedbackNotice, setFeedbackNotice] = useState({ text: "", type: "" });
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+
+  const formatPresenceAgo = useCallback((timestamp) => {
+    if (!timestamp) return "-";
+    const diffMs = Math.max(0, Date.now() - timestamp);
+    const secs = Math.floor(diffMs / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    const mins = Math.floor(secs / 60);
+    return `${mins}m ${secs % 60}s ago`;
+  }, []);
 
   const playAlertSound = useCallback(() => {
     const audio = new Audio(notificationSound);
@@ -1726,45 +1730,84 @@ export default function Header() {
                     Connecting...
                   </div>
                 ) : (
-                  onlineUsers.map((activeUser, idx) => {
-                    const isMaster = activeUser.duties?.includes("IC0");
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-baseline px-2 py-1.5 hover:bg-slate-50 rounded-md transition-colors"
-                      >
-                        <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
-                          {activeUser.workName}
-                        </span>
-                        <span className="text-slate-300 font-medium mx-1.5">
-                          -
-                        </span>
-                        <div className="flex gap-1 flex-wrap items-center">
-                          {isMaster ? (
-                            <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">
-                              {activeUser.role || "ADMIN"}
-                            </span>
-                          ) : activeUser.duties &&
-                            activeUser.duties.length > 0 ? (
-                            activeUser.duties.map((d, index) => (
-                              <span key={d} className="text-[11px] font-bold">
-                                <span className={getDutyTextColorOnly(d)}>
-                                  {d}
-                                </span>
-                                {index < activeUser.duties.length - 1 && (
-                                  <span className="text-slate-300">, </span>
-                                )}
+                  <>
+                    {onlineUsers.map((activeUser, idx) => {
+                      const isMaster = activeUser.duties?.includes("IC0");
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-baseline px-2 py-1.5 hover:bg-slate-50 rounded-md transition-colors"
+                        >
+                          <span className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
+                            {activeUser.workName}
+                          </span>
+                          <span className="text-slate-300 font-medium mx-1.5">
+                            -
+                          </span>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            {isMaster ? (
+                              <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">
+                                {activeUser.role || "ADMIN"}
                               </span>
-                            ))
-                          ) : (
-                            <span className="text-[10px] font-medium text-slate-400 italic">
-                              None
-                            </span>
-                          )}
+                            ) : activeUser.duties &&
+                              activeUser.duties.length > 0 ? (
+                              activeUser.duties.map((d, index) => (
+                                <span key={d} className="text-[11px] font-bold">
+                                  <span className={getDutyTextColorOnly(d)}>
+                                    {d}
+                                  </span>
+                                  {index < activeUser.duties.length - 1 && (
+                                    <span className="text-slate-300">, </span>
+                                  )}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] font-medium text-slate-400 italic">
+                                None
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+
+                    {recentlyOfflineUsers?.length > 0 && (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <div className="px-2 pt-1 pb-0.5 text-[9px] font-bold text-amber-600 uppercase tracking-wider">
+                          Recently Online (120s)
+                        </div>
+                        {recentlyOfflineUsers.map((userInfo, idx) => (
+                          <div
+                            key={`recent-${userInfo.id || userInfo.workName || idx}`}
+                            className="flex items-center justify-between px-2 py-1.5 rounded-md bg-amber-50/60"
+                          >
+                            <span className="text-[11px] font-semibold text-amber-800">
+                              {userInfo.workName}
+                            </span>
+                            <span className="text-[9px] font-bold text-amber-600">
+                              {formatPresenceAgo(userInfo.lastSeenAt)}
+                            </span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {isAdminOrLeader && (
+                      <>
+                        <div className="border-t border-slate-100 my-1" />
+                        <div className="px-2 pb-2 text-[9px] text-slate-500 space-y-0.5">
+                          <div className="font-bold uppercase tracking-wider text-slate-400">
+                            Presence Debug
+                          </div>
+                          <div>Status: {presenceDebug?.lastSubscribeStatus || "IDLE"}</div>
+                          <div>Reconnects: {presenceDebug?.reconnectCount || 0}</div>
+                          <div>Heartbeat: {formatPresenceAgo(presenceDebug?.lastHeartbeatAt)}</div>
+                          <div>Last Sync: {formatPresenceAgo(presenceDebug?.lastPresenceSyncAt)}</div>
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             </div>

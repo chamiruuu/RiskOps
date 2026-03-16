@@ -23,6 +23,14 @@ import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3"; // <-- ADDED SOUND FOR TOAST
 import { PROVIDER_CONFIG } from "../config/providerConfig"; // <-- 2. ADD THIS
+import {
+  getGMT8Time,
+  getLastShiftChangeTime,
+  getTransitionContext,
+  checkIsHandoverWindow,
+  getNextShift,
+  computeTransitionViewState,
+} from "../lib/shiftLogic";
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
@@ -92,115 +100,6 @@ const getDutyHeaderBg = (dutyName) => {
     default:
       return "bg-slate-600";
   }
-};
-
-// --- HELPER: Get Current GMT+8 Time ---
-const getGMT8Time = () => {
-  const d = new Date();
-  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
-  return new Date(utc + 3600000 * 8);
-};
-
-const getFormattedDate = (date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-};
-
-// HELPER: Determine the LAST shift change threshold
-const getLastShiftChangeTime = () => {
-  const now = getGMT8Time();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const timeInHours = h + m / 60;
-
-  const lastChange = new Date(now);
-  lastChange.setSeconds(0, 0);
-
-  if (timeInHours >= 7.1666 && timeInHours < 14.6666) {
-    lastChange.setHours(7, 10);
-  } else if (timeInHours >= 14.6666 && timeInHours < 22.6666) {
-    lastChange.setHours(14, 40);
-  } else if (timeInHours >= 22.6666) {
-    lastChange.setHours(22, 40);
-  } else {
-    lastChange.setDate(lastChange.getDate() - 1);
-    lastChange.setHours(22, 40);
-  }
-  return lastChange;
-};
-
-const getTransitionContext = (inputNow = getGMT8Time()) => {
-  const now = new Date(inputNow);
-  now.setSeconds(0, 0);
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const timeInHours = h + m / 60;
-
-  if (timeInHours >= 6.75 && timeInHours < 7.5) {
-    const windowStart = new Date(now);
-    windowStart.setHours(6, 45, 0, 0);
-    return {
-      pair: { outgoing: "Night", incoming: "Morning" },
-      marker: `${getFormattedDate(now)}|Night->Morning`,
-      windowStart,
-      isManualWindow: timeInHours <= 7.1666,
-      isSharedWindow: timeInHours >= 7.1666 && timeInHours < 7.5,
-      isPostStartWindow: timeInHours >= 7.1833 && timeInHours < 7.5,
-      lockWarningHour: 7,
-      lockWarningMinute: 20,
-    };
-  }
-
-  if (timeInHours >= 14.25 && timeInHours < 15.0) {
-    const windowStart = new Date(now);
-    windowStart.setHours(14, 15, 0, 0);
-    return {
-      pair: { outgoing: "Morning", incoming: "Afternoon" },
-      marker: `${getFormattedDate(now)}|Morning->Afternoon`,
-      windowStart,
-      isManualWindow: timeInHours <= 14.6666,
-      isSharedWindow: timeInHours >= 14.6666 && timeInHours < 15.0,
-      isPostStartWindow: timeInHours >= 14.6833 && timeInHours < 15.0,
-      lockWarningHour: 14,
-      lockWarningMinute: 50,
-    };
-  }
-
-  if (timeInHours >= 22.25 && timeInHours < 23.0) {
-    const windowStart = new Date(now);
-    windowStart.setHours(22, 15, 0, 0);
-    return {
-      pair: { outgoing: "Afternoon", incoming: "Night" },
-      marker: `${getFormattedDate(now)}|Afternoon->Night`,
-      windowStart,
-      isManualWindow: timeInHours <= 22.6666,
-      isSharedWindow: timeInHours >= 22.6666 && timeInHours < 23.0,
-      isPostStartWindow: timeInHours >= 22.6833 && timeInHours < 23.0,
-      lockWarningHour: 22,
-      lockWarningMinute: 50,
-    };
-  }
-
-  return null;
-};
-
-// HELPER: Check if time is currently inside the handover window
-const checkIsHandoverWindow = () => {
-  const ctx = getTransitionContext();
-  return !!ctx && ctx.isManualWindow;
-};
-
-const getHandoverShiftPair = () => {
-  const ctx = getTransitionContext();
-  return ctx?.pair || null;
-};
-
-const getNextShift = (current) => {
-  if (current === "Morning") return "Afternoon";
-  if (current === "Afternoon") return "Night";
-  return "Morning";
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -919,32 +818,18 @@ export default function TicketTable({
     : [];
 
   const transitionCtx = getTransitionContext();
-  const handoverPair = getHandoverShiftPair();
-  const isInSharedZone = !!transitionCtx && transitionCtx.isSharedWindow;
-  const isInManualWindow = !!transitionCtx && transitionCtx.isManualWindow;
-
-  const isOutgoingTransitionViewer =
-    !!handoverPair &&
-    (isInManualWindow || isInSharedZone) &&
-    myAssignedShift === handoverPair.outgoing;
-
-  const isIncomingTransitionViewer =
-    !!handoverPair &&
-    (isInManualWindow || isInSharedZone) &&
-    myAssignedShift === handoverPair.incoming &&
-    handoverCompletedForCurrentWindow;
-
-  const shouldHoldIncomingViewUntilHandover =
-    !!handoverPair &&
-    isInSharedZone &&
-    myAssignedShift === handoverPair.incoming &&
-    !handoverCompletedForCurrentWindow;
-
-  const canViewTickets =
-    (isMyShiftActive && !shouldHoldIncomingViewUntilHandover) ||
-    isOutgoingTransitionViewer ||
-    isIncomingTransitionViewer ||
-    isAdminOrLeader;
+  const {
+    handoverPair,
+    isOutgoingTransitionViewer,
+    isIncomingTransitionViewer,
+    canViewTickets,
+  } = computeTransitionViewState({
+    transitionCtx,
+    myAssignedShift,
+    isMyShiftActive,
+    isAdminOrLeader,
+    handoverCompletedForCurrentWindow,
+  });
 
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;

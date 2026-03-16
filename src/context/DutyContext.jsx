@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import notificationSound from "../assets/Notification.mp3";
+import { resolveActiveShiftFromTime } from "../lib/shiftLogic";
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
@@ -12,6 +13,8 @@ const getGMT8Time = () => {
 const shouldShowSystemNotification = () =>
   document.visibilityState !== "visible" || !document.hasFocus();
 
+const RECENTLY_ONLINE_GRACE_MS = 120 * 1000;
+
 const DutyContext = createContext();
 
 export const DutyProvider = ({ children }) => {
@@ -20,6 +23,13 @@ export const DutyProvider = ({ children }) => {
   const [workName, setWorkName] = useState("");
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [recentlyOfflineUsers, setRecentlyOfflineUsers] = useState([]);
+  const [presenceDebug, setPresenceDebug] = useState({
+    lastHeartbeatAt: null,
+    lastSubscribeStatus: "IDLE",
+    reconnectCount: 0,
+    lastPresenceSyncAt: null,
+  });
 
   // --- MASTER KEY STATES ---
   const [currentActiveShift, setCurrentActiveShift] = useState(null);
@@ -35,6 +45,8 @@ export const DutyProvider = ({ children }) => {
 
   // --- STATIC PRESENCE CHANNEL REF ---
   const presenceChannelRef = useRef(null);
+  const presenceLastSeenRef = useRef(new Map());
+  const lastPresenceStatusRef = useRef("IDLE");
 
   const [selectedDuty, setSelectedDuty] = useState(() => {
     const saved = localStorage.getItem("riskops_duty_role");
@@ -50,10 +62,11 @@ export const DutyProvider = ({ children }) => {
 
   // --- NEW: Connection Refresh Trigger ---
   const [presenceTrigger, setPresenceTrigger] = useState(0);
+  const onlineUsersRef = useRef([]);
 
   const fetchUserProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("profiles")
         .select("role, work_name")
         .eq("id", userId)
@@ -80,16 +93,7 @@ export const DutyProvider = ({ children }) => {
   useEffect(() => {
     const checkShiftPeriod = () => {
       const now = getGMT8Time();
-      const h = now.getHours();
-      const m = now.getMinutes();
-      const timeInHours = h + m / 60;
-
-      // THE BIG SWITCH TIMES: 07:10 (7.166), 14:40 (14.666), 22:40 (22.666)
-      if (timeInHours >= 7.1666 && timeInHours < 14.6666)
-        setCurrentActiveShift("Morning");
-      else if (timeInHours >= 14.6666 && timeInHours < 22.6666)
-        setCurrentActiveShift("Afternoon");
-      else setCurrentActiveShift("Night");
+      setCurrentActiveShift(resolveActiveShiftFromTime(now));
     };
     
     checkShiftPeriod();
@@ -250,6 +254,14 @@ export const DutyProvider = ({ children }) => {
         setWorkName("");
         setSelectedDuty([]);
         localStorage.removeItem("riskops_duty_role");
+        setRecentlyOfflineUsers([]);
+        presenceLastSeenRef.current.clear();
+        setPresenceDebug({
+          lastHeartbeatAt: null,
+          lastSubscribeStatus: "IDLE",
+          reconnectCount: 0,
+          lastPresenceSyncAt: null,
+        });
 
         // Clean up connection on logout
         if (presenceChannelRef.current) {
@@ -287,10 +299,43 @@ export const DutyProvider = ({ children }) => {
       config: { presence: { key: user.id } },
     });
 
+    const flushRecentlyOfflineUsers = (activeUsers = []) => {
+      const now = Date.now();
+      const activeKeys = new Set(
+        activeUsers.map((u) => String(u.id || u.workName || "")),
+      );
+      const recent = [];
+
+      for (const [key, entry] of presenceLastSeenRef.current.entries()) {
+        if (!entry || !entry.record || !entry.lastSeenAt) {
+          presenceLastSeenRef.current.delete(key);
+          continue;
+        }
+
+        const age = now - entry.lastSeenAt;
+        if (age > RECENTLY_ONLINE_GRACE_MS) {
+          presenceLastSeenRef.current.delete(key);
+          continue;
+        }
+
+        if (!activeKeys.has(key)) {
+          recent.push({
+            ...entry.record,
+            lastSeenAt: entry.lastSeenAt,
+            presenceState: "recently-offline",
+          });
+        }
+      }
+
+      recent.sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+      setRecentlyOfflineUsers(recent);
+    };
+
     channel
       .on("presence", { event: "sync" }, () => {
         const newState = channel.presenceState();
         const activeUsers = [];
+        const now = Date.now();
 
         Object.keys(newState).forEach((key) => {
           const userRecords = newState[key];
@@ -299,16 +344,48 @@ export const DutyProvider = ({ children }) => {
             // This guarantees we ignore old ghost records from Supabase
             const latestRecord = [...userRecords].sort((a, b) => (b._timestamp || 0) - (a._timestamp || 0))[0];
             activeUsers.push(latestRecord);
+
+            const identityKey = String(
+              latestRecord.id || latestRecord.workName || key,
+            );
+            presenceLastSeenRef.current.set(identityKey, {
+              record: latestRecord,
+              lastSeenAt: now,
+            });
           }
         });
 
         setOnlineUsers(activeUsers);
+        onlineUsersRef.current = activeUsers;
+        setPresenceDebug((prev) => ({
+          ...prev,
+          lastPresenceSyncAt: now,
+        }));
+        flushRecentlyOfflineUsers(activeUsers);
       })
-      .subscribe();
+      .subscribe((status) => {
+        const prevStatus = lastPresenceStatusRef.current;
+        lastPresenceStatusRef.current = status;
+
+        setPresenceDebug((prev) => ({
+          ...prev,
+          lastSubscribeStatus: status,
+          reconnectCount:
+            status === "SUBSCRIBED" &&
+            prevStatus !== "IDLE" &&
+            prevStatus !== "SUBSCRIBED"
+              ? prev.reconnectCount + 1
+              : prev.reconnectCount,
+        }));
+      });
 
     presenceChannelRef.current = channel;
+    const recentTicker = setInterval(() => {
+      flushRecentlyOfflineUsers(onlineUsersRef.current);
+    }, 5000);
 
     return () => {
+      clearInterval(recentTicker);
       if (presenceChannelRef.current) {
         supabase.removeChannel(presenceChannelRef.current);
         presenceChannelRef.current = null;
@@ -323,14 +400,20 @@ export const DutyProvider = ({ children }) => {
 
     const updatePresence = async () => {
       try {
+        const now = Date.now();
         await presenceChannelRef.current.track({
           id: user.id,
           workName: workName || user.email?.split("@")[0] || "Unknown User",
           duties: selectedDuty || [],
           role: userRole || "User",
-          _timestamp: Date.now(), // Forces screen to recognize this as the newest
+          _timestamp: now, // Forces screen to recognize this as the newest
         });
-      } catch (error) {
+
+        setPresenceDebug((prev) => ({
+          ...prev,
+          lastHeartbeatAt: now,
+        }));
+      } catch {
         // Socket may not be ready yet; heartbeat retries will sync shortly.
       }
     };
@@ -342,7 +425,7 @@ export const DutyProvider = ({ children }) => {
       clearTimeout(timeoutId);
       clearInterval(heartbeatId);
     };
-  }, [user?.id, workName, userRole, selectedDuty, presenceTrigger]);
+  }, [user?.id, user?.email, workName, userRole, selectedDuty, presenceTrigger]);
 
   // --- 4. STATIC REAL-TIME HANDSHAKE BROADCASTING ---
   useEffect(() => {
@@ -444,6 +527,8 @@ export const DutyProvider = ({ children }) => {
         selectedDuty,
         setDuty,
         onlineUsers,
+        recentlyOfflineUsers,
+        presenceDebug,
         loading,
         isMyShiftActive,
         myAssignedShift,
@@ -461,4 +546,5 @@ export const DutyProvider = ({ children }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useDuty = () => useContext(DutyContext);

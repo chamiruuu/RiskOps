@@ -55,6 +55,21 @@ function Dashboard() {
   const ownershipAlertCooldownRef = useRef(new Map());
   const ownershipChannelRef = useRef(null);
   const sheetSyncWarningShownRef = useRef(false);
+  const realtimeEventDedupRef = useRef(new Map());
+
+  const emitRealtimeEvent = useCallback((eventName, text, cooldownMs = 10000) => {
+    const now = Date.now();
+    const token = `${eventName}|${text || ""}`;
+    const lastAt = realtimeEventDedupRef.current.get(token) || 0;
+    if (now - lastAt < cooldownMs) return;
+
+    realtimeEventDedupRef.current.set(token, now);
+    window.dispatchEvent(
+      new CustomEvent(eventName, {
+        detail: { time: now, text },
+      }),
+    );
+  }, []);
 
   const registerLocalEdit = useCallback((ticketId, field) => {
     const now = Date.now();
@@ -231,13 +246,10 @@ function Dashboard() {
 
             // If we were previously experiencing issues, dispatch restored event
             if (realtimeIssueRef.current) {
-              window.dispatchEvent(
-                new CustomEvent("tickets-realtime-restored", {
-                  detail: {
-                    time: Date.now(),
-                    text: "Live ticket sync reconnected. Realtime updates restored.",
-                  },
-                }),
+              emitRealtimeEvent(
+                "tickets-realtime-restored",
+                "Live ticket sync reconnected. Realtime updates restored.",
+                12000,
               );
               realtimeIssueRef.current = false;
             }
@@ -259,13 +271,10 @@ function Dashboard() {
             console.warn(`⚠️ Real-time status: ${status}`);
 
             if (!realtimeIssueRef.current) {
-              window.dispatchEvent(
-                new CustomEvent("tickets-realtime-error", {
-                  detail: {
-                    time: Date.now(),
-                    text: "Live ticket sync connection issue detected. Trying to reconnect...",
-                  },
-                }),
+              emitRealtimeEvent(
+                "tickets-realtime-error",
+                "Live ticket sync connection issue detected. Trying to reconnect...",
+                15000,
               );
             }
 
@@ -278,13 +287,10 @@ function Dashboard() {
                   !degradedAnnouncedRef.current
                 ) {
                   degradedAnnouncedRef.current = true;
-                  window.dispatchEvent(
-                    new CustomEvent("tickets-realtime-degraded", {
-                      detail: {
-                        time: Date.now(),
-                        text: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
-                      },
-                    }),
+                  emitRealtimeEvent(
+                    "tickets-realtime-degraded",
+                    "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+                    30000,
                   );
                 }
                 degradedTimerRef.current = null;
@@ -340,7 +346,7 @@ function Dashboard() {
         subscription = null;
       }
     };
-  }, [fetchTickets, user?.id]);
+  }, [emitRealtimeEvent, fetchTickets, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
