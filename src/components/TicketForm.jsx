@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Copy,
   Plus,
@@ -38,6 +38,9 @@ const getFormattedDate = (date) => {
   return `${y}-${m}-${d}`;
 };
 
+const RECENT_PROVIDER_STORAGE_KEY = "riskops_recent_providers";
+const MAX_RECENT_PROVIDERS = 6;
+
 
 
 export default function TicketForm({ onAddTicket }) {
@@ -69,7 +72,10 @@ export default function TicketForm({ onAddTicket }) {
   // --- Searchable Provider Dropdown States ---
   const [isProviderOpen, setIsProviderOpen] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
+  const [highlightedProviderIndex, setHighlightedProviderIndex] = useState(0);
+  const [recentProviders, setRecentProviders] = useState([]);
   const providerRef = useRef(null);
+  const providerInputRef = useRef(null);
 
   // --- Smart Date Picker States ---
   const [isDateOpen, setIsDateOpen] = useState(false);
@@ -142,6 +148,18 @@ export default function TicketForm({ onAddTicket }) {
     setProviderSearch(formData.provider);
   }, [formData.provider]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_PROVIDER_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setRecentProviders(parsed.filter((p) => typeof p === "string"));
+      }
+    } catch {
+      setRecentProviders([]);
+    }
+  }, []);
+
   // Handle clicking outside custom dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -157,9 +175,95 @@ export default function TicketForm({ onAddTicket }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [formData.provider]);
 
-  const filteredProviders = Object.keys(PROVIDER_CONFIG).filter((p) =>
-    p.toLowerCase().includes(providerSearch.toLowerCase()),
-  );
+  const allProviders = useMemo(() => Object.keys(PROVIDER_CONFIG), []);
+
+  const filteredProviders = useMemo(() => {
+    const query = providerSearch.trim().toLowerCase();
+
+    const candidates = query
+      ? allProviders.filter((p) => p.toLowerCase().includes(query))
+      : allProviders;
+
+    return [...candidates].sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+
+      const aStarts = query && aLower.startsWith(query) ? 1 : 0;
+      const bStarts = query && bLower.startsWith(query) ? 1 : 0;
+      if (aStarts !== bStarts) return bStarts - aStarts;
+
+      const aRecentIdx = recentProviders.indexOf(a);
+      const bRecentIdx = recentProviders.indexOf(b);
+      const aRecent = aRecentIdx === -1 ? Number.MAX_SAFE_INTEGER : aRecentIdx;
+      const bRecent = bRecentIdx === -1 ? Number.MAX_SAFE_INTEGER : bRecentIdx;
+      if (aRecent !== bRecent) return aRecent - bRecent;
+
+      return a.localeCompare(b);
+    });
+  }, [allProviders, providerSearch, recentProviders]);
+
+  const selectProvider = (providerKey) => {
+    setFormData({ ...formData, provider: providerKey });
+    setProviderSearch(providerKey);
+    setIsProviderOpen(false);
+
+    setRecentProviders((prev) => {
+      const next = [providerKey, ...prev.filter((p) => p !== providerKey)].slice(
+        0,
+        MAX_RECENT_PROVIDERS,
+      );
+      localStorage.setItem(RECENT_PROVIDER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleProviderInputKeyDown = (e) => {
+    if (!isProviderOpen && (e.key === "ArrowDown" || e.key === "Enter")) {
+      setIsProviderOpen(true);
+      return;
+    }
+
+    if (!isProviderOpen) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (filteredProviders.length === 0) return;
+      setHighlightedProviderIndex(
+        (prev) => (prev + 1) % filteredProviders.length,
+      );
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (filteredProviders.length === 0) return;
+      setHighlightedProviderIndex(
+        (prev) =>
+          (prev - 1 + filteredProviders.length) % filteredProviders.length,
+      );
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (filteredProviders.length === 0) return;
+      const picked = filteredProviders[highlightedProviderIndex] || filteredProviders[0];
+      if (picked) {
+        selectProvider(picked);
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      setIsProviderOpen(false);
+      setProviderSearch(formData.provider);
+    }
+  };
+
+  useEffect(() => {
+    if (!isProviderOpen) return;
+    setHighlightedProviderIndex(0);
+  }, [providerSearch, isProviderOpen]);
 
   const { name: merchantName, duty: merchantDuty, error: dutyError } = useMerchantData(
     formData.memberId,
@@ -430,6 +534,7 @@ export default function TicketForm({ onAddTicket }) {
               </label>
               <div className="relative">
                 <input
+                  ref={providerInputRef}
                   type="text"
                   value={providerSearch}
                   onChange={(e) => {
@@ -437,29 +542,60 @@ export default function TicketForm({ onAddTicket }) {
                     setIsProviderOpen(true);
                   }}
                   onFocus={() => setIsProviderOpen(true)}
+                  onKeyDown={handleProviderInputKeyDown}
                   placeholder="Search provider..."
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-text"
+                  className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-100 transition-all cursor-text"
                 />
-                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown
-                    size={14}
-                    className={`transition-transform duration-200 ${isProviderOpen ? "rotate-180" : ""}`}
-                  />
-                </div>
+                {providerSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProviderSearch("");
+                      setIsProviderOpen(true);
+                      providerInputRef.current?.focus();
+                    }}
+                    className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
+                    title="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : (
+                  <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform duration-200 ${isProviderOpen ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                )}
               </div>
+
+              {!providerSearch && recentProviders.length > 0 && (
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mr-1">
+                    Recent:
+                  </span>
+                  {recentProviders.map((provider) => (
+                    <button
+                      key={provider}
+                      type="button"
+                      onClick={() => selectProvider(provider)}
+                      className="px-2 py-1 text-[10px] font-semibold rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors"
+                    >
+                      {provider}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {isProviderOpen && (
                 <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 shadow-xl rounded-lg max-h-60 overflow-y-auto py-1 animate-in fade-in zoom-in-95 duration-100">
                   {filteredProviders.length > 0 ? (
-                    filteredProviders.map((key) => (
+                    filteredProviders.map((key, index) => (
                       <div
                         key={key}
-                        onClick={() => {
-                          setFormData({ ...formData, provider: key });
-                          setProviderSearch(key);
-                          setIsProviderOpen(false);
-                        }}
-                        className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${formData.provider === key ? "bg-indigo-50/50 font-bold text-indigo-700" : "text-slate-700 font-medium"}`}
+                        onMouseEnter={() => setHighlightedProviderIndex(index)}
+                        onClick={() => selectProvider(key)}
+                        className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${highlightedProviderIndex === index ? "bg-indigo-50 text-indigo-700" : "hover:bg-indigo-50 hover:text-indigo-700"} ${formData.provider === key ? "font-bold" : "text-slate-700 font-medium"}`}
                       >
                         {key}
                       </div>
