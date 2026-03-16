@@ -101,6 +101,13 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
+const getFormattedDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
 // HELPER: Determine the LAST shift change threshold
 const getLastShiftChangeTime = () => {
   const now = getGMT8Time();
@@ -111,62 +118,89 @@ const getLastShiftChangeTime = () => {
   const lastChange = new Date(now);
   lastChange.setSeconds(0, 0);
 
-  if (timeInHours >= 7 && timeInHours < 14.5) {
-    lastChange.setHours(7, 0);
-  } else if (timeInHours >= 14.5 && timeInHours < 22.5) {
-    lastChange.setHours(14, 30);
-  } else if (timeInHours >= 22.5) {
-    lastChange.setHours(22, 30);
+  if (timeInHours >= 7.1666 && timeInHours < 14.6666) {
+    lastChange.setHours(7, 10);
+  } else if (timeInHours >= 14.6666 && timeInHours < 22.6666) {
+    lastChange.setHours(14, 40);
+  } else if (timeInHours >= 22.6666) {
+    lastChange.setHours(22, 40);
   } else {
     lastChange.setDate(lastChange.getDate() - 1);
-    lastChange.setHours(22, 30);
+    lastChange.setHours(22, 40);
   }
   return lastChange;
 };
 
-// HELPER: Check if time is currently inside the handover window
-const checkIsHandoverWindow = () => {
-  const now = getGMT8Time();
+const getTransitionContext = (inputNow = getGMT8Time()) => {
+  const now = new Date(inputNow);
+  now.setSeconds(0, 0);
   const h = now.getHours();
   const m = now.getMinutes();
-  return (
-    (h === 14 && m >= 15 && m <= 45) ||
-    (h === 22 && m >= 15 && m <= 45) ||
-    (h === 6 && m >= 45) ||
-    (h === 7 && m <= 30)
-  );
-};
+  const timeInHours = h + m / 60;
 
-const getHandoverShiftPair = () => {
-  const now = getGMT8Time();
-  const h = now.getHours();
-  const m = now.getMinutes();
-
-  if (h === 14 && m >= 15 && m <= 45) {
-    return { outgoing: "Morning", incoming: "Afternoon" };
+  if (timeInHours >= 6.75 && timeInHours < 7.5) {
+    const windowStart = new Date(now);
+    windowStart.setHours(6, 45, 0, 0);
+    return {
+      pair: { outgoing: "Night", incoming: "Morning" },
+      marker: `${getFormattedDate(now)}|Night->Morning`,
+      windowStart,
+      isManualWindow: timeInHours <= 7.1666,
+      isSharedWindow: timeInHours >= 7.1666 && timeInHours < 7.5,
+      isPostStartWindow: timeInHours >= 7.1833 && timeInHours < 7.5,
+      lockWarningHour: 7,
+      lockWarningMinute: 20,
+    };
   }
 
-  if (h === 22 && m >= 15 && m <= 45) {
-    return { outgoing: "Afternoon", incoming: "Night" };
+  if (timeInHours >= 14.25 && timeInHours < 15.0) {
+    const windowStart = new Date(now);
+    windowStart.setHours(14, 15, 0, 0);
+    return {
+      pair: { outgoing: "Morning", incoming: "Afternoon" },
+      marker: `${getFormattedDate(now)}|Morning->Afternoon`,
+      windowStart,
+      isManualWindow: timeInHours <= 14.6666,
+      isSharedWindow: timeInHours >= 14.6666 && timeInHours < 15.0,
+      isPostStartWindow: timeInHours >= 14.6833 && timeInHours < 15.0,
+      lockWarningHour: 14,
+      lockWarningMinute: 50,
+    };
   }
 
-  if ((h === 6 && m >= 45) || (h === 7 && m <= 30)) {
-    return { outgoing: "Night", incoming: "Morning" };
+  if (timeInHours >= 22.25 && timeInHours < 23.0) {
+    const windowStart = new Date(now);
+    windowStart.setHours(22, 15, 0, 0);
+    return {
+      pair: { outgoing: "Afternoon", incoming: "Night" },
+      marker: `${getFormattedDate(now)}|Afternoon->Night`,
+      windowStart,
+      isManualWindow: timeInHours <= 22.6666,
+      isSharedWindow: timeInHours >= 22.6666 && timeInHours < 23.0,
+      isPostStartWindow: timeInHours >= 22.6833 && timeInHours < 23.0,
+      lockWarningHour: 22,
+      lockWarningMinute: 50,
+    };
   }
 
   return null;
+};
+
+// HELPER: Check if time is currently inside the handover window
+const checkIsHandoverWindow = () => {
+  const ctx = getTransitionContext();
+  return !!ctx && ctx.isManualWindow;
+};
+
+const getHandoverShiftPair = () => {
+  const ctx = getTransitionContext();
+  return ctx?.pair || null;
 };
 
 const getNextShift = (current) => {
   if (current === "Morning") return "Afternoon";
   if (current === "Afternoon") return "Night";
   return "Morning";
-};
-
-const getPreviousShift = (current) => {
-  if (current === "Morning") return "Night";
-  if (current === "Afternoon") return "Morning";
-  return "Afternoon";
 };
 
 // --- Reusable Click-to-Edit Component ---
@@ -322,12 +356,20 @@ export default function TicketTable({
     () => (Array.isArray(dutyNumber) ? dutyNumber : []),
     [dutyNumber],
   );
-  const [isInHandoverWindow, setIsInHandoverWindow] = useState(
-    checkIsHandoverWindow(),
-  );
+  const buildHandoverMarker = useCallback(() => {
+    const transitionCtx = getTransitionContext();
+    const baseMarker = transitionCtx
+      ? transitionCtx.marker
+      : getLastShiftChangeTime().toISOString();
+    return `${baseMarker}|${dutyArray.slice().sort().join(",")}`;
+  }, [dutyArray]);
+
   const [isHandoverProcessing, setIsHandoverProcessing] = useState(false);
+  const [handoverCompletedForCurrentWindow, setHandoverCompletedForCurrentWindow] =
+    useState(false);
   const autoHandoverLoggedRef = useRef("");
   const lastPostStartReminderMinuteRef = useRef("");
+  const lockWarningMarkerRef = useRef("");
   const handedOverTicketIdsByMarkerRef = useRef(new Map());
 
   // --- SMART 5-MIN HANDOVER REMINDER ---
@@ -403,19 +445,14 @@ export default function TicketTable({
       const now = getGMT8Time();
       const h = now.getHours();
       const m = now.getMinutes();
+      const transitionCtx = getTransitionContext(now);
 
-      // New reminder schedule requested by ops:
-      // 07:00-07:30, 14:30-14:45, 22:30-22:45.
-      const isPostStartWindow =
-        (h === 7 && m >= 0 && m <= 30) ||
-        (h === 14 && m >= 30 && m <= 45) ||
-        (h === 22 && m >= 30 && m <= 45);
-
-      if (!isPostStartWindow) {
+      // Post-start reminders begin 1 minute after the big switch and stop at hard lock.
+      if (!transitionCtx || !transitionCtx.isPostStartWindow) {
         return;
       }
 
-      const handoverPair = getHandoverShiftPair();
+      const handoverPair = transitionCtx.pair;
       const isOutgoingForWindow =
         !!handoverPair && myAssignedShift === handoverPair.outgoing;
 
@@ -423,7 +460,7 @@ export default function TicketTable({
         return;
       }
 
-      const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
+      const marker = `${transitionCtx.marker}|${dutyArray
         .slice()
         .sort()
         .join(",")}`;
@@ -471,6 +508,132 @@ export default function TicketTable({
     const timer = setInterval(checkPostStartReminder, 30000);
     return () => clearInterval(timer);
   }, [isAdminOrLeader, myAssignedShift, dutyArray, tickets]);
+
+  // --- WINDOW HANDOVER COMPLETION STATUS (CONTROLS INCOMING VISIBILITY) ---
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshWindowHandoverStatus = async () => {
+      const transitionCtx = getTransitionContext();
+
+      if (!transitionCtx || !myAssignedShift || myAssignedShift === "Off") {
+        if (isMounted) setHandoverCompletedForCurrentWindow(false);
+        return;
+      }
+
+      const marker = `${transitionCtx.marker}|${dutyArray
+        .slice()
+        .sort()
+        .join(",")}`;
+
+      // Immediate local truth for outgoing user after manual/auto handover.
+      if (autoHandoverLoggedRef.current === marker) {
+        if (isMounted) setHandoverCompletedForCurrentWindow(true);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("shift_notifications")
+        .select("id, duties")
+        .eq("target_shift", transitionCtx.pair.incoming)
+        .gte("created_at", transitionCtx.windowStart.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        if (isMounted) setHandoverCompletedForCurrentWindow(false);
+        return;
+      }
+
+      const hasMatchingHandover = (data || []).some((row) => {
+        if (!Array.isArray(row.duties) || row.duties.length === 0) return true;
+        if (dutyArray.length === 0) return true;
+        return row.duties.some((d) => dutyArray.includes(d));
+      });
+
+      if (isMounted) {
+        setHandoverCompletedForCurrentWindow(hasMatchingHandover);
+      }
+    };
+
+    refreshWindowHandoverStatus();
+    const timer = setInterval(refreshWindowHandoverStatus, 30000);
+
+    const channel = supabase
+      .channel(`handover-window-status-${user?.id || "anon"}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "shift_notifications" },
+        () => {
+          refreshWindowHandoverStatus();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [dutyArray, myAssignedShift, user?.id]);
+
+  // --- HARD-LOCK WARNING (10 MINUTES BEFORE OUTGOING LOCKOUT) ---
+  useEffect(() => {
+    const checkHardLockWarning = () => {
+      if (isAdminOrLeader || !myAssignedShift || myAssignedShift === "Off") {
+        return;
+      }
+
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const transitionCtx = getTransitionContext(now);
+
+      if (!transitionCtx || !transitionCtx.isSharedWindow) return;
+      if (myAssignedShift !== transitionCtx.pair.outgoing) return;
+      if (
+        h !== transitionCtx.lockWarningHour ||
+        m !== transitionCtx.lockWarningMinute
+      ) {
+        return;
+      }
+
+      const warningMarker = `${transitionCtx.marker}|lock-warning|${dutyArray
+        .slice()
+        .sort()
+        .join(",")}`;
+      if (lockWarningMarkerRef.current === warningMarker) return;
+      lockWarningMarkerRef.current = warningMarker;
+
+      const reminderText =
+        "Shift lock in 10 minutes. Finalize remaining work now before visibility is revoked.";
+
+      setReminderToast({
+        title: "Shift Lock Warning",
+        text: reminderText,
+      });
+      setShowReminderToast(true);
+
+      const audio = new Audio(notificationSound);
+      audio.play().catch(() => console.log("Audio blocked by browser"));
+
+      window.dispatchEvent(
+        new CustomEvent("tracking-reminder-alert", {
+          detail: {
+            missingCount: 0,
+            time: Date.now(),
+            text: reminderText,
+          },
+        }),
+      );
+
+      setTimeout(() => setShowReminderToast(false), 8000);
+    };
+
+    checkHardLockWarning();
+    const timer = setInterval(checkHardLockWarning, 30000);
+    return () => clearInterval(timer);
+  }, [isAdminOrLeader, myAssignedShift, dutyArray]);
 
   // --- AUTO-CLEAR BELL REMINDER IF FIXED ---
   useEffect(() => {
@@ -537,13 +700,6 @@ export default function TicketTable({
     setTransferModal({ isOpen: true, step: "tracking" });
   };
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIsInHandoverWindow(checkIsHandoverWindow());
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
-
   // --- THE "LAZY" AUTO-SWEEPER ---
   useEffect(() => {
     const performLazySweep = async () => {
@@ -590,10 +746,7 @@ export default function TicketTable({
 
   const syncHandoverAndNotify = useCallback(
     async (pendingTix, mode = "Manual") => {
-      const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
-        .slice()
-        .sort()
-        .join(",")}`;
+      const marker = buildHandoverMarker();
       const handedOverSet =
         handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
       const uniquePendingTix = pendingTix.filter(
@@ -644,6 +797,7 @@ export default function TicketTable({
     },
     [
       appendHandoverTicketsToSheet,
+      buildHandoverMarker,
       currentActiveShift,
       dutyArray,
       shortWorkName,
@@ -652,35 +806,32 @@ export default function TicketTable({
   );
 
   useEffect(() => {
-    const isOutgoingShift =
-      myAssignedShift &&
-      currentActiveShift &&
-      myAssignedShift === getPreviousShift(currentActiveShift);
+    const attemptAutoHandover = () => {
+      const transitionCtx = getTransitionContext();
+      if (!transitionCtx || !transitionCtx.isPostStartWindow) {
+        return;
+      }
 
-    // Auto handover at cutoff: once outgoing shift window has closed.
-    // CHECK REAL-TIME instead of stale isInHandoverWindow state (which updates every 60s).
-    const isActuallyInWindow = checkIsHandoverWindow();
-    if (
-      isAdminOrLeader ||
-      !isOutgoingShift ||
-      isActuallyInWindow ||
-      dutyArray.length === 0
-    ) {
-      return;
-    }
+      const isOutgoingShift =
+        !!myAssignedShift && myAssignedShift === transitionCtx.pair.outgoing;
 
-    const pendingTix = tickets.filter((t) => t.status === "Pending");
-    if (pendingTix.length === 0) return;
+      if (isAdminOrLeader || !isOutgoingShift || dutyArray.length === 0) {
+        return;
+      }
 
-    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
-      .slice()
-      .sort()
-      .join(",")}`;
+      const pendingTix = tickets.filter((t) => t.status === "Pending");
+      if (pendingTix.length === 0) return;
 
-    if (autoHandoverLoggedRef.current === marker) return;
-    autoHandoverLoggedRef.current = marker;
+      const marker = buildHandoverMarker();
+      if (autoHandoverLoggedRef.current === marker) return;
+      autoHandoverLoggedRef.current = marker;
 
-    syncHandoverAndNotify(pendingTix, "Auto");
+      syncHandoverAndNotify(pendingTix, "Auto");
+    };
+
+    attemptAutoHandover();
+    const timer = setInterval(attemptAutoHandover, 30000);
+    return () => clearInterval(timer);
   }, [
     myAssignedShift,
     currentActiveShift,
@@ -688,6 +839,7 @@ export default function TicketTable({
     tickets,
     dutyArray,
     syncHandoverAndNotify,
+    buildHandoverMarker,
   ]);
 
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
@@ -730,10 +882,7 @@ export default function TicketTable({
 
     // Set marker BEFORE the async DB operations so that realtime ticket
     // updates arriving during the await don't retrigger the reminder check.
-    const marker = `${getLastShiftChangeTime().toISOString()}|${dutyArray
-      .slice()
-      .sort()
-      .join(",")}`;
+    const marker = buildHandoverMarker();
     autoHandoverLoggedRef.current = marker;
 
     try {
@@ -764,14 +913,32 @@ export default function TicketTable({
     ? tickets.find((t) => t.id === selectedTicketForNotes.id)?.notes || []
     : [];
 
+  const transitionCtx = getTransitionContext();
   const handoverPair = getHandoverShiftPair();
-  const isHandoverPairViewer =
+  const isInSharedZone = !!transitionCtx && transitionCtx.isSharedWindow;
+  const isInManualWindow = !!transitionCtx && transitionCtx.isManualWindow;
+
+  const isOutgoingTransitionViewer =
     !!handoverPair &&
-    (myAssignedShift === handoverPair.outgoing ||
-      myAssignedShift === handoverPair.incoming);
+    (isInManualWindow || isInSharedZone) &&
+    myAssignedShift === handoverPair.outgoing;
+
+  const isIncomingTransitionViewer =
+    !!handoverPair &&
+    (isInManualWindow || isInSharedZone) &&
+    myAssignedShift === handoverPair.incoming &&
+    handoverCompletedForCurrentWindow;
+
+  const shouldHoldIncomingViewUntilHandover =
+    !!handoverPair &&
+    isInSharedZone &&
+    myAssignedShift === handoverPair.incoming &&
+    !handoverCompletedForCurrentWindow;
+
   const canViewTickets =
-    isMyShiftActive ||
-    (isInHandoverWindow && isHandoverPairViewer) ||
+    (isMyShiftActive && !shouldHoldIncomingViewUntilHandover) ||
+    isOutgoingTransitionViewer ||
+    isIncomingTransitionViewer ||
     isAdminOrLeader;
 
   const filteredTickets = tickets.filter((ticket) => {
@@ -938,7 +1105,8 @@ export default function TicketTable({
 
   let handoverTooltip = "Handover Shift";
   if (!isActuallyInWindow)
-    handoverTooltip = "Only available during shift handover times (:15 to :45)";
+    handoverTooltip =
+      "Only available during manual handover window (06:45-07:10, 14:15-14:40, 22:15-22:40).";
   else if (!isOutgoingForWindow && !isAdminOrLeader)
     handoverTooltip = "Only the outgoing shift can handover in this window.";
 

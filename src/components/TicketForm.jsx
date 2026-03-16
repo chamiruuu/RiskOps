@@ -96,16 +96,16 @@ export default function TicketForm({ onAddTicket }) {
       const time = now.getHours() + now.getMinutes() / 60;
 
       if (myAssignedShift === "Morning") {
-        // Unlocks at 07:10, Locks at 15:00
-        return time >= 7.1666 && time < 15.0;
+        // Unlocks at 07:11, Locks at 15:00
+        return time >= 7.1833 && time < 15.0;
       }
       if (myAssignedShift === "Afternoon") {
-        // Unlocks at 14:40, Locks at 23:00
-        return time >= 14.6666 && time < 23.0;
+        // Unlocks at 14:41, Locks at 23:00
+        return time >= 14.6833 && time < 23.0;
       }
       if (myAssignedShift === "Night") {
-        // Unlocks at 22:40, Locks at 07:30 (next day)
-        return time >= 22.6666 || time < 7.5;
+        // Unlocks at 22:41, Locks at 07:30 (next day)
+        return time >= 22.6833 || time < 7.5;
       }
       return false;
     };

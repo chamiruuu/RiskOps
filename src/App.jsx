@@ -247,58 +247,6 @@ function Dashboard() {
     return false;
   }, [myAssignedShift]);
 
-  // --- AUTOMATIC HANDOVER TRIGGER ---
-  useEffect(() => {
-    const checkAutoHandover = () => {
-      if (!myAssignedShift || myAssignedShift === "Off") return;
-      if (!isSharedZoneHandover()) return;
-
-      const now = new Date();
-      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-      const gmt8 = new Date(utc + 3600000 * 8);
-      const h = gmt8.getHours();
-      const m = gmt8.getMinutes();
-
-      // Trigger exact Auto-Handover at 07:10, 14:40, 22:40
-      const isAutoTime =
-        (h === 7 && m === 10 && myAssignedShift === "Night") ||
-        (h === 14 && m === 40 && myAssignedShift === "Morning") ||
-        (h === 22 && m === 40 && myAssignedShift === "Afternoon");
-
-      if (isAutoTime) {
-        const marker = `${gmt8.toDateString()}-${h}:${m}-AutoHandover`;
-        if (localStorage.getItem(marker)) return;
-        localStorage.setItem(marker, "done"); // Prevent double-firing
-
-        console.log(`[SYSTEM] Executing Auto-Handover for ${myAssignedShift}`);
-        // 1. Grab all tickets currently marked as "Pending"
-        const pendingTickets = tickets.filter(
-          (t) => t.status === "Pending" || t.status === "PENDING",
-        );
-
-        // 2. If there are pending tickets, push the whole array to the Sheet via Edge Function
-        if (pendingTickets.length > 0) {
-          supabase.functions
-            .invoke("sync-sheets", {
-              body: {
-                action: "APPEND",
-                tickets: pendingTickets,
-                handoverBy: workName || "System Auto",
-              },
-            })
-            .then(({ data, error }) => {
-              if (error) console.error("Batch Push Error:", error);
-              else console.log("Batch Push Success:", data);
-            });
-        }
-        // Get all pending tickets for this user and push them to the Sheet
-      }
-    };
-
-    const timer = setInterval(checkAutoHandover, 30000);
-    return () => clearInterval(timer);
-  }, [myAssignedShift, tickets, isSharedZoneHandover]);
-
   // 2. Insert new ticket to Supabase
   const handleAddTicket = async (newTicket) => {
     // --- STRICT RULE: Player ID is absolutely required ---
