@@ -169,7 +169,7 @@ export default function TicketForm({ onAddTicket }) {
 
   const generatedScript = currentConfig
     ? currentConfig.generateScript(formData, shortWorkName)
-    : "// Waiting for provider selection...";
+    : "Select a provider and fill in the required fields to generate the standard script.";
 
   const isFormValid = () => {
     if (!currentConfig) return false;

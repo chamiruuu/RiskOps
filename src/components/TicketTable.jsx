@@ -371,6 +371,7 @@ export default function TicketTable({
   const lastPostStartReminderMinuteRef = useRef("");
   const lockWarningMarkerRef = useRef("");
   const handedOverTicketIdsByMarkerRef = useRef(new Map());
+  const completedTicketIdsByMarkerRef = useRef(new Map());
 
   // --- SMART 5-MIN HANDOVER REMINDER ---
   useEffect(() => {
@@ -704,6 +705,12 @@ export default function TicketTable({
   useEffect(() => {
     const performLazySweep = async () => {
       if (!tickets || tickets.length === 0) return;
+
+      // Keep completed tickets visible to outgoing shift during the shared window
+      // so they remain reviewable until the hard lock cutoff.
+      const transitionCtx = getTransitionContext();
+      if (transitionCtx?.isSharedWindow) return;
+
       const lastShiftStart = getLastShiftChangeTime();
 
       const oldCompletedTickets = tickets.filter(
@@ -730,13 +737,21 @@ export default function TicketTable({
       if (!handoverTickets || handoverTickets.length === 0) return;
 
       try {
-        await supabase.functions.invoke("sync-sheets", {
+        const { data, error } = await supabase.functions.invoke("sync-sheets", {
           body: {
             action: "APPEND",
             tickets: handoverTickets,
             handoverBy: shortWorkName,
           },
         });
+
+        if (error) {
+          throw error;
+        }
+
+        if (data && data.success === false) {
+          throw new Error(data.error || "Google Sheet handover sync failed.");
+        }
       } catch (e) {
         console.error("Sheet Handover Error:", e);
       }
@@ -758,7 +773,9 @@ export default function TicketTable({
         return { skipped: true, count: 0, marker };
       }
 
-      const nextShift = getNextShift(currentActiveShift);
+      const transitionCtx = getTransitionContext();
+      const nextShift =
+        transitionCtx?.pair?.incoming || getNextShift(currentActiveShift);
       const msg = `${shortWorkName} completed ${mode.toLowerCase()} handover for ${dutyArray.join(", ")}. ${uniquePendingTix.length} pending ticket(s) handed over successfully.`;
 
       await supabase.from("shift_notifications").insert({
@@ -766,17 +783,6 @@ export default function TicketTable({
         message: msg,
         duties: dutyArray,
       });
-
-      const completedIds = tickets
-        .filter((t) => t.status !== "Pending")
-        .map((t) => t.id);
-
-      if (completedIds.length > 0) {
-        await supabase
-          .from("tickets")
-          .update({ is_archived: true })
-          .in("id", completedIds);
-      }
 
       await appendHandoverTicketsToSheet(uniquePendingTix);
 
@@ -801,7 +807,6 @@ export default function TicketTable({
       currentActiveShift,
       dutyArray,
       shortWorkName,
-      tickets,
     ],
   );
 
@@ -944,6 +949,22 @@ export default function TicketTable({
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;
 
+    // Outgoing shift can see completed tickets only if they were completed
+    // from Pending during the current handover marker.
+    if (isOutgoingTransitionViewer && ticket.status !== "Pending") {
+      const marker = buildHandoverMarker();
+      const completedSet =
+        completedTicketIdsByMarkerRef.current.get(marker) || new Set();
+      if (!completedSet.has(ticket.id)) {
+        return false;
+      }
+    }
+
+    // Incoming shift during transition can only see pending handover tickets.
+    if (isIncomingTransitionViewer && ticket.status !== "Pending") {
+      return false;
+    }
+
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       const matches =
@@ -976,6 +997,14 @@ export default function TicketTable({
         ? "Normal"
         : completeModal.abnormalType.toUpperCase();
     const targetTicketId = completeModal.ticket.id;
+
+    if (completeModal.ticket?.status === "Pending") {
+      const marker = buildHandoverMarker();
+      const completedSet =
+        completedTicketIdsByMarkerRef.current.get(marker) || new Set();
+      completedSet.add(targetTicketId);
+      completedTicketIdsByMarkerRef.current.set(marker, completedSet);
+    }
 
     // Update inside your RiskOps Database
     onUpdateTicket(targetTicketId, "status", finalStatus);
