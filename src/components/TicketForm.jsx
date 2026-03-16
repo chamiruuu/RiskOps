@@ -16,6 +16,7 @@ import {
   Calendar,
   RefreshCw,
   X,
+  Star,
 } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
@@ -40,6 +41,8 @@ const getFormattedDate = (date) => {
 
 const RECENT_PROVIDER_STORAGE_KEY = "riskops_recent_providers";
 const MAX_RECENT_PROVIDERS = 6;
+const FAVORITE_PROVIDER_STORAGE_KEY = "riskops_favorite_providers";
+const MAX_FAVORITE_PROVIDERS = 3;
 
 
 
@@ -74,6 +77,7 @@ export default function TicketForm({ onAddTicket }) {
   const [providerSearch, setProviderSearch] = useState("");
   const [highlightedProviderIndex, setHighlightedProviderIndex] = useState(0);
   const [recentProviders, setRecentProviders] = useState([]);
+  const [favoriteProviders, setFavoriteProviders] = useState([]);
   const providerRef = useRef(null);
   const providerInputRef = useRef(null);
 
@@ -85,6 +89,10 @@ export default function TicketForm({ onAddTicket }) {
 
   // --- NEW: PG SOFT 7-DAY CHECK STATES ---
   const [isCheckingPgSoft, setIsCheckingPgSoft] = useState(false);
+  const [validationNotice, setValidationNotice] = useState({
+    type: "",
+    text: "",
+  });
   const [pgSoftCheckModal, setPgSoftCheckModal] = useState({
     isOpen: false,
     step: "ask",
@@ -160,6 +168,24 @@ export default function TicketForm({ onAddTicket }) {
     }
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITE_PROVIDER_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setFavoriteProviders(parsed.filter((p) => typeof p === "string"));
+      }
+    } catch {
+      setFavoriteProviders([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (validationNotice.text) {
+      setValidationNotice({ type: "", text: "" });
+    }
+  }, [formData.provider, formData.memberId, formData.providerAccount]);
+
   // Handle clicking outside custom dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -192,6 +218,12 @@ export default function TicketForm({ onAddTicket }) {
       const bStarts = query && bLower.startsWith(query) ? 1 : 0;
       if (aStarts !== bStarts) return bStarts - aStarts;
 
+      const aFavIdx = favoriteProviders.indexOf(a);
+      const bFavIdx = favoriteProviders.indexOf(b);
+      const aFav = aFavIdx === -1 ? Number.MAX_SAFE_INTEGER : aFavIdx;
+      const bFav = bFavIdx === -1 ? Number.MAX_SAFE_INTEGER : bFavIdx;
+      if (aFav !== bFav) return aFav - bFav;
+
       const aRecentIdx = recentProviders.indexOf(a);
       const bRecentIdx = recentProviders.indexOf(b);
       const aRecent = aRecentIdx === -1 ? Number.MAX_SAFE_INTEGER : aRecentIdx;
@@ -200,7 +232,28 @@ export default function TicketForm({ onAddTicket }) {
 
       return a.localeCompare(b);
     });
-  }, [allProviders, providerSearch, recentProviders]);
+  }, [allProviders, providerSearch, recentProviders, favoriteProviders]);
+
+  const recentProvidersForDropdown = useMemo(
+    () => recentProviders.filter((provider) => !favoriteProviders.includes(provider)),
+    [recentProviders, favoriteProviders],
+  );
+
+  const isFavoriteProvider = (providerKey) =>
+    favoriteProviders.includes(providerKey);
+
+  const toggleFavoriteProvider = (providerKey) => {
+    setFavoriteProviders((prev) => {
+      let next;
+      if (prev.includes(providerKey)) {
+        next = prev.filter((p) => p !== providerKey);
+      } else {
+        next = [providerKey, ...prev].slice(0, MAX_FAVORITE_PROVIDERS);
+      }
+      localStorage.setItem(FAVORITE_PROVIDER_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const selectProvider = (providerKey) => {
     setFormData({ ...formData, provider: providerKey });
@@ -444,6 +497,10 @@ export default function TicketForm({ onAddTicket }) {
   const handleCreateClick = async () => {
     // If it's PG Soft, we must verify the 7-day rule first
     if (formData.provider === "PG Soft") {
+      setValidationNotice({
+        type: "info",
+        text: "Checking PG Soft history for last 7 days...",
+      });
       setIsCheckingPgSoft(true);
       try {
         const sevenDaysAgo = new Date();
@@ -466,11 +523,26 @@ export default function TicketForm({ onAddTicket }) {
             step: "ask",
             providerAcc: formData.providerAccount,
           });
+          setValidationNotice({
+            type: "warning",
+            text: "Recent PG Soft record found in last 7 days. Please confirm in modal before creating.",
+          });
           setIsCheckingPgSoft(false);
           return;
         }
+
+        setValidationNotice({
+          type: "success",
+          text: "PG Soft validation passed. You can create the ticket now.",
+        });
       } catch (err) {
         console.error("Error checking PG Soft history:", err);
+        setValidationNotice({
+          type: "error",
+          text: "Could not verify PG Soft history right now. Please retry in a moment.",
+        });
+        setIsCheckingPgSoft(false);
+        return;
       }
       setIsCheckingPgSoft(false);
     }
@@ -569,17 +641,17 @@ export default function TicketForm({ onAddTicket }) {
                 )}
               </div>
 
-              {!providerSearch && recentProviders.length > 0 && (
+              {favoriteProviders.length > 0 && (
                 <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mr-1">
-                    Recent:
+                  <span className="text-[9px] font-bold text-amber-500 uppercase tracking-wide mr-1">
+                    Favorites:
                   </span>
-                  {recentProviders.map((provider) => (
+                  {favoriteProviders.map((provider) => (
                     <button
                       key={provider}
                       type="button"
                       onClick={() => selectProvider(provider)}
-                      className="px-2 py-1 text-[10px] font-semibold rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors"
+                      className="px-2 py-1 text-[10px] font-semibold rounded-md border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
                     >
                       {provider}
                     </button>
@@ -589,15 +661,58 @@ export default function TicketForm({ onAddTicket }) {
 
               {isProviderOpen && (
                 <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 shadow-xl rounded-lg max-h-60 overflow-y-auto py-1 animate-in fade-in zoom-in-95 duration-100">
+                  {!providerSearch && recentProvidersForDropdown.length > 0 && (
+                    <div className="px-2 pb-1">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide px-1 py-1">
+                        Recent
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap px-1 pb-1">
+                        {recentProvidersForDropdown.map((provider) => (
+                          <button
+                            key={provider}
+                            type="button"
+                            onClick={() => selectProvider(provider)}
+                            className="px-2 py-1 text-[10px] font-semibold rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 transition-colors"
+                          >
+                            {provider}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="border-b border-slate-100" />
+                    </div>
+                  )}
+
                   {filteredProviders.length > 0 ? (
                     filteredProviders.map((key, index) => (
                       <div
                         key={key}
                         onMouseEnter={() => setHighlightedProviderIndex(index)}
                         onClick={() => selectProvider(key)}
-                        className={`px-3 py-2.5 text-sm cursor-pointer transition-colors ${highlightedProviderIndex === index ? "bg-indigo-50 text-indigo-700" : "hover:bg-indigo-50 hover:text-indigo-700"} ${formData.provider === key ? "font-bold" : "text-slate-700 font-medium"}`}
+                        className={`px-3 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between gap-2 ${highlightedProviderIndex === index ? "bg-indigo-50 text-indigo-700" : "hover:bg-indigo-50 hover:text-indigo-700"} ${formData.provider === key ? "font-bold" : "text-slate-700 font-medium"}`}
                       >
-                        {key}
+                        <span>{key}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavoriteProvider(key);
+                          }}
+                          className="p-1 rounded hover:bg-white/80"
+                          title={
+                            isFavoriteProvider(key)
+                              ? "Remove from favorites"
+                              : "Add to favorites"
+                          }
+                        >
+                          <Star
+                            size={12}
+                            className={
+                              isFavoriteProvider(key)
+                                ? "text-amber-500 fill-amber-500"
+                                : "text-slate-300"
+                            }
+                          />
+                        </button>
                       </div>
                     ))
                   ) : (
@@ -992,6 +1107,22 @@ export default function TicketForm({ onAddTicket }) {
                       ? "Checking Database..."
                       : "Create Ticket"}
                 </button>
+
+                {validationNotice.text && (
+                  <div
+                    className={`mt-2 px-3 py-2 rounded-lg text-[11px] font-semibold border ${
+                      validationNotice.type === "error"
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : validationNotice.type === "warning"
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : validationNotice.type === "success"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                    }`}
+                  >
+                    {validationNotice.text}
+                  </div>
+                )}
               </>
             )}
           </div>

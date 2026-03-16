@@ -109,6 +109,7 @@ export default function Header() {
   const [opsNotification, setOpsNotification] = useState(null);
   const [showOpsToast, setShowOpsToast] = useState(false);
   const shiftStartPingKeyRef = useRef("");
+  const notificationDedupRef = useRef(new Map());
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -134,6 +135,24 @@ export default function Header() {
   const playAlertSound = useCallback(() => {
     const audio = new Audio(notificationSound);
     audio.play().catch(() => console.log("Audio blocked by browser"));
+  }, []);
+
+  const shouldEmitNotification = useCallback((key, text, cooldownMs = 15000) => {
+    const now = Date.now();
+    const token = `${key}|${text || ""}`;
+    const lastSeen = notificationDedupRef.current.get(token) || 0;
+    if (now - lastSeen < cooldownMs) return false;
+    notificationDedupRef.current.set(token, now);
+
+    // Keep map small over long sessions.
+    if (notificationDedupRef.current.size > 80) {
+      for (const [k, ts] of notificationDedupRef.current.entries()) {
+        if (now - ts > 2 * 60 * 1000) {
+          notificationDedupRef.current.delete(k);
+        }
+      }
+    }
+    return true;
   }, []);
 
   const shouldShowSystemNotification = useCallback(
@@ -346,6 +365,10 @@ export default function Header() {
         time: e.detail?.time || Date.now(),
       };
 
+      if (!shouldEmitNotification("connection-error", notification.text, 20000)) {
+        return;
+      }
+
       setConnectionNotification(notification);
       setShowConnectionToast(true);
 
@@ -362,6 +385,10 @@ export default function Header() {
         time: e.detail?.time || Date.now(),
       };
 
+      if (!shouldEmitNotification("connection-restored", notification.text, 12000)) {
+        return;
+      }
+
       setConnectionNotification(notification);
       setShowConnectionToast(true);
       playAlertSound();
@@ -377,6 +404,10 @@ export default function Header() {
         time: e.detail?.time || Date.now(),
       };
 
+      if (!shouldEmitNotification("connection-degraded", notification.text, 30000)) {
+        return;
+      }
+
       setConnectionNotification(notification);
       setShowConnectionToast(true);
       playAlertSound();
@@ -391,6 +422,10 @@ export default function Header() {
           "Another user edited the same ticket while you were editing. Please review latest data.",
         time: e.detail?.time || Date.now(),
       };
+
+      if (!shouldEmitNotification("ownership-conflict", notification.text, 12000)) {
+        return;
+      }
 
       setOpsNotification(notification);
       setShowOpsToast(true);
@@ -432,7 +467,7 @@ export default function Header() {
         handleOwnershipConflict,
       );
     };
-  }, [maybeShowSystemNotification, playAlertSound]);
+  }, [maybeShowSystemNotification, playAlertSound, shouldEmitNotification]);
 
   const fetchCyclesList = async () => {
     const { data } = await supabase
