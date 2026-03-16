@@ -80,6 +80,7 @@ END $$;
 -- Issue SECURITY-SUPABASE-001: Tighten RLS policy
 -- ============================================
 DROP POLICY IF EXISTS "logic_health_events_select" ON public.logic_health_events;
+DROP POLICY IF EXISTS "logic_health_events_select_own" ON public.logic_health_events;
 
 -- Allow users to see only their own events, or admins to see all
 CREATE POLICY "logic_health_events_select_own"
@@ -95,6 +96,7 @@ CREATE POLICY "logic_health_events_select_own"
   );
 
 DROP POLICY IF EXISTS "logic_health_events_insert" ON public.logic_health_events;
+DROP POLICY IF EXISTS "logic_health_events_insert_own" ON public.logic_health_events;
 
 -- Only allow inserting own events
 CREATE POLICY "logic_health_events_insert_own"
