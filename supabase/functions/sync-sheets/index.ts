@@ -29,6 +29,33 @@ const normalizeTicketId = (raw: unknown): string => {
 
 const normalizeCell = (raw: unknown): string => String(raw ?? '').trim().toLowerCase();
 
+// ✅ API-EDGE-003: Response validation schemas
+const validateAppendResponse = (response: any): boolean => {
+  return (
+    response &&
+    typeof response === 'object' &&
+    'updates' in response &&
+    typeof response.updates === 'object'
+  );
+};
+
+const validateUpdateResponse = (response: any): boolean => {
+  return (
+    response &&
+    typeof response === 'object' &&
+    'updates' in response &&
+    typeof response.updates === 'object'
+  );
+};
+
+const validateReadResponse = (response: any): boolean => {
+  return (
+    response &&
+    typeof response === 'object' &&
+    Array.isArray(response.values)
+  );
+};
+
 // Helper to generate a Google Access Token without the bulky library
 async function getGoogleAccessToken(clientEmail: string, privateKey: string) {
   const now = Math.floor(Date.now() / 1000);
@@ -145,6 +172,11 @@ serve(async (req) => {
       const idJson = await idRes.json();
       if (idJson.error) throw new Error(idJson.error.message);
 
+      // ✅ API-EDGE-003: Validate response schema
+      if (!validateReadResponse(idJson)) {
+        throw new Error(`Invalid Google Sheets API response format for read operation`);
+      }
+
       const existingIdSet = new Set(
         (idJson.values || []).map((row: any) => normalizeTicketId(row?.[0])).filter(Boolean),
       );
@@ -197,6 +229,13 @@ serve(async (req) => {
 
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
+
+      // ✅ API-EDGE-003: Validate append response schema
+      if (!validateAppendResponse(data)) {
+        console.warn('Unexpected APPEND response structure:', data);
+        throw new Error(`Google Sheets API returned unexpected response format`);
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -218,6 +257,11 @@ serve(async (req) => {
       });
       const getJson = await getRes.json();
       if (getJson.error) throw new Error(getJson.error.message);
+
+      // ✅ API-EDGE-003: Validate read response schema
+      if (!validateReadResponse(getJson)) {
+        throw new Error(`Invalid Google Sheets API response format for read operation`);
+      }
 
       const targetId = normalizeTicketId(ticketId);
       const rows = getJson.values || [];
@@ -288,6 +332,12 @@ serve(async (req) => {
             throw new Error(
               `Google update failed for ${u.range}: ${updateJson.error.message}`,
             );
+          }
+
+          // ✅ API-EDGE-003: Validate update response schema
+          if (!validateUpdateResponse(updateJson)) {
+            console.warn(`Unexpected UPDATE response for ${u.range}:`, updateJson);
+            throw new Error(`Google Sheets API returned unexpected response format for update`);
           }
 
           updateResults.push(updateJson);

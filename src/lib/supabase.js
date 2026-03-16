@@ -3,4 +3,20 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// ✅ DEPLOY-VERCEL-001: Validate environment at startup
+if (!supabaseUrl || !supabaseAnonKey) {
+  const errors = [];
+  if (!supabaseUrl) errors.push('Missing VITE_SUPABASE_URL');
+  if (!supabaseAnonKey) errors.push('Missing VITE_SUPABASE_ANON_KEY');
+  const message = `Supabase configuration error: ${errors.join(', ')}`;
+  console.error(message);
+  if (import.meta.env.PROD) {
+    throw new Error(message);
+  }
+}
+
+if (!supabaseUrl?.startsWith('https://')) {
+  console.warn('Warning: VITE_SUPABASE_URL should be an HTTPS URL');
+}
+
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');

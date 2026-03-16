@@ -25,22 +25,51 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    // ✅ LOGIC-REACT-004: Client-side validation
+    if (!email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    if (!password.trim()) {
+      setError('Please enter your password');
+      return;
+    }
+
+    if (!email.includes('@')) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     setIsProcessing(true);
     setError('');
     
-    console.log("Attempting login..."); 
+    console.log("Attempting login...");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
-    if (error) {
-      console.error("Login Error:", error); 
-      setError(error.message);
+      if (error) {
+        console.error("Login Error:", error); 
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Invalid email or password. Please try again.');
+        } else if (error.message.includes('Email not confirmed')) {
+          setError('Please confirm your email address before logging in.');
+        } else {
+          setError(error.message || 'Login failed. Please try again.');
+        }
+        setIsProcessing(false);
+      } else {
+        console.log("Login Success!", data); 
+      }
+    } catch (err) {
+      console.error('Unexpected login error:', err);
+      setError('An unexpected error occurred. Please try again.');
       setIsProcessing(false);
-    } else {
-      console.log("Login Success!", data); 
     }
   };
 
