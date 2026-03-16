@@ -92,13 +92,64 @@ serve(async (req) => {
     // ACTION 1: APPEND PENDING TICKETS
     // ==========================================
     if (action === 'APPEND') {
-      const rows = tickets.map((t: any) => [
-        t.id, t.ic_account, 
+      const incomingTickets = Array.isArray(tickets) ? tickets : [];
+      if (incomingTickets.length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, appended: 0, skipped: 0, reason: 'No tickets provided' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      // Read existing Ticket IDs to enforce one row per ticket in Google Sheet.
+      const idRange = encodeURIComponent(`${SHEET_NAME}!A:A`);
+      const idRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${idRange}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      const idJson = await idRes.json();
+      if (idJson.error) throw new Error(idJson.error.message);
+
+      const existingIdSet = new Set(
+        (idJson.values || []).map((row: any) => normalizeTicketId(row?.[0])).filter(Boolean),
+      );
+
+      // Also dedupe repeated IDs inside the same append request.
+      const seenInBatch = new Set<string>();
+      const ticketsToAppend = incomingTickets.filter((t: any) => {
+        const id = normalizeTicketId(t?.id);
+        if (!id) return false;
+        if (existingIdSet.has(id)) return false;
+        if (seenInBatch.has(id)) return false;
+        seenInBatch.add(id);
+        return true;
+      });
+
+      if (ticketsToAppend.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            appended: 0,
+            skipped: incomingTickets.length,
+            reason: 'All tickets already exist in sheet',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      const rows = ticketsToAppend.map((t: any) => [
+        t.id,
+        t.ic_account,
         new Date(t.created_at).toLocaleString("en-US", { timeZone: "Asia/Singapore" }),
-        t.merchant_name, t.login_id || "-", t.member_id, t.provider_account || "-", 
-        t.provider, t.tracking_no || "-", t.recorder, 
-        t.notes?.length > 0 ? `${t.notes.length} Messages` : "No Notes", 
-        t.status, handoverBy
+        t.merchant_name,
+        t.login_id || "-",
+        t.member_id,
+        t.provider_account || "-",
+        t.provider,
+        t.tracking_no || "-",
+        t.recorder,
+        t.notes?.length > 0 ? `${t.notes.length} Messages` : "No Notes",
+        t.status,
+        handoverBy,
       ]);
 
       const range = encodeURIComponent(`${SHEET_NAME}!A:M`);
@@ -110,7 +161,15 @@ serve(async (req) => {
 
       const data = await res.json();
       if (data.error) throw new Error(data.error.message);
-      return new Response(JSON.stringify({ success: true, data }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          appended: ticketsToAppend.length,
+          skipped: incomingTickets.length - ticketsToAppend.length,
+          data,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // ==========================================
