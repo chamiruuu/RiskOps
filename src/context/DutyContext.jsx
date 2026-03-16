@@ -331,12 +331,17 @@ export const DutyProvider = ({ children }) => {
           _timestamp: Date.now(), // Forces screen to recognize this as the newest
         });
       } catch (error) {
-        // Silently ignore tracking errors if socket is temporarily busy
+        // Socket may not be ready yet; heartbeat retries will sync shortly.
       }
     };
 
     const timeoutId = setTimeout(updatePresence, 300);
-    return () => clearTimeout(timeoutId);
+    const heartbeatId = setInterval(updatePresence, 10000);
+
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(heartbeatId);
+    };
   }, [user?.id, workName, userRole, selectedDuty, presenceTrigger]);
 
   // --- 4. STATIC REAL-TIME HANDSHAKE BROADCASTING ---
