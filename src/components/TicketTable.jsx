@@ -31,6 +31,7 @@ import {
   getNextShift,
   computeTransitionViewState,
 } from "../lib/shiftLogic";
+import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
@@ -632,7 +633,7 @@ export default function TicketTable({
   }, [tickets]);
 
   const appendHandoverTicketsToSheet = useCallback(
-    async (handoverTickets) => {
+    async (handoverTickets, correlationId) => {
       if (!handoverTickets || handoverTickets.length === 0) return;
 
       try {
@@ -653,6 +654,19 @@ export default function TicketTable({
         }
       } catch (e) {
         console.error("Sheet Handover Error:", e);
+        window.dispatchEvent(
+          new CustomEvent("logic-health-event", {
+            detail: {
+              code: LOGIC_CODES.HANDOVER_FAILED,
+              level: "error",
+              title: "Handover Sheet Sync Failed",
+              detail: e?.message || "Google Sheet handover sync failed.",
+              at: Date.now(),
+              source: "handover",
+              correlationId,
+            },
+          }),
+        );
       }
     },
     [shortWorkName],
@@ -660,6 +674,7 @@ export default function TicketTable({
 
   const syncHandoverAndNotify = useCallback(
     async (pendingTix, mode = "Manual") => {
+      const correlationId = createCorrelationId("HO");
       const marker = buildHandoverMarker();
       const handedOverSet =
         handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
@@ -683,7 +698,7 @@ export default function TicketTable({
         duties: dutyArray,
       });
 
-      await appendHandoverTicketsToSheet(uniquePendingTix);
+      await appendHandoverTicketsToSheet(uniquePendingTix, correlationId);
 
       uniquePendingTix.forEach((t) => handedOverSet.add(t.id));
       handedOverTicketIdsByMarkerRef.current.set(marker, handedOverSet);
@@ -694,6 +709,19 @@ export default function TicketTable({
             mode,
             duties: dutyArray,
             at: Date.now(),
+          },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("logic-health-event", {
+          detail: {
+            code: LOGIC_CODES.HANDOVER_SUCCESS,
+            level: "success",
+            title: "Handover Completed",
+            detail: `${mode} handover sent for ${uniquePendingTix.length} pending ticket(s).`,
+            at: Date.now(),
+            source: "handover",
+            correlationId,
           },
         }),
       );
@@ -802,6 +830,19 @@ export default function TicketTable({
       // Handover failed — clear marker so reminders resume correctly.
       autoHandoverLoggedRef.current = "";
       console.error("Handover execute error:", e);
+      window.dispatchEvent(
+        new CustomEvent("logic-health-event", {
+          detail: {
+            code: LOGIC_CODES.HANDOVER_FAILED,
+            level: "error",
+            title: "Handover Execution Failed",
+            detail: e?.message || "Manual handover failed.",
+            at: Date.now(),
+            source: "handover",
+            correlationId: createCorrelationId("HO"),
+          },
+        }),
+      );
     } finally {
       setIsHandoverProcessing(false);
     }

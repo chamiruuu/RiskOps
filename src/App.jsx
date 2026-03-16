@@ -9,6 +9,7 @@ import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { createCorrelationId, LOGIC_CODES } from "./lib/logicHealth";
 
 import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
@@ -57,7 +58,12 @@ function Dashboard() {
   const sheetSyncWarningShownRef = useRef(false);
   const realtimeEventDedupRef = useRef(new Map());
 
-  const emitRealtimeEvent = useCallback((eventName, text, cooldownMs = 10000) => {
+  const emitRealtimeEvent = useCallback((
+    eventName,
+    text,
+    cooldownMs = 10000,
+    metadata = {},
+  ) => {
     const now = Date.now();
     const token = `${eventName}|${text || ""}`;
     const lastAt = realtimeEventDedupRef.current.get(token) || 0;
@@ -66,7 +72,16 @@ function Dashboard() {
     realtimeEventDedupRef.current.set(token, now);
     window.dispatchEvent(
       new CustomEvent(eventName, {
-        detail: { time: now, text },
+        detail: {
+          time: now,
+          text,
+          at: now,
+          source: "realtime",
+          correlationId: metadata.correlationId || createCorrelationId("RT"),
+          code: metadata.code,
+          title: metadata.title,
+          level: metadata.level,
+        },
       }),
     );
   }, []);
@@ -250,6 +265,11 @@ function Dashboard() {
                 "tickets-realtime-restored",
                 "Live ticket sync reconnected. Realtime updates restored.",
                 12000,
+                {
+                  code: LOGIC_CODES.REALTIME_RESTORED,
+                  title: "Realtime Restored",
+                  level: "success",
+                },
               );
               realtimeIssueRef.current = false;
             }
@@ -275,6 +295,11 @@ function Dashboard() {
                 "tickets-realtime-error",
                 "Live ticket sync connection issue detected. Trying to reconnect...",
                 15000,
+                {
+                  code: LOGIC_CODES.REALTIME_ERROR,
+                  title: "Realtime Error",
+                  level: "error",
+                },
               );
             }
 
@@ -291,6 +316,11 @@ function Dashboard() {
                     "tickets-realtime-degraded",
                     "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
                     30000,
+                    {
+                      code: LOGIC_CODES.REALTIME_DEGRADED,
+                      title: "Realtime Degraded",
+                      level: "warning",
+                    },
                   );
                 }
                 degradedTimerRef.current = null;
@@ -378,6 +408,12 @@ function Dashboard() {
           new CustomEvent("ownership-conflict-alert", {
             detail: {
               time: now,
+              at: now,
+              source: "ownership",
+              code: LOGIC_CODES.OWNERSHIP_CONFLICT,
+              title: "Ownership Conflict",
+              level: "warning",
+              correlationId: createCorrelationId("DT"),
               text: `${payload.userName || "Another user"} updated ticket ${payload.ticketId} while you were editing it. Please review latest values before continuing.`,
             },
           }),

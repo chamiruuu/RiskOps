@@ -77,13 +77,49 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const body = await req.json();
+    const url = new URL(req.url);
+    const healthQuery = url.searchParams.get('health');
+    if (req.method === 'GET' && healthQuery === '1') {
+      const sheetId = Deno.env.get('GOOGLE_SHEET_ID')?.trim();
+      const rawCreds = Deno.env.get('GOOGLE_CREDS_JSON')?.trim();
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: sheetId && rawCreds ? 'ok' : 'degraded',
+          service: 'sync-sheets',
+          checks: {
+            hasSheetId: !!sheetId,
+            hasGoogleCreds: !!rawCreds,
+          },
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const body = req.method === 'GET' ? {} : await req.json();
     const { action, tickets, handoverBy, ticketId, status, fields, rowHint } = body;
 
     const sheetId = Deno.env.get('GOOGLE_SHEET_ID')?.trim();
     const rawCreds = Deno.env.get('GOOGLE_CREDS_JSON')?.trim();
 
     if (!sheetId || !rawCreds) throw new Error('Missing Supabase Secrets.');
+
+    if (action === 'HEALTH') {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: 'ok',
+          service: 'sync-sheets',
+          checks: {
+            hasSheetId: !!sheetId,
+            hasGoogleCreds: !!rawCreds,
+          },
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
 
     const creds = JSON.parse(rawCreds);
     const accessToken = await getGoogleAccessToken(creds.client_email, creds.private_key);

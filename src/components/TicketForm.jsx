@@ -23,6 +23,7 @@ import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
 import { supabase } from "../lib/supabase"; // <-- NEW: Imported for DB check
 import notificationSound from "../assets/Notification.mp3";
+import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
@@ -483,6 +484,20 @@ export default function TicketForm({ onAddTicket }) {
   const handleCreateClick = async () => {
     // If it's PG Soft, we must verify the 7-day rule first
     if (formData.provider === "PG Soft") {
+      const correlationId = createCorrelationId("PV");
+      window.dispatchEvent(
+        new CustomEvent("provider-validation-event", {
+          detail: {
+            code: LOGIC_CODES.PROVIDER_CHECKING,
+            title: "Provider Validation Started",
+            level: "info",
+            detail: "Checking PG Soft history for last 7 days...",
+            at: Date.now(),
+            source: "provider-validation",
+            correlationId,
+          },
+        }),
+      );
       setValidationNotice({
         type: "info",
         text: "Checking PG Soft history for last 7 days...",
@@ -513,6 +528,19 @@ export default function TicketForm({ onAddTicket }) {
             type: "warning",
             text: "Recent PG Soft record found in last 7 days. Please confirm in modal before creating.",
           });
+          window.dispatchEvent(
+            new CustomEvent("provider-validation-event", {
+              detail: {
+                code: LOGIC_CODES.PROVIDER_DUPLICATE,
+                title: "Provider Validation Blocked",
+                level: "warning",
+                detail: "Recent PG Soft record found in last 7 days.",
+                at: Date.now(),
+                source: "provider-validation",
+                correlationId,
+              },
+            }),
+          );
           setIsCheckingPgSoft(false);
           return;
         }
@@ -521,12 +549,38 @@ export default function TicketForm({ onAddTicket }) {
           type: "success",
           text: "PG Soft validation passed. You can create the ticket now.",
         });
+        window.dispatchEvent(
+          new CustomEvent("provider-validation-event", {
+            detail: {
+              code: LOGIC_CODES.PROVIDER_PASSED,
+              title: "Provider Validation Passed",
+              level: "success",
+              detail: "PG Soft validation passed.",
+              at: Date.now(),
+              source: "provider-validation",
+              correlationId,
+            },
+          }),
+        );
       } catch (err) {
         console.error("Error checking PG Soft history:", err);
         setValidationNotice({
           type: "error",
           text: "Could not verify PG Soft history right now. Please retry in a moment.",
         });
+        window.dispatchEvent(
+          new CustomEvent("provider-validation-event", {
+            detail: {
+              code: LOGIC_CODES.PROVIDER_ERROR,
+              title: "Provider Validation Failed",
+              level: "error",
+              detail: "Could not verify PG Soft history right now.",
+              at: Date.now(),
+              source: "provider-validation",
+              correlationId,
+            },
+          }),
+        );
         setIsCheckingPgSoft(false);
         return;
       }

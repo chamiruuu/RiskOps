@@ -36,6 +36,17 @@ import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3";
+import {
+  LOGIC_CODES,
+  LOGIC_SEVERITIES,
+  buildEscalationEntry,
+  makeLogicEntry,
+  normalizeLogicEventDetail,
+  runQuickChecks,
+  shouldEscalateLogicEntry,
+} from "../lib/logicHealth";
+
+const LOGIC_HEALTH_HISTORY_HOURS = 24;
 
 export default function Header() {
   const {
@@ -124,6 +135,9 @@ export default function Header() {
   const [feedbackText, setFeedbackText] = useState("");
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState({ text: "", type: "" });
+  const [logicHealthEntries, setLogicHealthEntries] = useState([]);
+  const [logicHealthLevelFilter, setLogicHealthLevelFilter] = useState("all");
+  const [logicHealthSearch, setLogicHealthSearch] = useState("");
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
@@ -139,6 +153,139 @@ export default function Header() {
   const playAlertSound = useCallback(() => {
     const audio = new Audio(notificationSound);
     audio.play().catch(() => console.log("Audio blocked by browser"));
+  }, []);
+
+  const logicHealthEntriesRef = useRef([]);
+
+  const persistLogicHealthEntry = useCallback(
+    async (entry) => {
+      try {
+        await supabase.from("logic_health_events").insert({
+          user_id: user?.id || null,
+          code: entry.code,
+          title: entry.title,
+          detail: entry.detail,
+          level: entry.level,
+          source: entry.source || "ui",
+          correlation_id: entry.correlationId || null,
+          created_at: new Date(entry.at || Date.now()).toISOString(),
+        });
+      } catch {
+        // Avoid blocking UI if the diagnostics table is unavailable.
+      }
+    },
+    [user?.id],
+  );
+
+  const pushLogicHealthEntry = useCallback((entry) => {
+    let next = [entry, ...logicHealthEntriesRef.current];
+    const toPersist = [entry];
+
+    if (
+      shouldEscalateLogicEntry({
+        nextEntry: entry,
+        entries: next,
+      })
+    ) {
+      const escalation = buildEscalationEntry({
+        code: entry.code,
+        level: entry.level,
+        at: entry.at,
+        correlationId: entry.correlationId,
+      });
+      next = [escalation, ...next];
+      toPersist.push(escalation);
+    }
+
+    const limited = next.slice(0, 80);
+    logicHealthEntriesRef.current = limited;
+    setLogicHealthEntries(limited);
+    toPersist.forEach((item) => {
+      void persistLogicHealthEntry(item);
+    });
+  }, [persistLogicHealthEntry]);
+
+  const runLogicQuickChecks = useCallback(() => {
+    const result = runQuickChecks({
+      currentActiveShift,
+      presenceDebug,
+      now: Date.now(),
+    });
+
+    result.checks.forEach((check) => {
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: check.code,
+          title: check.pass ? "Quick Check Passed" : "Quick Check Failed",
+          detail: check.message,
+          level: check.pass ? "success" : "error",
+          source: "quick-check",
+        }),
+      );
+    });
+  }, [currentActiveShift, presenceDebug, pushLogicHealthEntry]);
+
+  const clearLogicHealthEntries = useCallback(() => {
+    logicHealthEntriesRef.current = [];
+    setLogicHealthEntries([]);
+  }, []);
+
+  const filteredLogicHealthEntries = useMemo(() => {
+    const q = logicHealthSearch.trim().toLowerCase();
+    return logicHealthEntries.filter((entry) => {
+      const matchesLevel =
+        logicHealthLevelFilter === "all" || entry.level === logicHealthLevelFilter;
+      if (!matchesLevel) return false;
+      if (!q) return true;
+      return [
+        entry.code,
+        entry.title,
+        entry.detail,
+        entry.correlationId,
+        entry.source,
+      ]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q));
+    });
+  }, [logicHealthEntries, logicHealthLevelFilter, logicHealthSearch]);
+
+  useEffect(() => {
+    logicHealthEntriesRef.current = logicHealthEntries;
+  }, [logicHealthEntries]);
+
+  useEffect(() => {
+    let active = true;
+    const loadLogicHealthEntries = async () => {
+      const sinceIso = new Date(
+        Date.now() - LOGIC_HEALTH_HISTORY_HOURS * 60 * 60 * 1000,
+      ).toISOString();
+      const { data } = await supabase
+        .from("logic_health_events")
+        .select("code,title,detail,level,source,correlation_id,created_at")
+        .gte("created_at", sinceIso)
+        .order("created_at", { ascending: false })
+        .limit(80);
+
+      if (!active || !Array.isArray(data)) return;
+      const normalized = data.map((row) =>
+        makeLogicEntry({
+          code: row.code,
+          title: row.title,
+          detail: row.detail,
+          level: row.level,
+          source: row.source || "db",
+          correlationId: row.correlation_id,
+          at: Date.parse(row.created_at),
+        }),
+      );
+      logicHealthEntriesRef.current = normalized;
+      setLogicHealthEntries(normalized);
+    };
+
+    void loadLogicHealthEntries();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const shouldEmitNotification = useCallback((key, text, cooldownMs = 15000) => {
@@ -360,13 +507,19 @@ export default function Header() {
     };
     const clearReminder = () => setTrackingReminder(null);
     const handleRealtimeError = (e) => {
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        code: LOGIC_CODES.REALTIME_ERROR,
+        title: "Realtime Error",
+        detail: "Live ticket sync connection issue detected. Trying to reconnect...",
+        level: "error",
+        source: "realtime",
+      });
+      const eventTime = eventDetail.at;
       const notification = {
-        id: `tickets-connection-error-${e.detail?.time || Date.now()}`,
+        id: `tickets-connection-error-${eventTime}`,
         type: "connection-error",
-        text:
-          e.detail?.text ||
-          "Live ticket sync connection issue detected. Trying to reconnect...",
-        time: e.detail?.time || Date.now(),
+        text: eventDetail.detail,
+        time: eventTime,
       };
 
       if (!shouldEmitNotification("connection-error", notification.text, 20000)) {
@@ -375,18 +528,35 @@ export default function Header() {
 
       setConnectionNotification(notification);
       setShowConnectionToast(true);
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: notification.text,
+          level: eventDetail.level,
+          at: eventTime,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
 
       playAlertSound();
       maybeShowSystemNotification("Live Sync Issue", notification.text);
     };
     const handleRealtimeRestored = (e) => {
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        code: LOGIC_CODES.REALTIME_RESTORED,
+        title: "Realtime Restored",
+        detail: "Live ticket sync reconnected. Realtime updates restored.",
+        level: "success",
+        source: "realtime",
+      });
+      const eventTime = eventDetail.at;
       const notification = {
-        id: `tickets-connection-restored-${e.detail?.time || Date.now()}`,
+        id: `tickets-connection-restored-${eventTime}`,
         type: "connection-restored",
-        text:
-          e.detail?.text ||
-          "Live ticket sync reconnected. Realtime updates restored.",
-        time: e.detail?.time || Date.now(),
+        text: eventDetail.detail,
+        time: eventTime,
       };
 
       if (!shouldEmitNotification("connection-restored", notification.text, 12000)) {
@@ -395,17 +565,34 @@ export default function Header() {
 
       setConnectionNotification(notification);
       setShowConnectionToast(true);
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: notification.text,
+          level: eventDetail.level,
+          at: eventTime,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
       playAlertSound();
       maybeShowSystemNotification("Live Sync Restored", notification.text);
     };
     const handleRealtimeDegraded = (e) => {
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        code: LOGIC_CODES.REALTIME_DEGRADED,
+        title: "Realtime Degraded",
+        detail: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+        level: "warning",
+        source: "realtime",
+      });
+      const eventTime = eventDetail.at;
       const notification = {
-        id: `tickets-connection-degraded-${e.detail?.time || Date.now()}`,
+        id: `tickets-connection-degraded-${eventTime}`,
         type: "connection-degraded",
-        text:
-          e.detail?.text ||
-          "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
-        time: e.detail?.time || Date.now(),
+        text: eventDetail.detail,
+        time: eventTime,
       };
 
       if (!shouldEmitNotification("connection-degraded", notification.text, 30000)) {
@@ -414,17 +601,35 @@ export default function Header() {
 
       setConnectionNotification(notification);
       setShowConnectionToast(true);
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: notification.text,
+          level: eventDetail.level,
+          at: eventTime,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
       playAlertSound();
       maybeShowSystemNotification("Realtime Degraded", notification.text);
     };
     const handleOwnershipConflict = (e) => {
-      const notification = {
-        id: `ownership-conflict-${e.detail?.time || Date.now()}`,
-        type: "ownership-conflict",
-        text:
-          e.detail?.text ||
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        code: LOGIC_CODES.OWNERSHIP_CONFLICT,
+        title: "Ownership Conflict",
+        detail:
           "Another user edited the same ticket while you were editing. Please review latest data.",
-        time: e.detail?.time || Date.now(),
+        level: "warning",
+        source: "ownership",
+      });
+      const eventTime = eventDetail.at;
+      const notification = {
+        id: `ownership-conflict-${eventTime}`,
+        type: "ownership-conflict",
+        text: eventDetail.detail,
+        time: eventTime,
       };
 
       if (!shouldEmitNotification("ownership-conflict", notification.text, 12000)) {
@@ -433,9 +638,55 @@ export default function Header() {
 
       setOpsNotification(notification);
       setShowOpsToast(true);
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: notification.text,
+          level: eventDetail.level,
+          at: eventTime,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
 
       playAlertSound();
       maybeShowSystemNotification("Ownership Conflict", notification.text);
+    };
+    const handleLogicHealthEvent = (e) => {
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        source: "logic-event",
+      });
+      if (!eventDetail.code || !eventDetail.title) return;
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: eventDetail.detail,
+          level: eventDetail.level,
+          at: eventDetail.at,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
+    };
+
+    const handleProviderValidation = (e) => {
+      const eventDetail = normalizeLogicEventDetail(e.detail, {
+        source: "provider-validation",
+      });
+      if (!eventDetail.code || !eventDetail.title) return;
+      pushLogicHealthEntry(
+        makeLogicEntry({
+          code: eventDetail.code,
+          title: eventDetail.title,
+          detail: eventDetail.detail,
+          level: eventDetail.level,
+          at: eventDetail.at,
+          source: eventDetail.source,
+          correlationId: eventDetail.correlationId,
+        }),
+      );
     };
 
     window.addEventListener("tracking-reminder-alert", handleReminder);
@@ -453,6 +704,8 @@ export default function Header() {
       "ownership-conflict-alert",
       handleOwnershipConflict,
     );
+    window.addEventListener("logic-health-event", handleLogicHealthEvent);
+    window.addEventListener("provider-validation-event", handleProviderValidation);
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
@@ -470,8 +723,18 @@ export default function Header() {
         "ownership-conflict-alert",
         handleOwnershipConflict,
       );
+      window.removeEventListener("logic-health-event", handleLogicHealthEvent);
+      window.removeEventListener(
+        "provider-validation-event",
+        handleProviderValidation,
+      );
     };
-  }, [maybeShowSystemNotification, playAlertSound, shouldEmitNotification]);
+  }, [
+    maybeShowSystemNotification,
+    playAlertSound,
+    pushLogicHealthEntry,
+    shouldEmitNotification,
+  ]);
 
   const fetchCyclesList = async () => {
     const { data } = await supabase
@@ -1805,6 +2068,63 @@ export default function Header() {
                           <div>Heartbeat: {formatPresenceAgo(presenceDebug?.lastHeartbeatAt)}</div>
                           <div>Last Sync: {formatPresenceAgo(presenceDebug?.lastPresenceSyncAt)}</div>
                         </div>
+
+                        <div className="px-2 pb-2">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                                Logic Health
+                              </div>
+                              <button
+                                onClick={runLogicQuickChecks}
+                                className="px-1.5 py-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 transition-colors"
+                              >
+                                Run Checks
+                              </button>
+                            </div>
+
+                            {logicHealthEntries.length === 0 ? (
+                              <div className="text-[10px] text-slate-400 italic">
+                                No recent logic alerts.
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                {logicHealthEntries.slice(0, 4).map((entry) => (
+                                  <div
+                                    key={entry.id}
+                                    className={`rounded px-1.5 py-1 border ${
+                                      entry.level === "error"
+                                        ? "bg-rose-50 border-rose-200"
+                                        : entry.level === "warning"
+                                          ? "bg-amber-50 border-amber-200"
+                                          : entry.level === "success"
+                                            ? "bg-emerald-50 border-emerald-200"
+                                            : "bg-white border-slate-200"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[9px] font-bold text-slate-700">
+                                        {entry.code}
+                                      </span>
+                                      <span className="text-[9px] text-slate-400">
+                                        {formatPresenceAgo(entry.at)}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] font-semibold text-slate-700 leading-tight">
+                                      {entry.title}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 leading-tight">
+                                      {entry.detail}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400 leading-tight mt-0.5">
+                                      {entry.correlationId}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </>
                     )}
                   </>
@@ -2852,6 +3172,21 @@ export default function Header() {
                       View release changes.
                     </p>
                   </button>
+
+                  {isAdminOrLeader && (
+                    <button
+                      onClick={() => setInfoView("logic")}
+                      className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-sky-300 hover:bg-sky-50/40 transition-colors sm:col-span-2"
+                    >
+                      <div className="flex items-center gap-2 text-slate-800 font-bold text-sm">
+                        <AlertCircle size={16} className="text-sky-600" />
+                        Logic Health
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        View coded runtime checks and recent logic alerts.
+                      </p>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2944,6 +3279,127 @@ export default function Header() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {infoView === "logic" && isAdminOrLeader && (
+                <div className="bg-white border border-slate-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-slate-800">Logic Health</h4>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={clearLogicHealthEntries}
+                        disabled={logicHealthEntries.length === 0}
+                        className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Clear Log
+                      </button>
+                      <button
+                        onClick={runLogicQuickChecks}
+                        className="px-3 py-1.5 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors"
+                      >
+                        Run Quick Checks
+                      </button>
+                      <button
+                        onClick={() => setInfoView("menu")}
+                        className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Presence Status
+                      </div>
+                      <div className="text-xs font-semibold text-slate-700 mt-0.5">
+                        {presenceDebug?.lastSubscribeStatus || "IDLE"}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Reconnects
+                      </div>
+                      <div className="text-xs font-semibold text-slate-700 mt-0.5">
+                        {presenceDebug?.reconnectCount || 0}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Last Heartbeat
+                      </div>
+                      <div className="text-xs font-semibold text-slate-700 mt-0.5">
+                        {formatPresenceAgo(presenceDebug?.lastHeartbeatAt)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-3 space-y-2">
+                    <input
+                      type="text"
+                      value={logicHealthSearch}
+                      onChange={(e) => setLogicHealthSearch(e.target.value)}
+                      placeholder="Search code, detail, correlation id, source"
+                      className="w-full px-3 py-2 text-xs text-slate-700 border border-slate-200 rounded-lg bg-white outline-none focus:border-sky-300"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {LOGIC_SEVERITIES.map((severity) => (
+                        <button
+                          key={severity}
+                          onClick={() => setLogicHealthLevelFilter(severity)}
+                          className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${
+                            logicHealthLevelFilter === severity
+                              ? "bg-sky-50 text-sky-700 border-sky-200"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {severity.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {filteredLogicHealthEntries.length === 0 ? (
+                    <div className="text-xs text-slate-500 border border-slate-200 rounded-lg bg-slate-50 px-3 py-2">
+                      No matching logic alerts. Adjust filters or run quick checks.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {filteredLogicHealthEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className={`border rounded-lg p-3 ${
+                            entry.level === "error"
+                              ? "border-rose-200 bg-rose-50"
+                              : entry.level === "warning"
+                                ? "border-amber-200 bg-amber-50"
+                                : entry.level === "success"
+                                  ? "border-emerald-200 bg-emerald-50"
+                                  : "border-slate-200 bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-bold text-slate-800">{entry.code}</span>
+                            <span className="text-[10px] font-medium text-slate-500">
+                              {formatPresenceAgo(entry.at)}
+                            </span>
+                          </div>
+                          <div className="text-xs font-semibold text-slate-700">
+                            {entry.title}
+                          </div>
+                          <div className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+                            {entry.detail}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>{entry.source || "ui"}</span>
+                            <span>{entry.correlationId}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
