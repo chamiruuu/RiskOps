@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   AlertCircle,
   ArchiveRestore,
+  Search,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -117,6 +118,9 @@ export default function Header() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [selectedHistoryTicketForNotes, setSelectedHistoryTicketForNotes] =
     useState(null);
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyFilterDuty, setHistoryFilterDuty] = useState("All");
+  const [historyFilterStatus, setHistoryFilterStatus] = useState("All");
 
   // --- INFO CENTER STATES ---
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -998,6 +1002,36 @@ export default function Header() {
     }
     return [];
   }, [selectedHistoryTicketForNotes]);
+
+  const filteredArchivedTickets = useMemo(() => {
+    return archivedTickets.filter((t) => {
+      // search 
+      const query = historySearchQuery.toLowerCase();
+      const matchesSearch = query === "" || 
+        (t.member_id && t.member_id.toLowerCase().includes(query)) ||
+        (t.tracking_no && t.tracking_no.toLowerCase().includes(query)) ||
+        (t.provider_account && t.provider_account.toLowerCase().includes(query)) ||
+        (t.provider && t.provider.toLowerCase().includes(query)) ||
+        (t.recorder && t.recorder.toLowerCase().includes(query)) ||
+        (t.login_id && t.login_id.toLowerCase().includes(query));
+
+      const matchesDuty = historyFilterDuty === "All" || t.ic_account === historyFilterDuty;
+      
+      const normalizedRowStatus = t.status ? t.status.toUpperCase() : "";
+      let matchesStatus = true;
+      if (historyFilterStatus !== "All") {
+        if (historyFilterStatus === "Normal") {
+          matchesStatus = normalizedRowStatus === "NORMAL";
+        } else if (historyFilterStatus === "Abnormal") {
+          matchesStatus = normalizedRowStatus !== "NORMAL";
+        }
+      }
+
+      return matchesSearch && matchesDuty && matchesStatus;
+    });
+  }, [archivedTickets, historySearchQuery, historyFilterDuty, historyFilterStatus]);
+
+  const historyArchiveDuties = ["All", "IC1", "IC2", "IC3", "IC5"];
 
   const historyModalDutyKey = getTicketDutyThemeKey(
     selectedHistoryTicketForNotes?.ic_account,
@@ -2446,15 +2480,74 @@ export default function Header() {
       {showHistoryModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center animate-in fade-in duration-200 p-4">
           <div className="bg-white w-[95vw] max-w-[1400px] h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
-                <ArchiveRestore size={18} className="text-indigo-600" />
-                Archived Investigations{" "}
-                {historyStartDate || historyEndDate ? "" : "(Past 30 Days)"}
-              </h2>
+            <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-4 bg-white shrink-0">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
+                  <ArchiveRestore size={18} className="text-indigo-600" />
+                  Archived Investigations{" "}
+                  {historyStartDate || historyEndDate ? "" : "(Past 30 Days)"}
+                </h2>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex-1 min-w-[200px] relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={14} className="text-slate-400" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search by Player ID, Tracking No, Provider..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium text-slate-700 placeholder-slate-400"
+                  />
+                  {historySearchQuery && (
+                    <button
+                      onClick={() => setHistorySearchQuery("")}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 h-[38px]">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Duty:
+                  </span>
+                  <select
+                    value={historyFilterDuty}
+                    onChange={(e) => setHistoryFilterDuty(e.target.value)}
+                    className="text-xs font-bold border-none bg-transparent outline-none text-slate-700 cursor-pointer"
+                  >
+                    {historyArchiveDuties.map(duty => (
+                      <option key={duty} value={duty}>{duty}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 h-[38px]">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Status:
+                  </span>
+                  <select
+                    value={historyFilterStatus}
+                    onChange={(e) => setHistoryFilterStatus(e.target.value)}
+                    className="text-xs font-bold border-none bg-transparent outline-none text-slate-700 cursor-pointer"
+                  >
+                    <option value="All">All</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Abnormal">Abnormal</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 h-[38px]">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Date:
                   </span>
@@ -2483,12 +2576,6 @@ export default function Header() {
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowHistoryModal(false)}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
-                >
-                  <X size={18} />
-                </button>
               </div>
             </div>
 
@@ -2526,17 +2613,17 @@ export default function Header() {
                           </div>
                         </td>
                       </tr>
-                    ) : archivedTickets.length === 0 ? (
+                    ) : filteredArchivedTickets.length === 0 ? (
                       <tr>
                         <td
                           colSpan="11"
                           className="px-6 py-12 text-center text-slate-400 font-medium italic"
                         >
-                          No archived tickets found for this time period.
+                          No archived tickets found matching your filters.
                         </td>
                       </tr>
                     ) : (
-                      archivedTickets.map((t) => {
+                      filteredArchivedTickets.map((t) => {
                         let rowNotes = [];
                         if (Array.isArray(t.notes)) {
                           rowNotes = t.notes;
