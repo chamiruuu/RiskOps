@@ -980,17 +980,6 @@ export default function TicketTable({
     // Update inside your RiskOps Database
     onUpdateTicket(targetTicketId, "status", finalStatus);
 
-    // --- NEW: TRIGGER GOOGLE SHEETS LIVE SYNC ---
-    supabase.functions
-      .invoke("sync-sheets", {
-        body: {
-          action: "UPDATE",
-          ticketId: targetTicketId,
-          status: finalStatus,
-        },
-      })
-      .catch((e) => console.error("Sheet Update Error:", e)); // Fired in background
-
     setCompleteModal({
       isOpen: false,
       ticket: null,

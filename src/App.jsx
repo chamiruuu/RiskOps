@@ -16,6 +16,29 @@ import TicketTable from "./components/TicketTable";
 
 const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
 
+const getGMT8Time = () => {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
+const isOutgoingHandoverSheetWindow = (
+  assignedShift,
+  inputNow = getGMT8Time(),
+) => {
+  const time = inputNow.getHours() + inputNow.getMinutes() / 60;
+
+  if (assignedShift === "Night") return time >= 7.0 && time < 7.5;
+  if (assignedShift === "Morning") return time >= 14.5 && time < 15.0;
+  if (assignedShift === "Afternoon") return time >= 22.5 && time < 23.0;
+
+  return false;
+};
+
+const formatNotesSummaryForSheet = (notes) => {
+  return notes?.length > 0 ? `${notes.length} Messages` : "No Notes";
+};
+
 function Dashboard() {
   // FIX: Grab workName from Context
   const { selectedDuty, user, workName, myAssignedShift } = useDuty();
@@ -31,6 +54,7 @@ function Dashboard() {
   const recentLocalTicketEditsRef = useRef(new Map());
   const ownershipAlertCooldownRef = useRef(new Map());
   const ownershipChannelRef = useRef(null);
+  const sheetSyncWarningShownRef = useRef(false);
 
   const registerLocalEdit = useCallback((ticketId, field) => {
     const now = Date.now();
@@ -64,6 +88,77 @@ function Dashboard() {
     },
     [shortWorkName, user],
   );
+
+  const invokeSyncSheets = useCallback(async (body) => {
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-sheets`;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        return {
+          data: json,
+          error: new Error(json?.error || `Edge function HTTP ${res.status}`),
+        };
+      }
+
+      return { data: json, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  }, []);
+
+  const syncTicketFieldsToSheet = useCallback(async (ticketId, fields, rowHint) => {
+    if (!ticketId || !fields || Object.keys(fields).length === 0) return;
+
+    try {
+      const { data, error } = await invokeSyncSheets({
+        action: "UPDATE_FIELDS",
+        ticketId: String(ticketId),
+        fields,
+        rowHint,
+      });
+
+      if (error) {
+        console.error("Sheet field sync error:", error);
+        if (!sheetSyncWarningShownRef.current) {
+          sheetSyncWarningShownRef.current = true;
+          alert(
+            "Ticket saved in system, but Google Sheet sync failed. Please check Edge Function deployment/logs.",
+          );
+        }
+        return;
+      }
+
+      if (data && data.updated === false) {
+        console.warn("Sheet field sync skipped (row not found/mapped):", {
+          ticketId,
+          fields,
+          data,
+        });
+        // Many tickets are never appended to the handover sheet by design.
+        // Treat row-not-found as a non-blocking skip instead of a user-facing failure.
+        return;
+      }
+    } catch (error) {
+      console.error("Sheet field sync error:", error);
+      if (!sheetSyncWarningShownRef.current) {
+        sheetSyncWarningShownRef.current = true;
+        alert(
+          "Ticket saved in system, but Google Sheet sync failed. Please check Edge Function deployment/logs.",
+        );
+      }
+    }
+  }, [invokeSyncSheets]);
 
   // 1. Define fetchTickets FIRST so React knows what it is
   const fetchTickets = useCallback(async () => {
@@ -227,25 +322,11 @@ function Dashboard() {
     };
   }, [user]);
 
-  // --- GOOGLE SHEET SHARED ZONE DETECTOR ---
-  const isSharedZoneHandover = useCallback(() => {
-    const now = new Date();
-    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-    const gmt8 = new Date(utc + 3600000 * 8);
-    const time = gmt8.getHours() + gmt8.getMinutes() / 60;
-
-    // 07:10 - 07:30 (Night is Outgoing)
-    if (time >= 7.1666 && time < 7.5 && myAssignedShift === "Night")
-      return true;
-    // 14:40 - 15:00 (Morning is Outgoing)
-    if (time >= 14.6666 && time < 15.0 && myAssignedShift === "Morning")
-      return true;
-    // 22:40 - 23:00 (Afternoon is Outgoing)
-    if (time >= 22.6666 && time < 23.0 && myAssignedShift === "Afternoon")
-      return true;
-
-    return false;
-  }, [myAssignedShift]);
+  // --- GOOGLE SHEET OUTGOING HANDOVER WINDOW DETECTOR ---
+  const isOutgoingHandoverWindow = useCallback(
+    () => isOutgoingHandoverSheetWindow(myAssignedShift),
+    [myAssignedShift],
+  );
 
   // 2. Insert new ticket to Supabase
   const handleAddTicket = async (newTicket) => {
@@ -269,20 +350,20 @@ function Dashboard() {
     } else if (data) {
       setTickets([data[0], ...tickets]); // Instantly update the UI
 
-      // NEW: Send to Google Sheet if created by outgoing shift in Shared Zone
-      if (isSharedZoneHandover()) {
+      // Send to Google Sheet if created by outgoing shift during handover.
+      if (isOutgoingHandoverWindow()) {
         console.log("Pushing NEW ticket to Google Sheet Handover:", data[0]);
 
         // Edge function expects an array of tickets even for a single insert
-        supabase.functions
-          .invoke("sync-sheets", {
-            body: {
-              action: "APPEND",
-              tickets: [data[0]],
-              handoverBy: workName || "Agent",
-            },
-          })
-          .catch((err) => console.error("Sheet Create Error:", err));
+        invokeSyncSheets({
+          action: "APPEND",
+          tickets: [data[0]],
+          handoverBy: workName || "Agent",
+        }).then(({ error: sheetError }) => {
+          if (sheetError) {
+            console.error("Sheet Create Error:", sheetError);
+          }
+        });
       }
     }
   };
@@ -297,28 +378,6 @@ function Dashboard() {
       tickets.map((t) => (t.id === id ? { ...t, [field]: value } : t)),
     );
 
-    // NEW: Send edit to Google Sheet if edited by outgoing shift in Shared Zone
-    if (isSharedZoneHandover()) {
-      // The Edge function only supports updating the 'status' column
-      if (field === "status") {
-        console.log("Pushing UPDATED ticket to Google Sheet Handover:", {
-          id,
-          field,
-          value,
-        });
-
-        supabase.functions
-          .invoke("sync-sheets", {
-            body: {
-              action: "UPDATE",
-              ticketId: id,
-              status: value,
-            },
-          })
-          .catch((err) => console.error("Sheet Update Error:", err));
-      }
-    }
-
     // Background DB update
     const { error } = await supabase
       .from("tickets")
@@ -332,6 +391,20 @@ function Dashboard() {
         `Could not save changes to ${field}. Please refresh and try again.`,
       );
       fetchTickets(); // Revert the UI if it failed to save
+      return;
+    }
+
+    const sheetFieldMap = {
+      login_id: value,
+      member_id: value,
+      provider_account: value,
+      tracking_no: value,
+      status: value,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(sheetFieldMap, field)) {
+      const rowHint = tickets.find((t) => t.id === id);
+      syncTicketFieldsToSheet(id, { [field]: sheetFieldMap[field] }, rowHint);
     }
   };
 
@@ -385,7 +458,17 @@ function Dashboard() {
     setTickets(
       tickets.map((t) => (t.id === id ? { ...t, notes: updatedNotes } : t)),
     );
-    await supabase.from("tickets").update({ notes: updatedNotes }).eq("id", id);
+    const { error } = await supabase
+      .from("tickets")
+      .update({ notes: updatedNotes })
+      .eq("id", id);
+
+    if (!error) {
+      const rowHint = tickets.find((t) => t.id === id);
+      syncTicketFieldsToSheet(id, {
+        notes: formatNotesSummaryForSheet(updatedNotes),
+      }, rowHint);
+    }
   };
 
   // 6. Edit an existing note (within 3-hour window)
@@ -410,10 +493,17 @@ function Dashboard() {
         t.id === ticketId ? { ...t, notes: updatedNotes } : t,
       ),
     );
-    await supabase
+    const { error } = await supabase
       .from("tickets")
       .update({ notes: updatedNotes })
       .eq("id", ticketId);
+
+    if (!error) {
+      const rowHint = tickets.find((t) => t.id === ticketId);
+      syncTicketFieldsToSheet(ticketId, {
+        notes: formatNotesSummaryForSheet(updatedNotes),
+      }, rowHint);
+    }
   };
 
   // 7. Delete a note
@@ -432,10 +522,17 @@ function Dashboard() {
         t.id === ticketId ? { ...t, notes: updatedNotes } : t,
       ),
     );
-    await supabase
+    const { error } = await supabase
       .from("tickets")
       .update({ notes: updatedNotes })
       .eq("id", ticketId);
+
+    if (!error) {
+      const rowHint = tickets.find((t) => t.id === ticketId);
+      syncTicketFieldsToSheet(ticketId, {
+        notes: formatNotesSummaryForSheet(updatedNotes),
+      }, rowHint);
+    }
   };
 
   return (

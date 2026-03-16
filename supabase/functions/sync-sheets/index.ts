@@ -7,6 +7,27 @@ const corsHeaders = {
 }
 
 const SHEET_NAME = "'RiskOps Handover'"
+const FIELD_TO_COLUMN: Record<string, string> = {
+  login_id: 'E',
+  member_id: 'F',
+  provider_account: 'G',
+  tracking_no: 'I',
+  notes: 'K',
+  status: 'L',
+}
+
+const normalizeTicketId = (raw: unknown): string => {
+  const str = String(raw ?? '').trim().replace(/^'+/, '');
+  if (!str) return '';
+
+  // Keep IDs as strings to avoid precision loss on large integers.
+  // Only trim trailing .0 that Sheets often adds to numeric-looking IDs.
+  if (/^\d+\.0+$/.test(str)) return str.replace(/\.0+$/, '');
+
+  return str;
+}
+
+const normalizeCell = (raw: unknown): string => String(raw ?? '').trim().toLowerCase();
 
 // Helper to generate a Google Access Token without the bulky library
 async function getGoogleAccessToken(clientEmail: string, privateKey: string) {
@@ -57,7 +78,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { action, tickets, handoverBy, ticketId, status } = body;
+    const { action, tickets, handoverBy, ticketId, status, fields, rowHint } = body;
 
     const sheetId = Deno.env.get('GOOGLE_SHEET_ID')?.trim();
     const rawCreds = Deno.env.get('GOOGLE_CREDS_JSON')?.trim();
@@ -93,27 +114,99 @@ serve(async (req) => {
     }
 
     // ==========================================
-    // ACTION 2: UPDATE STATUS
+    // ACTION 2: UPDATE STATUS / FIELDS
     // ==========================================
-    if (action === 'UPDATE') {
-      const getRange = encodeURIComponent(`${SHEET_NAME}!A:A`);
+    if (action === 'UPDATE' || action === 'UPDATE_FIELDS') {
+      const getRange = encodeURIComponent(`${SHEET_NAME}!A:M`);
       const getRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${getRange}`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       const getJson = await getRes.json();
-      const rowIndex = (getJson.values || []).findIndex((row: any) => row[0] === ticketId);
+      if (getJson.error) throw new Error(getJson.error.message);
+
+      const targetId = normalizeTicketId(ticketId);
+      const rows = getJson.values || [];
+      let rowIndex = rows.findIndex((row: any) => normalizeTicketId(row?.[0]) === targetId);
+
+      // Fallback for legacy rows where ID format drifted in Sheets.
+      if (rowIndex === -1 && rowHint && typeof rowHint === 'object') {
+        const hintIc = normalizeCell((rowHint as any).ic_account);
+        const hintMember = normalizeCell((rowHint as any).member_id);
+        const hintProvider = normalizeCell((rowHint as any).provider);
+        const hintRecorder = normalizeCell((rowHint as any).recorder);
+
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const row = rows[i] || [];
+          const rowIc = normalizeCell(row[1]);
+          const rowMember = normalizeCell(row[5]);
+          const rowProvider = normalizeCell(row[7]);
+          const rowRecorder = normalizeCell(row[9]);
+
+          if (
+            hintIc && hintMember && hintProvider &&
+            rowIc === hintIc &&
+            rowMember === hintMember &&
+            rowProvider === hintProvider &&
+            (!hintRecorder || rowRecorder === hintRecorder)
+          ) {
+            rowIndex = i;
+            break;
+          }
+        }
+      }
 
       if (rowIndex !== -1) {
-        const updateRange = encodeURIComponent(`${SHEET_NAME}!L${rowIndex + 1}`);
-        const updateRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${updateRange}?valueInputOption=USER_ENTERED`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values: [[status]] })
-        });
-        const updateJson = await updateRes.json();
-        return new Response(JSON.stringify({ success: true, updated: true, data: updateJson }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        const nextFields =
+          action === 'UPDATE'
+            ? { status }
+            : (fields && typeof fields === 'object' ? fields : {});
+
+        const updates = Object.entries(nextFields)
+          .filter(([field]) => FIELD_TO_COLUMN[field])
+          .map(([field, value]) => ({
+            range: `${SHEET_NAME}!${FIELD_TO_COLUMN[field]}${rowIndex + 1}`,
+            values: [[value ?? '-']],
+          }));
+
+        if (updates.length === 0) {
+          return new Response(JSON.stringify({ success: true, updated: false, reason: 'No mapped fields provided' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        const updateResults = [];
+
+        for (const u of updates) {
+          const encodedRange = encodeURIComponent(u.range);
+          const updateRes = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodedRange}?valueInputOption=USER_ENTERED`,
+            {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ values: u.values }),
+            },
+          );
+
+          const updateJson = await updateRes.json();
+          if (updateJson.error) {
+            throw new Error(
+              `Google update failed for ${u.range}: ${updateJson.error.message}`,
+            );
+          }
+
+          updateResults.push(updateJson);
+        }
+
+        return new Response(JSON.stringify({ success: true, updated: true, data: updateResults }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
-      return new Response(JSON.stringify({ success: true, updated: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({
+        success: true,
+        updated: false,
+        reason: 'Row not found by ticket ID or fallback hint',
+        ticketId: String(ticketId),
+        rowHint: rowHint || null,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     throw new Error('Invalid Action');
