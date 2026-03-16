@@ -1101,28 +1101,28 @@ export default function Header() {
 
   const hasNotifications = globalNotifications.length > 0;
 
-  const APP_VERSION = "1.0.3";
+  const APP_VERSION = "0.0.3";
   const VERSION_HISTORY_ITEMS = [
     {
-      version: "1.0.3",
+      version: "0.0.3",
       date: "2026-03",
       notes:
-        "UI refinements, archive chat modal improvements, and quality fixes.",
+        "Shift handover workflow fixes: corrected Google Sheets sync error handling, fixed incoming shift auto-unlock on database confirmation. Enhanced archive history with real-time search (Player ID, Tracking No., Provider), duty filters (IC1/IC2/IC3/IC5), and status filtering (Normal/Abnormal). Implemented strict shift-overlap visibility—incoming shifts see only pending tickets until handover completes; outgoing shifts see pending + tickets they completed during the current handover window. Removed misleading clock-based notifications in favor of database-aware table locking.",
     },
     {
-      version: "1.0.2",
+      version: "0.0.2",
       date: "2026-02",
-      notes: "Stability updates and packaging improvements.",
+      notes: "Shift transition logic improvements: Fixed incoming shift screen unlock mechanism, adjusted target shift calculation during post-start windows. Implemented session-based ticket completion tracking to enforce strict outgoing shift visibility rules during handover cycles. Auto-archiving suspension during shared transition windows.",
     },
     {
-      version: "1.0.1",
+      version: "0.0.1",
       date: "2026-01",
-      notes: "Desktop installer and release pipeline improvements.",
+      notes: "Ticket visibility enhancements during shift overlaps. Incoming shifts restricted to pending tickets only during shared handover windows. Outgoing shifts enhanced to view both pending and completed tickets until shift lock. Desktop installer and release pipeline improvements.",
     },
     {
-      version: "1.0.0",
+      version: "0.0.0",
       date: "2025-12",
-      notes: "Initial production release.",
+      notes: "Initial production release with core shift handover system, Google Sheets integration, ticket management, and real-time duty roster.",
     },
   ];
 
