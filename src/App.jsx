@@ -126,9 +126,6 @@ function Dashboard() {
       // The supabase client automatically handles authentication properly
       const { data, error } = await supabase.functions.invoke('sync-sheets', {
         body,
-        headers: {
-          'Content-Type': 'application/json',
-        },
       });
 
       if (error) {
