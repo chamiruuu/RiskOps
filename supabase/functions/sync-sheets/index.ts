@@ -258,11 +258,14 @@ const validateAppendResponse = (response: any): boolean => {
 };
 
 const validateUpdateResponse = (response: any): boolean => {
+  // Google Sheets API PUT endpoint returns updatedRows, updatedColumns, updatedCells
+  // Not the 'updates' object (which only batchUpdate uses)
   return (
     response &&
     typeof response === 'object' &&
-    'updates' in response &&
-    typeof response.updates === 'object'
+    (typeof response.updatedRows === 'number' ||
+     typeof response.updatedColumns === 'number' ||
+     typeof response.updatedCells === 'number')
   );
 };
 
