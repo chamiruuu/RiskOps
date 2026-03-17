@@ -20,3 +20,21 @@ if (!supabaseUrl?.startsWith('https://')) {
 }
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+
+export const isMissingSupabaseRelationError = (error) => {
+  if (!error) return false;
+
+  const text = [error.message, error.details, error.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    error.code === "PGRST205" ||
+    (error.status === 404 &&
+      (text.includes("could not find the table") ||
+        text.includes("relation") ||
+        text.includes("schema cache") ||
+        text.includes("does not exist")))
+  );
+};

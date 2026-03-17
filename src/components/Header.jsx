@@ -33,7 +33,7 @@ import {
   Search,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3";
 import {
@@ -117,6 +117,7 @@ export default function Header() {
   const [showOpsToast, setShowOpsToast] = useState(false);
   const shiftStartPingKeyRef = useRef("");
   const notificationDedupRef = useRef(new Map());
+  const missingOperationalAlertsTableRef = useRef(false);
 
   // --- ARCHIVE HISTORY STATES ---
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -970,31 +971,46 @@ export default function Header() {
   useEffect(() => {
     if (!isAdminOrLeader) return;
 
+    let sub = null;
+
     const fetchOperationalAlerts = async () => {
-      const { data } = await supabase
+      if (missingOperationalAlertsTableRef.current) return;
+
+      const { data, error } = await supabase
         .from("operational_alerts")
         .select("*")
         .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(20);
 
+      if (error && isMissingSupabaseRelationError(error)) {
+        missingOperationalAlertsTableRef.current = true;
+        setOperationalAlerts([]);
+        return;
+      }
+
       if (data) setOperationalAlerts(data);
     };
 
-    fetchOperationalAlerts();
+    void (async () => {
+      await fetchOperationalAlerts();
+      if (missingOperationalAlertsTableRef.current) return;
 
-    const sub = supabase
-      .channel("operational_alerts_admin_channel")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "operational_alerts" },
-        () => {
-          fetchOperationalAlerts();
-        },
-      )
-      .subscribe();
+      sub = supabase
+        .channel("operational_alerts_admin_channel")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "operational_alerts" },
+          () => {
+            fetchOperationalAlerts();
+          },
+        )
+        .subscribe();
+    })();
 
-    return () => supabase.removeChannel(sub);
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, [isAdminOrLeader]);
 
   const handleApproveRequest = async (id, status) => {
@@ -1002,6 +1018,8 @@ export default function Header() {
   };
 
   const handleAcknowledgeOperationalAlert = async (id) => {
+    if (missingOperationalAlertsTableRef.current) return;
+
     await supabase
       .from("operational_alerts")
       .update({

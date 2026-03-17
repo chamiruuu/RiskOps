@@ -19,7 +19,7 @@ import {
   Megaphone,
   FileWarning,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
 import notificationSound from "../assets/Notification.mp3"; // <-- ADDED SOUND FOR TOAST
 import { PROVIDER_CONFIG } from "../config/providerConfig"; // <-- 2. ADD THIS
@@ -277,6 +277,8 @@ export default function TicketTable({
   const lockWarningMarkerRef = useRef("");
   const handedOverTicketIdsByMarkerRef = useRef(new Map());
   const completedTicketIdsByMarkerRef = useRef(new Map());
+  const missingRetryQueueTableRef = useRef(false);
+  const missingOperationalAlertsTableRef = useRef(false);
   const RETRY_WINDOW_MS = 2 * 60 * 60 * 1000;
 
   const isTicketNewSinceLastHandover = useCallback(
@@ -760,6 +762,10 @@ export default function TicketTable({
 
   const queueSheetRetryJob = useCallback(
     async ({ marker, nextShift, ticketsToRetry, errorMessage, correlationId }) => {
+      if (missingRetryQueueTableRef.current) {
+        return;
+      }
+
       if (!marker || !nextShift || !Array.isArray(ticketsToRetry) || ticketsToRetry.length === 0) {
         return;
       }
@@ -798,6 +804,11 @@ export default function TicketTable({
       );
 
       if (error) {
+        if (isMissingSupabaseRelationError(error)) {
+          missingRetryQueueTableRef.current = true;
+          return;
+        }
+
         window.dispatchEvent(
           new CustomEvent("logic-health-event", {
             detail: {
@@ -924,7 +935,7 @@ export default function TicketTable({
     let isRunning = false;
 
     const processSheetRetryQueue = async () => {
-      if (isRunning || !dutyKey) return;
+      if (isRunning || !dutyKey || missingRetryQueueTableRef.current) return;
       isRunning = true;
 
       try {
@@ -941,6 +952,11 @@ export default function TicketTable({
           .lte("next_retry_at", nowIso)
           .order("next_retry_at", { ascending: true })
           .limit(3);
+
+        if (error && isMissingSupabaseRelationError(error)) {
+          missingRetryQueueTableRef.current = true;
+          return;
+        }
 
         if (error || !Array.isArray(jobs) || jobs.length === 0) {
           return;
@@ -1001,21 +1017,29 @@ export default function TicketTable({
               })
               .eq("id", job.id);
 
-            await supabase.from("operational_alerts").insert({
-              title: "Handover Sheet Sync Escalated",
-              message:
-                "Google Sheet handover sync could not be completed after 2 hours of retries. Immediate admin/leader action is required.",
-              severity: "error",
-              status: "open",
-              context: {
-                jobKey: job.job_key,
-                marker: job.handover_marker,
-                targetShift: job.target_shift,
-                dutyKey,
-                lastError: errorMessage,
-              },
-              created_by: user?.id || null,
-            });
+            if (!missingOperationalAlertsTableRef.current) {
+              const { error: alertInsertError } = await supabase
+                .from("operational_alerts")
+                .insert({
+                  title: "Handover Sheet Sync Escalated",
+                  message:
+                    "Google Sheet handover sync could not be completed after 2 hours of retries. Immediate admin/leader action is required.",
+                  severity: "error",
+                  status: "open",
+                  context: {
+                    jobKey: job.job_key,
+                    marker: job.handover_marker,
+                    targetShift: job.target_shift,
+                    dutyKey,
+                    lastError: errorMessage,
+                  },
+                  created_by: user?.id || null,
+                });
+
+              if (isMissingSupabaseRelationError(alertInsertError)) {
+                missingOperationalAlertsTableRef.current = true;
+              }
+            }
 
             window.dispatchEvent(
               new CustomEvent("logic-health-event", {

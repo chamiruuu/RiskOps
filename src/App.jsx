@@ -16,6 +16,8 @@ import TicketForm from "./components/TicketForm";
 import TicketTable from "./components/TicketTable";
 
 const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
+const REALTIME_ERROR_ANNOUNCE_DELAY_MS = 12000;
+const REALTIME_MANUAL_RECONNECT_DELAY_MS = 30000;
 
 const getGMT8Time = () => {
   const now = new Date();
@@ -50,6 +52,8 @@ function Dashboard() {
 
   const [tickets, setTickets] = useState([]);
   const realtimeIssueRef = useRef(false);
+  const realtimeOutageStartedAtRef = useRef(null);
+  const realtimeErrorAnnounceTimerRef = useRef(null);
   const degradedTimerRef = useRef(null);
   const degradedAnnouncedRef = useRef(false);
   const recentLocalTicketEditsRef = useRef(new Map());
@@ -245,6 +249,12 @@ function Dashboard() {
           if (status === "SUBSCRIBED") {
             console.log("✅ Real-time subscription SUBSCRIBED");
 
+            if (realtimeErrorAnnounceTimerRef.current) {
+              clearTimeout(realtimeErrorAnnounceTimerRef.current);
+              realtimeErrorAnnounceTimerRef.current = null;
+            }
+            realtimeOutageStartedAtRef.current = null;
+
             // Clear any pending degraded timers
             if (degradedTimerRef.current) {
               clearTimeout(degradedTimerRef.current);
@@ -282,17 +292,29 @@ function Dashboard() {
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             console.warn(`⚠️ Real-time status: ${status}`);
 
-            if (!realtimeIssueRef.current) {
-              emitRealtimeEvent(
-                "tickets-realtime-error",
-                "Live ticket sync connection issue detected. Trying to reconnect...",
-                15000,
-                {
-                  code: LOGIC_CODES.REALTIME_ERROR,
-                  title: "Realtime Error",
-                  level: "error",
-                },
-              );
+            if (!realtimeOutageStartedAtRef.current) {
+              realtimeOutageStartedAtRef.current = Date.now();
+            }
+
+            if (!realtimeIssueRef.current && !realtimeErrorAnnounceTimerRef.current) {
+              realtimeErrorAnnounceTimerRef.current = setTimeout(() => {
+                realtimeErrorAnnounceTimerRef.current = null;
+                if (!isComponentMounted || !realtimeOutageStartedAtRef.current) {
+                  return;
+                }
+
+                emitRealtimeEvent(
+                  "tickets-realtime-error",
+                  "Live ticket sync connection issue detected. Trying to reconnect...",
+                  15000,
+                  {
+                    code: LOGIC_CODES.REALTIME_ERROR,
+                    title: "Realtime Error",
+                    level: "error",
+                  },
+                );
+                realtimeIssueRef.current = true;
+              }, REALTIME_ERROR_ANNOUNCE_DELAY_MS);
             }
 
             // Setup degraded notification timeout (only trigger once)
@@ -319,22 +341,23 @@ function Dashboard() {
               }, 60 * 1000);
             }
 
-            realtimeIssueRef.current = true;
-
             // Fetch immediately on error
             if (isComponentMounted) fetchTickets();
 
-            // Attempt to unsubscribe and reconnect after a delay
+            // Let Supabase auto-reconnect first. Only force a reconnect if outage is sustained.
             if (!reconnectTimer) {
               reconnectTimer = setTimeout(() => {
-                if (isComponentMounted && subscription) {
+                if (isComponentMounted && subscription && realtimeOutageStartedAtRef.current) {
                   console.log("🔄 Attempting to reconnect real-time subscription...");
                   supabase.removeChannel(subscription);
                   subscription = null;
                   reconnectTimer = null;
                   setupRealtimeSubscription(); // Recursively retry
+                  return;
                 }
-              }, 5000); // Wait 5 seconds before reconnecting
+
+                reconnectTimer = null;
+              }, REALTIME_MANUAL_RECONNECT_DELAY_MS);
             }
           }
         });
@@ -357,6 +380,13 @@ function Dashboard() {
         clearTimeout(degradedTimerRef.current);
         degradedTimerRef.current = null;
       }
+
+      if (realtimeErrorAnnounceTimerRef.current) {
+        clearTimeout(realtimeErrorAnnounceTimerRef.current);
+        realtimeErrorAnnounceTimerRef.current = null;
+      }
+
+      realtimeOutageStartedAtRef.current = null;
 
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
