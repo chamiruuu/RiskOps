@@ -17,6 +17,14 @@ export default function Login() {
   const [localDutySelection, setLocalDutySelection] = useState([]);
 
   useEffect(() => {
+    const authNotice = localStorage.getItem('riskops_auth_notice');
+    if (authNotice) {
+      setError(authNotice);
+      localStorage.removeItem('riskops_auth_notice');
+    }
+  }, []);
+
+  useEffect(() => {
     if (user && (userRole === 'Admin' || userRole === 'Leader')) {
       console.log(`Auto-redirecting ${userRole} to dashboard...`);
       navigate('/dashboard');

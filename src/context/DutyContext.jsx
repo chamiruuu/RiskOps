@@ -245,9 +245,14 @@ export const DutyProvider = ({ children }) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       const incomingUserId = session?.user?.id;
       const isNewLogin = incomingUserId !== currentUserTracker.current;
+      const hadActiveUser = Boolean(currentUserTracker.current);
+
+      if (event) {
+        console.log("Auth state changed:", event);
+      }
 
       currentUserTracker.current = incomingUserId;
       setUser(session?.user ?? null);
@@ -256,6 +261,13 @@ export const DutyProvider = ({ children }) => {
         setLoading(true);
         fetchUserProfile(session.user.id).then(() => setLoading(false));
       } else if (!session?.user) {
+        if (hadActiveUser && (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED")) {
+          localStorage.setItem(
+            "riskops_auth_notice",
+            "Your session expired or was revoked. Please sign in again.",
+          );
+        }
+
         setUserRole(null);
         setWorkName("");
         setSelectedDuty([]);
