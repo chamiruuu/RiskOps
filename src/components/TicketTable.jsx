@@ -121,6 +121,12 @@ const EditableField = ({
     }
   }, [isEditing]);
 
+  useEffect(() => {
+    if (!isEditing) {
+      setValue(ticket[fieldKey] || "");
+    }
+  }, [ticket, fieldKey, isEditing]);
+
   const handleSave = () => {
     setIsEditing(false);
     if (value !== (ticket[fieldKey] || "")) {
