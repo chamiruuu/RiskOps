@@ -94,6 +94,7 @@ export default function Header() {
 
   // --- Emergency Handover States ---
   const [emergencyRequests, setEmergencyRequests] = useState([]);
+  const [operationalAlerts, setOperationalAlerts] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
   // --- DEDICATED SHIFT PLANNER STATES ---
@@ -966,8 +967,49 @@ export default function Header() {
     return () => supabase.removeChannel(sub);
   }, [isAdminOrLeader]);
 
+  useEffect(() => {
+    if (!isAdminOrLeader) return;
+
+    const fetchOperationalAlerts = async () => {
+      const { data } = await supabase
+        .from("operational_alerts")
+        .select("*")
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (data) setOperationalAlerts(data);
+    };
+
+    fetchOperationalAlerts();
+
+    const sub = supabase
+      .channel("operational_alerts_admin_channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "operational_alerts" },
+        () => {
+          fetchOperationalAlerts();
+        },
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(sub);
+  }, [isAdminOrLeader]);
+
   const handleApproveRequest = async (id, status) => {
     await supabase.from("handover_requests").update({ status }).eq("id", id);
+  };
+
+  const handleAcknowledgeOperationalAlert = async (id) => {
+    await supabase
+      .from("operational_alerts")
+      .update({
+        status: "acknowledged",
+        acknowledged_at: new Date().toISOString(),
+        acknowledged_by: user?.id || null,
+      })
+      .eq("id", id);
   };
 
   const fetchTeam = async () => {
@@ -1382,6 +1424,16 @@ export default function Header() {
   if (isAdminOrLeader && emergencyRequests.length > 0) {
     emergencyRequests.forEach((req) =>
       globalNotifications.push({ id: req.id, type: "emergency", data: req }),
+    );
+  }
+
+  if (isAdminOrLeader && operationalAlerts.length > 0) {
+    operationalAlerts.forEach((alert) =>
+      globalNotifications.push({
+        id: alert.id,
+        type: "operational-alert",
+        data: alert,
+      }),
     );
   }
 
@@ -1921,6 +1973,32 @@ export default function Header() {
                                 className="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded transition-colors"
                               >
                                 Reject
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      if (notif.type === "operational-alert") {
+                        return (
+                          <div
+                            key={notif.id}
+                            className="p-3 mb-2 bg-red-50 border border-red-200 shadow-sm rounded-lg relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+                            <div className="ml-1.5">
+                              <h4 className="text-xs font-bold text-red-800 mb-0.5">
+                                {notif.data.title || "Operational Alert"}
+                              </h4>
+                              <p className="text-xs text-red-700 font-medium leading-relaxed">
+                                {notif.data.message}
+                              </p>
+                              <button
+                                onClick={() =>
+                                  handleAcknowledgeOperationalAlert(notif.data.id)
+                                }
+                                className="mt-2 w-full py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition-colors"
+                              >
+                                Acknowledge
                               </button>
                             </div>
                           </div>

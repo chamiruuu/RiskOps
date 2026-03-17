@@ -29,9 +29,9 @@ const isOutgoingHandoverSheetWindow = (
 ) => {
   const time = inputNow.getHours() + inputNow.getMinutes() / 60;
 
-  if (assignedShift === "Night") return time >= 7.0 && time < 7.5;
-  if (assignedShift === "Morning") return time >= 14.5 && time < 15.0;
-  if (assignedShift === "Afternoon") return time >= 22.5 && time < 23.0;
+  if (assignedShift === "Night") return time >= 7.1667 && time < 7.5;
+  if (assignedShift === "Morning") return time >= 14.6667 && time < 15.0;
+  if (assignedShift === "Afternoon") return time >= 22.6667 && time < 23.0;
 
   return false;
 };

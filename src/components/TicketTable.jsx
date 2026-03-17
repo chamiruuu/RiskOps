@@ -256,22 +256,41 @@ export default function TicketTable({
     () => (Array.isArray(dutyNumber) ? dutyNumber : []),
     [dutyNumber],
   );
+  const dutyKey = useMemo(
+    () => dutyArray.slice().sort().join(","),
+    [dutyArray],
+  );
   const buildHandoverMarker = useCallback(() => {
     const transitionCtx = getTransitionContext();
     const baseMarker = transitionCtx
       ? transitionCtx.marker
       : getLastShiftChangeTime().toISOString();
-    return `${baseMarker}|${dutyArray.slice().sort().join(",")}`;
-  }, [dutyArray]);
+    return `${baseMarker}|${dutyKey}`;
+  }, [dutyKey]);
 
   const [isHandoverProcessing, setIsHandoverProcessing] = useState(false);
   const [handoverCompletedForCurrentWindow, setHandoverCompletedForCurrentWindow] =
     useState(false);
+  const [lastHandoverTimestamp, setLastHandoverTimestamp] = useState(null);
   const autoHandoverLoggedRef = useRef("");
   const lastPostStartReminderMinuteRef = useRef("");
   const lockWarningMarkerRef = useRef("");
   const handedOverTicketIdsByMarkerRef = useRef(new Map());
   const completedTicketIdsByMarkerRef = useRef(new Map());
+  const RETRY_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+  const isTicketNewSinceLastHandover = useCallback(
+    (ticket) => {
+      if (!lastHandoverTimestamp) return true;
+      const ticketCreatedAt = Date.parse(ticket?.created_at || "");
+      const lastHandoverAt = Date.parse(lastHandoverTimestamp);
+      if (Number.isNaN(ticketCreatedAt) || Number.isNaN(lastHandoverAt)) {
+        return true;
+      }
+      return ticketCreatedAt > lastHandoverAt;
+    },
+    [lastHandoverTimestamp],
+  );
 
   // --- SMART 5-MIN HANDOVER REMINDER ---
   useEffect(() => {
@@ -361,10 +380,7 @@ export default function TicketTable({
         return;
       }
 
-      const marker = `${transitionCtx.marker}|${dutyArray
-        .slice()
-        .sort()
-        .join(",")}`;
+      const marker = `${transitionCtx.marker}|${dutyKey}`;
 
       // Stop reminders for this shift once handover is completed.
       if (autoHandoverLoggedRef.current === marker) {
@@ -408,7 +424,7 @@ export default function TicketTable({
     checkPostStartReminder();
     const timer = setInterval(checkPostStartReminder, 30000);
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, myAssignedShift, dutyArray, tickets]);
+  }, [isAdminOrLeader, myAssignedShift, dutyKey, tickets]);
 
   // --- WINDOW HANDOVER COMPLETION STATUS (CONTROLS INCOMING VISIBILITY) ---
   useEffect(() => {
@@ -422,10 +438,7 @@ export default function TicketTable({
         return;
       }
 
-      const marker = `${transitionCtx.marker}|${dutyArray
-        .slice()
-        .sort()
-        .join(",")}`;
+      const marker = `${transitionCtx.marker}|${dutyKey}`;
 
       // Immediate local truth for outgoing user after manual/auto handover.
       if (autoHandoverLoggedRef.current === marker) {
@@ -476,7 +489,56 @@ export default function TicketTable({
       clearInterval(timer);
       supabase.removeChannel(channel);
     };
-  }, [dutyArray, myAssignedShift, user?.id]);
+  }, [dutyArray, dutyKey, myAssignedShift, user?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const refreshLastHandoverTimestamp = async () => {
+      const transitionCtx = getTransitionContext();
+      if (!transitionCtx || !dutyKey) {
+        if (isMounted) setLastHandoverTimestamp(null);
+        return;
+      }
+
+      const outgoingShift = transitionCtx.pair.outgoing;
+      const { data, error } = await supabase
+        .from("shift_handover_state")
+        .select("last_handover_timestamp")
+        .eq("shift_name", outgoingShift)
+        .eq("duty_key", dutyKey)
+        .maybeSingle();
+
+      if (error) {
+        if (isMounted) setLastHandoverTimestamp(null);
+        return;
+      }
+
+      if (isMounted) {
+        setLastHandoverTimestamp(data?.last_handover_timestamp || null);
+      }
+    };
+
+    refreshLastHandoverTimestamp();
+    const timer = setInterval(refreshLastHandoverTimestamp, 30000);
+
+    const channel = supabase
+      .channel(`handover-state-${user?.id || "anon"}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "shift_handover_state" },
+        () => {
+          refreshLastHandoverTimestamp();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [dutyKey, user?.id]);
 
   // --- HARD-LOCK WARNING (10 MINUTES BEFORE OUTGOING LOCKOUT) ---
   useEffect(() => {
@@ -499,10 +561,7 @@ export default function TicketTable({
         return;
       }
 
-      const warningMarker = `${transitionCtx.marker}|lock-warning|${dutyArray
-        .slice()
-        .sort()
-        .join(",")}`;
+      const warningMarker = `${transitionCtx.marker}|lock-warning|${dutyKey}`;
       if (lockWarningMarkerRef.current === warningMarker) return;
       lockWarningMarkerRef.current = warningMarker;
 
@@ -534,7 +593,7 @@ export default function TicketTable({
     checkHardLockWarning();
     const timer = setInterval(checkHardLockWarning, 30000);
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, myAssignedShift, dutyArray]);
+  }, [isAdminOrLeader, myAssignedShift, dutyKey]);
 
   // --- AUTO-CLEAR BELL REMINDER IF FIXED ---
   useEffect(() => {
@@ -634,7 +693,9 @@ export default function TicketTable({
 
   const appendHandoverTicketsToSheet = useCallback(
     async (handoverTickets, correlationId) => {
-      if (!handoverTickets || handoverTickets.length === 0) return;
+      if (!handoverTickets || handoverTickets.length === 0) {
+        return { success: true };
+      }
 
       try {
         const { data, error } = await supabase.functions.invoke("sync-sheets", {
@@ -652,6 +713,8 @@ export default function TicketTable({
         if (data && data.success === false) {
           throw new Error(data.error || "Google Sheet handover sync failed.");
         }
+
+        return { success: true };
       } catch (e) {
         console.error("Sheet Handover Error:", e);
         window.dispatchEvent(
@@ -667,9 +730,105 @@ export default function TicketTable({
             },
           }),
         );
+
+        return {
+          success: false,
+          errorMessage: e?.message || "Google Sheet handover sync failed.",
+        };
       }
     },
     [shortWorkName],
+  );
+
+  const persistHandoverState = useCallback(
+    async ({ shiftName, handoverTimestampIso, marker }) => {
+      if (!shiftName || !marker) return;
+
+      await supabase.from("shift_handover_state").upsert(
+        {
+          shift_name: shiftName,
+          duty_key: dutyKey,
+          last_handover_timestamp: handoverTimestampIso,
+          last_handover_by_user_id: user?.id || null,
+          updated_at: handoverTimestampIso,
+        },
+        { onConflict: "shift_name,duty_key" },
+      );
+    },
+    [dutyKey, user?.id],
+  );
+
+  const queueSheetRetryJob = useCallback(
+    async ({ marker, nextShift, ticketsToRetry, errorMessage, correlationId }) => {
+      if (!marker || !nextShift || !Array.isArray(ticketsToRetry) || ticketsToRetry.length === 0) {
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const jobKey = `${marker}|${nextShift}`;
+
+      const { data: existingJob } = await supabase
+        .from("sheet_sync_retry_queue")
+        .select("first_failed_at")
+        .eq("job_key", jobKey)
+        .maybeSingle();
+
+      const firstFailedAt = existingJob?.first_failed_at || nowIso;
+
+      const { error } = await supabase.from("sheet_sync_retry_queue").upsert(
+        {
+          job_key: jobKey,
+          handover_marker: marker,
+          duty_key: dutyKey,
+          source_shift: myAssignedShift,
+          target_shift: nextShift,
+          payload: {
+            action: "APPEND",
+            tickets: ticketsToRetry,
+            handoverBy: shortWorkName,
+          },
+          status: "pending",
+          first_failed_at: firstFailedAt,
+          next_retry_at: nowIso,
+          last_error: errorMessage,
+          updated_at: nowIso,
+          created_by: user?.id || null,
+        },
+        { onConflict: "job_key" },
+      );
+
+      if (error) {
+        window.dispatchEvent(
+          new CustomEvent("logic-health-event", {
+            detail: {
+              code: LOGIC_CODES.HANDOVER_FAILED,
+              level: "error",
+              title: "Handover Retry Queue Failed",
+              detail: error.message || "Could not queue failed sheet sync job.",
+              at: Date.now(),
+              source: "handover",
+              correlationId,
+            },
+          }),
+        );
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("logic-health-event", {
+          detail: {
+            code: LOGIC_CODES.HANDOVER_RETRY_QUEUED,
+            level: "warning",
+            title: "Handover Retry Queued",
+            detail: "Google Sheet sync failed and was queued for automatic retry for up to 2 hours.",
+            at: Date.now(),
+            source: "handover",
+            correlationId,
+          },
+        }),
+      );
+    },
+    [dutyKey, myAssignedShift, shortWorkName, user?.id],
   );
 
   const syncHandoverAndNotify = useCallback(
@@ -679,7 +838,7 @@ export default function TicketTable({
       const handedOverSet =
         handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
       const uniquePendingTix = pendingTix.filter(
-        (t) => !handedOverSet.has(t.id),
+        (t) => !handedOverSet.has(t.id) && isTicketNewSinceLastHandover(t),
       );
 
       // Stop duplicate appends/notifications when handover is clicked repeatedly.
@@ -690,7 +849,9 @@ export default function TicketTable({
       const transitionCtx = getTransitionContext();
       const nextShift =
         transitionCtx?.pair?.incoming || getNextShift(currentActiveShift);
+      const outgoingShift = transitionCtx?.pair?.outgoing || myAssignedShift;
       const msg = `${shortWorkName} completed ${mode.toLowerCase()} handover for ${dutyArray.join(", ")}. ${uniquePendingTix.length} pending ticket(s) handed over successfully.`;
+      const handoverTimestampIso = new Date().toISOString();
 
       await supabase.from("shift_notifications").insert({
         target_shift: nextShift,
@@ -698,7 +859,25 @@ export default function TicketTable({
         duties: dutyArray,
       });
 
-      await appendHandoverTicketsToSheet(uniquePendingTix, correlationId);
+      const sheetSyncResult = await appendHandoverTicketsToSheet(
+        uniquePendingTix,
+        correlationId,
+      );
+      if (!sheetSyncResult?.success) {
+        await queueSheetRetryJob({
+          marker,
+          nextShift,
+          ticketsToRetry: uniquePendingTix,
+          errorMessage: sheetSyncResult?.errorMessage || "Unknown sheet sync error.",
+          correlationId,
+        });
+      }
+
+      await persistHandoverState({
+        shiftName: outgoingShift,
+        handoverTimestampIso,
+        marker,
+      });
 
       uniquePendingTix.forEach((t) => handedOverSet.add(t.id));
       handedOverTicketIdsByMarkerRef.current.set(marker, handedOverSet);
@@ -733,14 +912,161 @@ export default function TicketTable({
       buildHandoverMarker,
       currentActiveShift,
       dutyArray,
+      myAssignedShift,
+      persistHandoverState,
+      queueSheetRetryJob,
+      isTicketNewSinceLastHandover,
       shortWorkName,
     ],
   );
 
   useEffect(() => {
+    let isRunning = false;
+
+    const processSheetRetryQueue = async () => {
+      if (isRunning || !dutyKey) return;
+      isRunning = true;
+
+      try {
+        const now = new Date();
+        const nowIso = now.toISOString();
+
+        const { data: jobs, error } = await supabase
+          .from("sheet_sync_retry_queue")
+          .select(
+            "id, job_key, payload, status, attempt_count, first_failed_at, target_shift, handover_marker",
+          )
+          .eq("duty_key", dutyKey)
+          .in("status", ["pending", "retrying"])
+          .lte("next_retry_at", nowIso)
+          .order("next_retry_at", { ascending: true })
+          .limit(3);
+
+        if (error || !Array.isArray(jobs) || jobs.length === 0) {
+          return;
+        }
+
+        for (const job of jobs) {
+          const { data: claimedRows, error: claimError } = await supabase
+            .from("sheet_sync_retry_queue")
+            .update({
+              status: "processing",
+              last_attempt_at: nowIso,
+              updated_at: nowIso,
+            })
+            .eq("id", job.id)
+            .in("status", ["pending", "retrying"])
+            .select("id");
+
+          if (claimError || !claimedRows || claimedRows.length === 0) {
+            continue;
+          }
+
+          const payload = job.payload || {};
+          const correlationId = createCorrelationId("HO");
+          const { data: syncData, error: syncError } = await supabase.functions.invoke(
+            "sync-sheets",
+            { body: payload },
+          );
+
+          const syncFailed = !!syncError || syncData?.success === false;
+          if (!syncFailed) {
+            await supabase
+              .from("sheet_sync_retry_queue")
+              .update({
+                status: "succeeded",
+                attempt_count: (job.attempt_count || 0) + 1,
+                last_error: null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", job.id);
+            continue;
+          }
+
+          const errorMessage =
+            syncError?.message || syncData?.error || "Google sheet retry failed.";
+          const firstFailedMs = Date.parse(job.first_failed_at || nowIso);
+          const elapsedMs = Date.now() - firstFailedMs;
+
+          if (elapsedMs >= RETRY_WINDOW_MS) {
+            const escalateAtIso = new Date().toISOString();
+            await supabase
+              .from("sheet_sync_retry_queue")
+              .update({
+                status: "escalated",
+                attempt_count: (job.attempt_count || 0) + 1,
+                last_error: errorMessage,
+                escalated_at: escalateAtIso,
+                updated_at: escalateAtIso,
+              })
+              .eq("id", job.id);
+
+            await supabase.from("operational_alerts").insert({
+              title: "Handover Sheet Sync Escalated",
+              message:
+                "Google Sheet handover sync could not be completed after 2 hours of retries. Immediate admin/leader action is required.",
+              severity: "error",
+              status: "open",
+              context: {
+                jobKey: job.job_key,
+                marker: job.handover_marker,
+                targetShift: job.target_shift,
+                dutyKey,
+                lastError: errorMessage,
+              },
+              created_by: user?.id || null,
+            });
+
+            window.dispatchEvent(
+              new CustomEvent("logic-health-event", {
+                detail: {
+                  code: LOGIC_CODES.HANDOVER_ESCALATED,
+                  level: "error",
+                  title: "Handover Sheet Sync Escalated",
+                  detail:
+                    "Google Sheet handover sync failed for over 2 hours. Admin/leader alert has been raised.",
+                  at: Date.now(),
+                  source: "handover",
+                  correlationId,
+                },
+              }),
+            );
+            continue;
+          }
+
+          const backoffMinutes = Math.min(
+            15,
+            Math.max(1, 2 ** Math.min(job.attempt_count || 0, 4)),
+          );
+          const nextRetryAtIso = new Date(
+            Date.now() + backoffMinutes * 60 * 1000,
+          ).toISOString();
+
+          await supabase
+            .from("sheet_sync_retry_queue")
+            .update({
+              status: "retrying",
+              attempt_count: (job.attempt_count || 0) + 1,
+              last_error: errorMessage,
+              next_retry_at: nextRetryAtIso,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", job.id);
+        }
+      } finally {
+        isRunning = false;
+      }
+    };
+
+    processSheetRetryQueue();
+    const timer = setInterval(processSheetRetryQueue, 30000);
+    return () => clearInterval(timer);
+  }, [dutyKey, user?.id]);
+
+  useEffect(() => {
     const attemptAutoHandover = () => {
       const transitionCtx = getTransitionContext();
-      if (!transitionCtx || !transitionCtx.isPostStartWindow) {
+      if (!transitionCtx) {
         return;
       }
 
@@ -748,6 +1074,18 @@ export default function TicketTable({
         !!myAssignedShift && myAssignedShift === transitionCtx.pair.outgoing;
 
       if (isAdminOrLeader || !isOutgoingShift || dutyArray.length === 0) {
+        return;
+      }
+
+      const now = getGMT8Time();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const isAutoTriggerMinute =
+        (myAssignedShift === "Night" && h === 7 && m >= 8 && m < 10) ||
+        (myAssignedShift === "Morning" && h === 14 && m >= 38 && m < 40) ||
+        (myAssignedShift === "Afternoon" && h === 22 && m >= 38 && m < 40);
+
+      if (!isAutoTriggerMinute) {
         return;
       }
 
@@ -778,8 +1116,24 @@ export default function TicketTable({
   const checkHandoverEligibility = () => {
     if (isHandoverProcessing) return;
 
+    const marker = buildHandoverMarker();
+    const handedOverSet =
+      handedOverTicketIdsByMarkerRef.current.get(marker) || new Set();
     const pendingTix = tickets.filter((t) => t.status === "Pending");
-    const missing = pendingTix.filter(
+    const unhandedPendingTix = pendingTix.filter(
+      (t) => !handedOverSet.has(t.id) && isTicketNewSinceLastHandover(t),
+    );
+
+    if (unhandedPendingTix.length === 0) {
+      setHandoverModal({
+        isOpen: true,
+        step: "already_done",
+        missingTickets: [],
+      });
+      return;
+    }
+
+    const missing = unhandedPendingTix.filter(
       (t) =>
         !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "",
     );
@@ -819,7 +1173,16 @@ export default function TicketTable({
 
     try {
       const pendingTix = tickets.filter((t) => t.status === "Pending");
-      await syncHandoverAndNotify(pendingTix, "Manual");
+      const result = await syncHandoverAndNotify(pendingTix, "Manual");
+
+      if (result?.skipped) {
+        setHandoverModal({
+          isOpen: true,
+          step: "already_done",
+          missingTickets: [],
+        });
+        return;
+      }
 
       setHandoverModal({
         isOpen: true,
@@ -874,17 +1237,6 @@ export default function TicketTable({
 
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;
-
-    // Outgoing shift can see completed tickets only if they were completed
-    // from Pending during the current handover marker.
-    if (isOutgoingTransitionViewer && ticket.status !== "Pending") {
-      const marker = buildHandoverMarker();
-      const completedSet =
-        completedTicketIdsByMarkerRef.current.get(marker) || new Set();
-      if (!completedSet.has(ticket.id)) {
-        return false;
-      }
-    }
 
     // Incoming shift during transition can only see pending handover tickets.
     if (isIncomingTransitionViewer && ticket.status !== "Pending") {
@@ -1042,8 +1394,17 @@ export default function TicketTable({
     !!handoverPair && myAssignedShift === handoverPair.outgoing;
   // CHECK REAL-TIME window instead of stale state (updates every 60s), to avoid button disable race condition.
   const isActuallyInWindow = checkIsHandoverWindow();
+  const currentHandoverMarker = buildHandoverMarker();
+  const handedOverSetForMarker =
+    handedOverTicketIdsByMarkerRef.current.get(currentHandoverMarker) || new Set();
+  const unhandedPendingCount = tickets.filter(
+    (t) =>
+      t.status === "Pending" &&
+      !handedOverSetForMarker.has(t.id) &&
+      isTicketNewSinceLastHandover(t),
+  ).length;
   const canInitiateHandover =
-    isAdminOrLeader || (isActuallyInWindow && isOutgoingForWindow);
+    isActuallyInWindow && isOutgoingForWindow && unhandedPendingCount > 0;
   const isHandoverDisabled =
     !canInitiateHandover || !isActuallyInWindow || isHandoverProcessing;
 
@@ -1053,6 +1414,8 @@ export default function TicketTable({
       "Only available during manual handover window (06:45-07:10, 14:15-14:40, 22:15-22:40).";
   else if (!isOutgoingForWindow && !isAdminOrLeader)
     handoverTooltip = "Only the outgoing shift can handover in this window.";
+  else if (unhandedPendingCount === 0)
+    handoverTooltip = "All existing pending tickets for this window are already handed over.";
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
@@ -1676,6 +2039,31 @@ export default function TicketTable({
                     Return to Login
                   </button>
                 </div>
+              </div>
+            )}
+            {handoverModal.step === "already_done" && (
+              <div className="p-6 text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mb-4">
+                  <CheckCircle2 size={24} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">
+                  Already Handed Over
+                </h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                  Successfully handed over all existing pending tickets. There are no new pending tickets to handover right now.
+                </p>
+                <button
+                  onClick={() =>
+                    setHandoverModal({
+                      isOpen: false,
+                      step: "",
+                      missingTickets: [],
+                    })
+                  }
+                  className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-lg transition-colors"
+                >
+                  Continue
+                </button>
               </div>
             )}
           </div>

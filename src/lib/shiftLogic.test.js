@@ -26,21 +26,27 @@ describe("shift transitions", () => {
     const preMorning = getTransitionContext(atGmt8(6, 44));
     expect(preMorning).toBeNull();
 
-    const morningManual = getTransitionContext(atGmt8(7, 10));
+    const morningManual = getTransitionContext(atGmt8(7, 9));
     expect(morningManual?.pair).toEqual({ outgoing: "Night", incoming: "Morning" });
     expect(morningManual?.isManualWindow).toBe(true);
 
-    const morningShared = getTransitionContext(atGmt8(7, 11));
+    const morningShared = getTransitionContext(atGmt8(7, 10));
     expect(morningShared?.isSharedWindow).toBe(true);
     expect(morningShared?.isPostStartWindow).toBe(true);
 
-    const afternoonManual = getTransitionContext(atGmt8(14, 40));
+    const afternoonManual = getTransitionContext(atGmt8(14, 39));
     expect(afternoonManual?.pair).toEqual({ outgoing: "Morning", incoming: "Afternoon" });
     expect(afternoonManual?.isManualWindow).toBe(true);
 
-    const nightManual = getTransitionContext(atGmt8(22, 40));
+    const afternoonShared = getTransitionContext(atGmt8(14, 40));
+    expect(afternoonShared?.isSharedWindow).toBe(true);
+
+    const nightManual = getTransitionContext(atGmt8(22, 39));
     expect(nightManual?.pair).toEqual({ outgoing: "Afternoon", incoming: "Night" });
     expect(nightManual?.isManualWindow).toBe(true);
+
+    const nightShared = getTransitionContext(atGmt8(22, 40));
+    expect(nightShared?.isSharedWindow).toBe(true);
   });
 
   it("enforces incoming lock and outgoing visibility rules", () => {

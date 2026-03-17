@@ -16,6 +16,11 @@ const getTimeInMinutes = (inputNow = getGMT8Time()) => {
   return now.getHours() * 60 + now.getMinutes();
 };
 
+const getTimeInSeconds = (inputNow = getGMT8Time()) => {
+  const now = new Date(inputNow);
+  return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+};
+
 export const resolveActiveShiftFromTime = (inputNow = getGMT8Time()) => {
   const minutes = getTimeInMinutes(inputNow);
   if (minutes >= 430 && minutes < 880) return "Morning"; // 07:10 - 14:39
@@ -48,10 +53,10 @@ export const getTransitionContext = (inputNow = getGMT8Time()) => {
   const now = new Date(inputNow);
   now.setSeconds(0, 0);
 
-  const minutes = getTimeInMinutes(now);
+  const seconds = getTimeInSeconds(inputNow);
 
   // 06:45 - 07:29 => Night -> Morning
-  if (minutes >= 405 && minutes < 450) {
+  if (seconds >= 24300 && seconds < 27000) {
     const windowStart = new Date(now);
     windowStart.setHours(6, 45, 0, 0);
 
@@ -59,16 +64,16 @@ export const getTransitionContext = (inputNow = getGMT8Time()) => {
       pair: { outgoing: "Night", incoming: "Morning" },
       marker: `${getFormattedDate(now)}|Night->Morning`,
       windowStart,
-      isManualWindow: minutes <= 430,
-      isSharedWindow: minutes >= 430 && minutes < 450,
-      isPostStartWindow: minutes >= 431 && minutes < 450,
+      isManualWindow: seconds < 25800,
+      isSharedWindow: seconds >= 25800 && seconds < 27000,
+      isPostStartWindow: seconds >= 25800 && seconds < 27000,
       lockWarningHour: 7,
       lockWarningMinute: 20,
     };
   }
 
   // 14:15 - 14:59 => Morning -> Afternoon
-  if (minutes >= 855 && minutes < 900) {
+  if (seconds >= 51300 && seconds < 54000) {
     const windowStart = new Date(now);
     windowStart.setHours(14, 15, 0, 0);
 
@@ -76,16 +81,16 @@ export const getTransitionContext = (inputNow = getGMT8Time()) => {
       pair: { outgoing: "Morning", incoming: "Afternoon" },
       marker: `${getFormattedDate(now)}|Morning->Afternoon`,
       windowStart,
-      isManualWindow: minutes <= 880,
-      isSharedWindow: minutes >= 880 && minutes < 900,
-      isPostStartWindow: minutes >= 881 && minutes < 900,
+      isManualWindow: seconds < 52800,
+      isSharedWindow: seconds >= 52800 && seconds < 54000,
+      isPostStartWindow: seconds >= 52800 && seconds < 54000,
       lockWarningHour: 14,
       lockWarningMinute: 50,
     };
   }
 
   // 22:15 - 22:59 => Afternoon -> Night
-  if (minutes >= 1335 && minutes < 1380) {
+  if (seconds >= 80100 && seconds < 82800) {
     const windowStart = new Date(now);
     windowStart.setHours(22, 15, 0, 0);
 
@@ -93,9 +98,9 @@ export const getTransitionContext = (inputNow = getGMT8Time()) => {
       pair: { outgoing: "Afternoon", incoming: "Night" },
       marker: `${getFormattedDate(now)}|Afternoon->Night`,
       windowStart,
-      isManualWindow: minutes <= 1360,
-      isSharedWindow: minutes >= 1360 && minutes < 1380,
-      isPostStartWindow: minutes >= 1361 && minutes < 1380,
+      isManualWindow: seconds < 81600,
+      isSharedWindow: seconds >= 81600 && seconds < 82800,
+      isPostStartWindow: seconds >= 81600 && seconds < 82800,
       lockWarningHour: 22,
       lockWarningMinute: 50,
     };
