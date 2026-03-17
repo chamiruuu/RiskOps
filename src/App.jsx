@@ -122,15 +122,47 @@ function Dashboard() {
 
   const invokeSyncSheets = useCallback(async (body) => {
     try {
-      // ✅ AUTH-SECURITY-001: Use Supabase client instead of exposing anonKey
-      // The supabase client automatically handles authentication properly
-      const { data, error } = await supabase.functions.invoke('sync-sheets', {
-        body,
-      });
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-      if (error) {
-        console.error('Edge function error:', error);
-        return { data: null, error };
+      if (!supabaseUrl || !anonKey) {
+        throw new Error("Missing Supabase config for sync-sheets invoke.");
+      }
+
+      const invokeWithToken = async (token) =>
+        fetch(`${supabaseUrl}/functions/v1/sync-sheets`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: anonKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+      // This function doesn't require user identity, only a valid project JWT.
+      // Using anon JWT directly avoids invalid user-session token noise.
+      const response = await invokeWithToken(anonKey);
+
+      const raw = await response.text();
+      let data = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = { raw };
+      }
+
+      if (!response.ok) {
+        const detailedError = Object.assign(
+          new Error(
+            data?.message || data?.error || `Edge function HTTP ${response.status}`,
+          ),
+          {
+            status: response.status,
+            payload: data,
+          },
+        );
+        throw detailedError;
       }
 
       return { data, error: null };
