@@ -93,11 +93,8 @@ function Dashboard() {
 
     map.set(key, { at: now, field });
 
-    for (const [k, v] of map.entries()) {
-      if (now - v.at > OWNERSHIP_CONFLICT_WINDOW_MS) {
-        map.delete(k);
-      }
-    }
+    // ✅ PERF-RENDER-001: Removed O(n) cleanup loop from critical path
+    // Cleanup is now handled by separate interval below
   }, []);
 
   const broadcastEditActivity = useCallback(
@@ -121,28 +118,23 @@ function Dashboard() {
 
   const invokeSyncSheets = useCallback(async (body) => {
     try {
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-sheets`;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      const res = await fetch(url, {
-        method: "POST",
+      // ✅ AUTH-SECURITY-001: Use Supabase client instead of exposing anonKey
+      // The supabase client automatically handles authentication properly
+      const { data, error } = await supabase.functions.invoke('sync-sheets', {
+        body,
         headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
       });
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        return {
-          data: json,
-          error: new Error(json?.error || `Edge function HTTP ${res.status}`),
-        };
+      if (error) {
+        console.error('Edge function error:', error);
+        return { data: null, error };
       }
 
-      return { data: json, error: null };
+      return { data, error: null };
     } catch (error) {
+      console.error('Invoke error:', error);
       return { data: null, error };
     }
   }, []);
@@ -377,6 +369,22 @@ function Dashboard() {
       }
     };
   }, [emitRealtimeEvent, fetchTickets, user?.id]);
+
+  // ✅ PERF-RENDER-001: Periodic cleanup of recent local edits (instead of on every edit)
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      const map = recentLocalTicketEditsRef.current;
+      
+      for (const [k, v] of map.entries()) {
+        if (now - v.at > OWNERSHIP_CONFLICT_WINDOW_MS) {
+          map.delete(k);
+        }
+      }
+    }, 10000); // Clean every 10 seconds
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;

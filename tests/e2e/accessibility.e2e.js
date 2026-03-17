@@ -129,15 +129,15 @@ test.describe("Accessibility", () => {
     // Run color contrast check specifically
     const results = await page.evaluate(async () => {
       return new Promise((resolve) => {
-        (window as any).axe.run(
+        window.axe.run(
           { runOnly: { type: "rule", values: ["color-contrast"] } },
-          (error: any, result: any) => {
+          (error, result) => {
             resolve(result);
           }
         );
       });
     });
 
-    expect((results as any).violations.length).toBe(0);
+    expect(results.violations.length).toBe(0);
   });
 });

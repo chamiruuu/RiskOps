@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
+// ✅ LOGIC-REACT-001: Fixed - setState no longer called synchronously in effect
+// Uses useMemo for computed values instead
 export function useMerchantData(memberId, selectedDuty) {
   const [merchantData, setMerchantData] = useState([]);
-  const [result, setResult] = useState({ name: "", duty: "", error: "" }); // <-- UPDATED: Added duty
 
-  // 1. Fetch Data on Mount (Using your specific CSV structure)
+  // Separate effect 1: Fetch merchant data (runs once on mount)
   useEffect(() => {
     const fetchSheet = async () => {
       try {
@@ -37,15 +38,15 @@ export function useMerchantData(memberId, selectedDuty) {
     fetchSheet();
   }, []);
 
-  // 2. Lookup Logic
-  useEffect(() => {
+  // ✅ Separate effect 2: Compute lookup result based on inputs using useMemo
+  // This avoids setState being called synchronously within the effect
+  const computedResult = useMemo(() => {
     // If empty, clear result
     if (!memberId || !memberId.trim()) {
-      setResult({ name: "", duty: "", error: "" }); // <-- UPDATED
-      return;
+      return { name: "", duty: "", error: "" };
     }
 
-    // --- NEW: Safely handle the multi-select duty array ---
+    // Safely handle the multi-select duty array
     const dutyArray = Array.isArray(selectedDuty) ? selectedDuty : [];
     const isAdmin = dutyArray.includes("IC0");
 
@@ -59,32 +60,27 @@ export function useMerchantData(memberId, selectedDuty) {
       const match = merchantData.find((m) => m.id === idToSearch);
 
       if (match) {
-        let error = "";
+        // Gatekeeper Logic for Arrays
+        const error =
+          !isAdmin && !dutyArray.includes(match.duty)
+            ? `Access Denied: ${match.name} is under ${match.duty}.`
+            : "";
 
-        // --- MODIFIED: Gatekeeper Logic for Arrays ---
-        // Block if NOT Admin AND the match duty is NOT inside their selected duties
-        if (!isAdmin && !dutyArray.includes(match.duty)) {
-          error = `Access Denied: ${match.name} is under ${match.duty}.`;
-        }
-
-        setResult({ name: match.name, duty: match.duty, error }); // <-- UPDATED
-      } else {
-        setResult({ name: "", duty: "", error: "" }); // <-- UPDATED
+        return { name: match.name, duty: match.duty, error };
       }
+      return { name: "", duty: "", error: "" };
     }
     // Logic B: Default Rule (No @ suffix) -> Always QQ288
     else {
       const defaultMatch = merchantData.find((m) => m.name === "QQ288");
-      let error = "";
+      const error =
+        defaultMatch && !isAdmin && !dutyArray.includes(defaultMatch.duty)
+          ? `Access Denied: QQ288 is under ${defaultMatch.duty}.`
+          : "";
 
-      // --- MODIFIED: Gatekeeper Logic for Arrays ---
-      if (defaultMatch && !isAdmin && !dutyArray.includes(defaultMatch.duty)) {
-        error = `Access Denied: QQ288 is under ${defaultMatch.duty}.`;
-      }
-
-      setResult({ name: "QQ288", duty: defaultMatch?.duty || "IC2", error }); // <-- UPDATED
+      return { name: "QQ288", duty: defaultMatch?.duty || "IC2", error };
     }
   }, [memberId, merchantData, selectedDuty]);
 
-  return result;
+  return computedResult;
 }

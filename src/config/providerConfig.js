@@ -814,7 +814,7 @@ Time period：${timeRange} (GMT+8)`;
 
     requiredFields: ["memberId", "providerAccount", "timeRange"],
 
-    generateScript: (data, workName) => {
+    generateScript: (data) => {
       const { providerAccount, timeRange } = data;
 
       if (providerAccount && timeRange) {
@@ -1554,7 +1554,7 @@ Time period：${timeRange}`;
     requiredFields: ["memberId", "providerAccount"],
 
     // We repurpose the script generator to show a Ticket Summary instead!
-    generateScript: (data, workName) => {
+    generateScript: (data) => {
       const { providerAccount, memberId } = data;
 
       if (providerAccount && memberId) {

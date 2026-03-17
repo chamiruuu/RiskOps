@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = !app.isPackaged;
@@ -40,6 +41,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      enableRemoteModule: false, // ✅ SEC-ELECTRON-001: Disable remoteModule
+      sandbox: true, // ✅ SEC-ELECTRON-001: Run renderer in sandbox
     },
     titleBarStyle: 'default',
     show: false,
@@ -56,7 +59,23 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built index.html
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    
+    // ✅ SEC-ELECTRON-001: Validate file exists before loading
+    if (!fs.existsSync(indexPath)) {
+      const errorMsg = `Critical error: Built application not found at ${indexPath}.\nPlease rebuild the application by running: npm run electron:build`;
+      console.error(`❌ ${errorMsg}`);
+      
+      // Show error dialog
+      dialog.showErrorBox('Application Build Error', errorMsg);
+      
+      // Exit cleanly
+      mainWindow.close();
+      app.quit();
+      return;
+    }
+    
+    mainWindow.loadFile(indexPath);
   }
 }
 

@@ -1,7 +1,6 @@
-import { expect, test, beforeEach } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const testEmail = process.env.E2E_TEST_EMAIL || "test@example.com";
-const testPassword = process.env.E2E_TEST_PASSWORD || "testPassword123!";
+// ✅ LINT-CONFIG-001: Removed unused variables and imports
 const adminEmail = process.env.E2E_ADMIN_EMAIL;
 const adminPassword = process.env.E2E_ADMIN_PASSWORD;
 
@@ -76,7 +75,7 @@ test.describe("Authentication Flow", () => {
 
     // Should show validation error
     const emailInput = page.locator('input[type="email"]').first();
-    const validity = await emailInput.evaluate((el) => (el as HTMLInputElement).validity.valid);
+    const validity = await emailInput.evaluate((el) => el.validity.valid);
     expect(validity).toBe(false);
   });
 
@@ -89,7 +88,7 @@ test.describe("Authentication Flow", () => {
 
     // Should show validation error or prevent submission
     const passwordInput = page.locator('input[type="password"]').first();
-    const validity = await passwordInput.evaluate((el) => (el as HTMLInputElement).validity.valid);
+    const validity = await passwordInput.evaluate((el) => el.validity.valid);
     expect(validity).toBe(false);
   });
 

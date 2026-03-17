@@ -170,7 +170,13 @@ export const DutyProvider = ({ children }) => {
         .select("user_id, shift_type")
         .eq("cycle_period", currentLiveCycle);
 
-      const { data: profiles } = await supabase.from("profiles").select("id, work_name");
+      const { data: profiles, error: profilesError } = await supabase.rpc(
+        "list_profile_directory",
+      );
+
+      if (profilesError) {
+        console.error("Error fetching roster profile directory:", profilesError);
+      }
 
       if (assignments && profiles) {
         const profileById = new Map(profiles.map((p) => [p.id, p]));

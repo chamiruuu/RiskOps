@@ -16,6 +16,224 @@ const FIELD_TO_COLUMN: Record<string, string> = {
   status: 'L',
 }
 
+const GOOGLE_API_TIMEOUT_MS = 10_000
+const GOOGLE_API_MAX_RETRIES = 3
+const GOOGLE_API_INITIAL_RETRY_MS = 750
+const GOOGLE_API_MAX_RETRY_MS = 4_000
+
+type RequestContext = Record<string, unknown>
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const truncateForLog = (value: string, max = 400): string =>
+  value.length > max ? `${value.slice(0, max)}...` : value
+
+const formatLogContext = (context: RequestContext): string => {
+  try {
+    return JSON.stringify(context)
+  } catch {
+    return '[unserializable-context]'
+  }
+}
+
+const logEdgeEvent = (
+  level: 'log' | 'warn' | 'error',
+  message: string,
+  context: RequestContext = {},
+) => {
+  console[level](`[sync-sheets] ${message} ${formatLogContext(context)}`)
+}
+
+const createHttpError = (
+  message: string,
+  status = 500,
+  details: RequestContext = {},
+) => Object.assign(new Error(message), { status, details })
+
+const isRetryableStatus = (status: number): boolean =>
+  [408, 409, 425, 429, 500, 502, 503, 504].includes(status)
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'AbortError'
+
+const isRetryableFetchError = (error: unknown): boolean => {
+  if (isAbortError(error)) return true
+  if (!(error instanceof Error)) return false
+  return error.name === 'TypeError'
+}
+
+const getRetryDelayMs = (attempt: number): number =>
+  Math.min(
+    GOOGLE_API_INITIAL_RETRY_MS * 2 ** Math.max(attempt - 1, 0),
+    GOOGLE_API_MAX_RETRY_MS,
+  )
+
+const extractGoogleErrorMessage = (payload: any): string | null => {
+  if (!payload) return null
+  if (typeof payload === 'string') return payload
+  if (typeof payload?.error === 'string') return payload.error
+  if (typeof payload?.error?.message === 'string') return payload.error.message
+  if (typeof payload?.message === 'string') return payload.message
+  return null
+}
+
+const parseJsonResponse = async (
+  response: Response,
+  operation: string,
+  requestId: string,
+): Promise<any> => {
+  const raw = await response.text()
+
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw createHttpError(
+      `${operation} returned a non-JSON response from Google`,
+      502,
+      {
+        requestId,
+        operation,
+        status: response.status,
+        bodyPreview: truncateForLog(raw),
+      },
+    )
+  }
+}
+
+type GoogleJsonRequestOptions = {
+  operation: string
+  requestId: string
+  context?: RequestContext
+  timeoutMs?: number
+  maxRetries?: number
+}
+
+const fetchGoogleJson = async (
+  url: string,
+  init: RequestInit,
+  {
+    operation,
+    requestId,
+    context = {},
+    timeoutMs = GOOGLE_API_TIMEOUT_MS,
+    maxRetries = GOOGLE_API_MAX_RETRIES,
+  }: GoogleJsonRequestOptions,
+) => {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    const startedAt = Date.now()
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      })
+      const payload = await parseJsonResponse(response, operation, requestId)
+      const googleError = extractGoogleErrorMessage(payload)
+
+      if (!response.ok || googleError) {
+        const retryable = isRetryableStatus(response.status)
+        const message = `${operation} failed with status ${response.status}${googleError ? `: ${googleError}` : ''}`
+
+        logEdgeEvent(
+          retryable && attempt < maxRetries ? 'warn' : 'error',
+          retryable && attempt < maxRetries
+            ? 'Transient Google API failure, retrying'
+            : 'Google API request failed',
+          {
+            requestId,
+            operation,
+            attempt,
+            maxRetries,
+            durationMs: Date.now() - startedAt,
+            status: response.status,
+            retryable,
+            ...context,
+            error: googleError,
+          },
+        )
+
+        if (retryable && attempt < maxRetries) {
+          await wait(getRetryDelayMs(attempt))
+          continue
+        }
+
+        throw createHttpError(message, retryable ? 502 : response.status || 502, {
+          requestId,
+          operation,
+          attempt,
+          status: response.status,
+          ...context,
+        })
+      }
+
+      return payload
+    } catch (error) {
+      lastError = error
+
+      const retryable =
+        isRetryableFetchError(error) ||
+        (error instanceof Error && 'status' in error && typeof (error as any).status === 'number'
+          ? isRetryableStatus((error as any).status)
+          : false)
+
+      logEdgeEvent(
+        retryable && attempt < maxRetries ? 'warn' : 'error',
+        isAbortError(error)
+          ? 'Google API request timed out'
+          : retryable && attempt < maxRetries
+            ? 'Google API request threw retryable error'
+            : 'Google API request failed',
+        {
+          requestId,
+          operation,
+          attempt,
+          maxRetries,
+          durationMs: Date.now() - startedAt,
+          retryable,
+          ...context,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      )
+
+      if (retryable && attempt < maxRetries) {
+        await wait(getRetryDelayMs(attempt))
+        continue
+      }
+
+      if (error instanceof Error && 'status' in error) {
+        throw error
+      }
+
+      throw createHttpError(
+        isAbortError(error)
+          ? `${operation} timed out while waiting for Google`
+          : `${operation} failed while calling Google`,
+        isAbortError(error) ? 504 : 502,
+        {
+          requestId,
+          operation,
+          attempt,
+          ...context,
+        },
+      )
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
+  throw createHttpError(`${operation} failed after retries`, 502, {
+    requestId,
+    operation,
+    error: lastError instanceof Error ? lastError.message : String(lastError),
+  })
+}
+
 const normalizeTicketId = (raw: unknown): string => {
   const str = String(raw ?? '').trim().replace(/^'+/, '');
   if (!str) return '';
@@ -57,7 +275,11 @@ const validateReadResponse = (response: any): boolean => {
 };
 
 // Helper to generate a Google Access Token without the bulky library
-async function getGoogleAccessToken(clientEmail: string, privateKey: string) {
+async function getGoogleAccessToken(
+  clientEmail: string,
+  privateKey: string,
+  requestId: string,
+) {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
     iss: clientEmail,
@@ -86,22 +308,37 @@ async function getGoogleAccessToken(clientEmail: string, privateKey: string) {
 
   const jwt = await create({ alg: "RS256", typ: "JWT" }, payload, key);
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
+  const data = await fetchGoogleJson(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwt,
+      }),
+    },
+    {
+      operation: 'oauth_token',
+      requestId,
+      context: { clientEmail },
+    },
+  )
 
-  const data = await response.json();
-  if (data.error) throw new Error(`OAuth Error: ${data.error_description || data.error}`);
+  if (!data?.access_token) {
+    throw createHttpError('OAuth token response did not include an access token', 502, {
+      requestId,
+      operation: 'oauth_token',
+    })
+  }
+
   return data.access_token;
 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+
+  const requestId = crypto.randomUUID()
 
   try {
     const url = new URL(req.url);
@@ -127,10 +364,25 @@ serve(async (req) => {
     const body = req.method === 'GET' ? {} : await req.json();
     const { action, tickets, handoverBy, ticketId, status, fields, rowHint } = body;
 
+    logEdgeEvent('log', 'Incoming sync-sheets request', {
+      requestId,
+      method: req.method,
+      action,
+      ticketsCount: Array.isArray(tickets) ? tickets.length : undefined,
+      hasFields: !!fields,
+      hasRowHint: !!rowHint,
+      ticketId: ticketId ? String(ticketId) : undefined,
+    })
+
     const sheetId = Deno.env.get('GOOGLE_SHEET_ID')?.trim();
     const rawCreds = Deno.env.get('GOOGLE_CREDS_JSON')?.trim();
 
-    if (!sheetId || !rawCreds) throw new Error('Missing Supabase Secrets.');
+    if (!sheetId || !rawCreds) throw createHttpError('Missing Supabase Secrets.', 500, {
+      requestId,
+      action,
+      hasSheetId: !!sheetId,
+      hasGoogleCreds: !!rawCreds,
+    });
 
     if (action === 'HEALTH') {
       return new Response(
@@ -149,7 +401,11 @@ serve(async (req) => {
     }
 
     const creds = JSON.parse(rawCreds);
-    const accessToken = await getGoogleAccessToken(creds.client_email, creds.private_key);
+    const accessToken = await getGoogleAccessToken(
+      creds.client_email,
+      creds.private_key,
+      requestId,
+    );
 
     // ==========================================
     // ACTION 1: APPEND PENDING TICKETS
@@ -158,23 +414,34 @@ serve(async (req) => {
       const incomingTickets = Array.isArray(tickets) ? tickets : [];
       if (incomingTickets.length === 0) {
         return new Response(
-          JSON.stringify({ success: true, appended: 0, skipped: 0, reason: 'No tickets provided' }),
+          JSON.stringify({ success: true, appended: 0, skipped: 0, reason: 'No tickets provided', requestId }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
 
       // Read existing Ticket IDs to enforce one row per ticket in Google Sheet.
       const idRange = encodeURIComponent(`${SHEET_NAME}!A:A`);
-      const idRes = await fetch(
+      const idJson = await fetchGoogleJson(
         `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${idRange}`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
+        {
+          operation: 'append_read_existing_ids',
+          requestId,
+          context: {
+            action,
+            range: `${SHEET_NAME}!A:A`,
+            incomingTickets: incomingTickets.length,
+          },
+        },
       );
-      const idJson = await idRes.json();
-      if (idJson.error) throw new Error(idJson.error.message);
 
       // ✅ API-EDGE-003: Validate response schema
       if (!validateReadResponse(idJson)) {
-        throw new Error(`Invalid Google Sheets API response format for read operation`);
+        throw createHttpError(`Invalid Google Sheets API response format for read operation`, 502, {
+          requestId,
+          action,
+          operation: 'append_read_existing_ids',
+        });
       }
 
       const existingIdSet = new Set(
@@ -199,6 +466,7 @@ serve(async (req) => {
             appended: 0,
             skipped: incomingTickets.length,
             reason: 'All tickets already exist in sheet',
+            requestId,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
@@ -221,19 +489,37 @@ serve(async (req) => {
       ]);
 
       const range = encodeURIComponent(`${SHEET_NAME}!A:M`);
-      const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: rows })
-      });
-
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      const data = await fetchGoogleJson(
+        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`,
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: rows })
+        },
+        {
+          operation: 'append_rows',
+          requestId,
+          context: {
+            action,
+            rows: rows.length,
+            range: `${SHEET_NAME}!A:M`,
+          },
+        },
+      )
 
       // ✅ API-EDGE-003: Validate append response schema
       if (!validateAppendResponse(data)) {
-        console.warn('Unexpected APPEND response structure:', data);
-        throw new Error(`Google Sheets API returned unexpected response format`);
+        logEdgeEvent('error', 'Unexpected APPEND response structure', {
+          requestId,
+          action,
+          operation: 'append_rows',
+          responsePreview: truncateForLog(JSON.stringify(data ?? null)),
+        })
+        throw createHttpError(`Google Sheets API returned unexpected response format`, 502, {
+          requestId,
+          action,
+          operation: 'append_rows',
+        });
       }
 
       return new Response(
@@ -241,6 +527,7 @@ serve(async (req) => {
           success: true,
           appended: ticketsToAppend.length,
           skipped: incomingTickets.length - ticketsToAppend.length,
+          requestId,
           data,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -251,19 +538,33 @@ serve(async (req) => {
     // ACTION 2: UPDATE STATUS / FIELDS
     // ==========================================
     if (action === 'UPDATE' || action === 'UPDATE_FIELDS') {
+      const targetId = normalizeTicketId(ticketId);
       const getRange = encodeURIComponent(`${SHEET_NAME}!A:M`);
-      const getRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${getRange}`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const getJson = await getRes.json();
-      if (getJson.error) throw new Error(getJson.error.message);
+      const getJson = await fetchGoogleJson(
+        `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${getRange}`,
+        {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        },
+        {
+          operation: 'read_sheet_rows',
+          requestId,
+          context: {
+            action,
+            range: `${SHEET_NAME}!A:M`,
+            ticketId: targetId,
+          },
+        },
+      )
 
       // ✅ API-EDGE-003: Validate read response schema
       if (!validateReadResponse(getJson)) {
-        throw new Error(`Invalid Google Sheets API response format for read operation`);
+        throw createHttpError(`Invalid Google Sheets API response format for read operation`, 502, {
+          requestId,
+          action,
+          operation: 'read_sheet_rows',
+        });
       }
 
-      const targetId = normalizeTicketId(ticketId);
       const rows = getJson.values || [];
       let rowIndex = rows.findIndex((row: any) => normalizeTicketId(row?.[0]) === targetId);
 
@@ -308,14 +609,14 @@ serve(async (req) => {
           }));
 
         if (updates.length === 0) {
-          return new Response(JSON.stringify({ success: true, updated: false, reason: 'No mapped fields provided' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          return new Response(JSON.stringify({ success: true, updated: false, reason: 'No mapped fields provided', requestId }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         const updateResults = [];
 
         for (const u of updates) {
           const encodedRange = encodeURIComponent(u.range);
-          const updateRes = await fetch(
+          const updateJson = await fetchGoogleJson(
             `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodedRange}?valueInputOption=USER_ENTERED`,
             {
               method: 'PUT',
@@ -325,37 +626,69 @@ serve(async (req) => {
               },
               body: JSON.stringify({ values: u.values }),
             },
-          );
-
-          const updateJson = await updateRes.json();
-          if (updateJson.error) {
-            throw new Error(
-              `Google update failed for ${u.range}: ${updateJson.error.message}`,
-            );
-          }
+            {
+              operation: 'update_sheet_cell',
+              requestId,
+              context: {
+                action,
+                ticketId: targetId,
+                range: u.range,
+              },
+            },
+          )
 
           // ✅ API-EDGE-003: Validate update response schema
           if (!validateUpdateResponse(updateJson)) {
-            console.warn(`Unexpected UPDATE response for ${u.range}:`, updateJson);
-            throw new Error(`Google Sheets API returned unexpected response format for update`);
+            logEdgeEvent('error', 'Unexpected UPDATE response structure', {
+              requestId,
+              action,
+              operation: 'update_sheet_cell',
+              range: u.range,
+              responsePreview: truncateForLog(JSON.stringify(updateJson ?? null)),
+            })
+            throw createHttpError(`Google Sheets API returned unexpected response format for update`, 502, {
+              requestId,
+              action,
+              operation: 'update_sheet_cell',
+              range: u.range,
+            });
           }
 
           updateResults.push(updateJson);
         }
 
-        return new Response(JSON.stringify({ success: true, updated: true, data: updateResults }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ success: true, updated: true, requestId, data: updateResults }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       return new Response(JSON.stringify({
         success: true,
         updated: false,
         reason: 'Row not found by ticket ID or fallback hint',
+        requestId,
         ticketId: String(ticketId),
         rowHint: rowHint || null,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    throw new Error('Invalid Action');
+    throw createHttpError('Invalid Action', 400, { requestId, action });
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const status = typeof error?.status === 'number' ? error.status : 500
+    const details = error?.details && typeof error.details === 'object' ? error.details : undefined
+
+    logEdgeEvent('error', 'sync-sheets request failed', {
+      requestId,
+      status,
+      error: error?.message || 'Unknown error',
+      ...(details || {}),
+    })
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error?.message || 'Unknown error',
+        requestId,
+        timestamp: new Date().toISOString(),
+      }),
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
   }
 });

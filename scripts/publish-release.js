@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global process */
+// ✅ LINT-CONFIG-001: Removed duplicate 'global process' - it's already a Node global
 
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
