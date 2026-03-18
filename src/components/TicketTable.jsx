@@ -1,3 +1,43 @@
+  // --- HANDOVER ENABLED NOTIFICATION ---
+  useEffect(() => {
+    // Only outgoing shift, not admin/leader, and only if handover just became enabled
+    if (isAdminOrLeader || !isOutgoingForWindow || !isActuallyInWindow) return;
+
+    // Only show if handover just became enabled (not if already enabled previously)
+    const now = getGMT8Time();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    // Trigger at exact enable times
+    const isEnableTime =
+      (h === 6 && m === 45) ||
+      (h === 14 && m === 15) ||
+      (h === 22 && m === 15);
+
+    // Only if there are tickets to handover
+    if (!isEnableTime || unhandedPendingCount === 0) return;
+
+    // Use a marker to avoid duplicate notifications in the same window
+    const enableMarker = `${h}:${m}|${currentHandoverMarker}`;
+    if (window.__lastHandoverEnableMarker === enableMarker) return;
+    window.__lastHandoverEnableMarker = enableMarker;
+
+    // Show toast notification
+    setReminderToast({
+      title: "Handover Enabled",
+      text: "The handover window is now open. Please proceed with the handover if all tasks are complete."
+    });
+    setShowReminderToast(true);
+    setTimeout(() => setShowReminderToast(false), 8000);
+
+    // System notification (if allowed)
+    if (document.visibilityState !== "visible" || !document.hasFocus()) {
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("Handover Enabled", {
+          body: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
+        });
+      }
+    }
+  }, [isAdminOrLeader, isOutgoingForWindow, isActuallyInWindow, unhandedPendingCount, currentHandoverMarker]);
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
