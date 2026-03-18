@@ -1,43 +1,3 @@
-  // --- HANDOVER ENABLED NOTIFICATION ---
-  useEffect(() => {
-    // Only outgoing shift, not admin/leader, and only if handover just became enabled
-    if (isAdminOrLeader || !isOutgoingForWindow || !isActuallyInWindow) return;
-
-    // Only show if handover just became enabled (not if already enabled previously)
-    const now = getGMT8Time();
-    const h = now.getHours();
-    const m = now.getMinutes();
-    // Trigger at exact enable times
-    const isEnableTime =
-      (h === 6 && m === 45) ||
-      (h === 14 && m === 15) ||
-      (h === 22 && m === 15);
-
-    // Only if there are tickets to handover
-    if (!isEnableTime || unhandedPendingCount === 0) return;
-
-    // Use a marker to avoid duplicate notifications in the same window
-    const enableMarker = `${h}:${m}|${currentHandoverMarker}`;
-    if (window.__lastHandoverEnableMarker === enableMarker) return;
-    window.__lastHandoverEnableMarker = enableMarker;
-
-    // Show toast notification
-    setReminderToast({
-      title: "Handover Enabled",
-      text: "The handover window is now open. Please proceed with the handover if all tasks are complete."
-    });
-    setShowReminderToast(true);
-    setTimeout(() => setShowReminderToast(false), 8000);
-
-    // System notification (if allowed)
-    if (document.visibilityState !== "visible" || !document.hasFocus()) {
-      if (window.Notification && Notification.permission === "granted") {
-        new Notification("Handover Enabled", {
-          body: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
-        });
-      }
-    }
-  }, [isAdminOrLeader, isOutgoingForWindow, isActuallyInWindow, unhandedPendingCount, currentHandoverMarker]);
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
@@ -61,7 +21,7 @@ import {
 } from "lucide-react";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
-import { PROVIDER_CONFIG } from "../config/providerConfig"; // <-- 2. ADD THIS
+import { PROVIDER_CONFIG } from "../config/providerConfig";
 import {
   getGMT8Time,
   getLastShiftChangeTime,
@@ -240,7 +200,7 @@ export default function TicketTable({
     const noteAge = now - (note.createdAt || 0);
     const isWithinEditWindow = noteAge <= THREE_HOURS_MS;
     const isNoteAuthor = note.createdByUserId === user?.id;
-    
+
     return isWithinEditWindow && (isNoteAuthor || isAdminOrLeader);
   };
 
@@ -260,7 +220,11 @@ export default function TicketTable({
 
   const [selectedTicketForNotes, setSelectedTicketForNotes] = useState(null);
   const [newNoteText, setNewNoteText] = useState("");
-  const [editingNoteState, setEditingNoteState] = useState({ ticketId: null, noteIndex: null, text: "" });
+  const [editingNoteState, setEditingNoteState] = useState({
+    ticketId: null,
+    noteIndex: null,
+    text: "",
+  });
   const [searchTerm, setSearchTerm] = useState("");
 
   const [deletingRowId, setDeletingRowId] = useState(null);
@@ -314,8 +278,10 @@ export default function TicketTable({
   }, [dutyKey]);
 
   const [isHandoverProcessing, setIsHandoverProcessing] = useState(false);
-  const [handoverCompletedForCurrentWindow, setHandoverCompletedForCurrentWindow] =
-    useState(false);
+  const [
+    handoverCompletedForCurrentWindow,
+    setHandoverCompletedForCurrentWindow,
+  ] = useState(false);
   const [lastHandoverTimestamp, setLastHandoverTimestamp] = useState(null);
   const autoHandoverLoggedRef = useRef("");
   const lastPostStartReminderMinuteRef = useRef("");
@@ -796,12 +762,23 @@ export default function TicketTable({
   );
 
   const queueSheetRetryJob = useCallback(
-    async ({ marker, nextShift, ticketsToRetry, errorMessage, correlationId }) => {
+    async ({
+      marker,
+      nextShift,
+      ticketsToRetry,
+      errorMessage,
+      correlationId,
+    }) => {
       if (missingRetryQueueTableRef.current) {
         return;
       }
 
-      if (!marker || !nextShift || !Array.isArray(ticketsToRetry) || ticketsToRetry.length === 0) {
+      if (
+        !marker ||
+        !nextShift ||
+        !Array.isArray(ticketsToRetry) ||
+        ticketsToRetry.length === 0
+      ) {
         return;
       }
 
@@ -866,7 +843,8 @@ export default function TicketTable({
             code: LOGIC_CODES.HANDOVER_RETRY_QUEUED,
             level: "warning",
             title: "Handover Retry Queued",
-            detail: "Google Sheet sync failed and was queued for automatic retry for up to 2 hours.",
+            detail:
+              "Google Sheet sync failed and was queued for automatic retry for up to 2 hours.",
             at: Date.now(),
             source: "handover",
             correlationId,
@@ -914,7 +892,8 @@ export default function TicketTable({
           marker,
           nextShift,
           ticketsToRetry: uniquePendingTix,
-          errorMessage: sheetSyncResult?.errorMessage || "Unknown sheet sync error.",
+          errorMessage:
+            sheetSyncResult?.errorMessage || "Unknown sheet sync error.",
           correlationId,
         });
       }
@@ -1015,10 +994,8 @@ export default function TicketTable({
 
           const payload = job.payload || {};
           const correlationId = createCorrelationId("HO");
-          const { data: syncData, error: syncError } = await supabase.functions.invoke(
-            "sync-sheets",
-            { body: payload },
-          );
+          const { data: syncData, error: syncError } =
+            await supabase.functions.invoke("sync-sheets", { body: payload });
 
           const syncFailed = !!syncError || syncData?.success === false;
           if (!syncFailed) {
@@ -1035,7 +1012,9 @@ export default function TicketTable({
           }
 
           const errorMessage =
-            syncError?.message || syncData?.error || "Google sheet retry failed.";
+            syncError?.message ||
+            syncData?.error ||
+            "Google sheet retry failed.";
           const firstFailedMs = Date.parse(job.first_failed_at || nowIso);
           const elapsedMs = Date.now() - firstFailedMs;
 
@@ -1455,7 +1434,8 @@ export default function TicketTable({
   const isActuallyInWindow = checkIsHandoverWindow();
   const currentHandoverMarker = buildHandoverMarker();
   const handedOverSetForMarker =
-    handedOverTicketIdsByMarkerRef.current.get(currentHandoverMarker) || new Set();
+    handedOverTicketIdsByMarkerRef.current.get(currentHandoverMarker) ||
+    new Set();
   const unhandedPendingCount = tickets.filter(
     (t) =>
       t.status === "Pending" &&
@@ -1474,11 +1454,57 @@ export default function TicketTable({
   else if (!isOutgoingForWindow && !isAdminOrLeader)
     handoverTooltip = "Only the outgoing shift can handover in this window.";
   else if (unhandedPendingCount === 0)
-    handoverTooltip = "All existing pending tickets for this window are already handed over.";
+    handoverTooltip =
+      "All existing pending tickets for this window are already handed over.";
 
   const availableUsersToTransfer = onlineUsers.filter(
     (u) => u.id && u.id !== user?.id,
   );
+
+  // --- HANDOVER ENABLED NOTIFICATION ---
+  useEffect(() => {
+    // Only outgoing shift, not admin/leader, and only if handover just became enabled
+    if (isAdminOrLeader || !isOutgoingForWindow || !isActuallyInWindow) return;
+
+    // Only show if handover just became enabled (not if already enabled previously)
+    const now = getGMT8Time();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    // Trigger at exact enable times
+    const isEnableTime =
+      (h === 6 && m === 45) || (h === 14 && m === 15) || (h === 22 && m === 15);
+
+    // Only if there are tickets to handover
+    if (!isEnableTime || unhandedPendingCount === 0) return;
+
+    // Use a marker to avoid duplicate notifications in the same window
+    const enableMarker = `${h}:${m}|${currentHandoverMarker}`;
+    if (window.__lastHandoverEnableMarker === enableMarker) return;
+    window.__lastHandoverEnableMarker = enableMarker;
+
+    // Show toast notification
+    setReminderToast({
+      title: "Handover Enabled",
+      text: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
+    });
+    setShowReminderToast(true);
+    setTimeout(() => setShowReminderToast(false), 8000);
+
+    // System notification (if allowed)
+    if (document.visibilityState !== "visible" || !document.hasFocus()) {
+      if (window.Notification && Notification.permission === "granted") {
+        new Notification("Handover Enabled", {
+          body: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
+        });
+      }
+    }
+  }, [
+    isAdminOrLeader,
+    isOutgoingForWindow,
+    isActuallyInWindow,
+    unhandedPendingCount,
+    currentHandoverMarker,
+  ]);
 
   return (
     <main className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden relative">
@@ -2109,7 +2135,8 @@ export default function TicketTable({
                   Already Handed Over
                 </h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  Successfully handed over all existing pending tickets. There are no new pending tickets to handover right now.
+                  Successfully handed over all existing pending tickets. There
+                  are no new pending tickets to handover right now.
                 </p>
                 <button
                   onClick={() =>
@@ -2162,10 +2189,12 @@ export default function TicketTable({
                 </div>
               ) : (
                 activeNotes.map((note, idx) => {
-                  const isEditing = editingNoteState.ticketId === selectedTicketForNotes.id && editingNoteState.noteIndex === idx;
+                  const isEditing =
+                    editingNoteState.ticketId === selectedTicketForNotes.id &&
+                    editingNoteState.noteIndex === idx;
                   const canEdit = canEditNote(note);
                   const canDelete = canDeleteNote(note);
-                  
+
                   return (
                     <div
                       key={idx}
@@ -2179,14 +2208,21 @@ export default function TicketTable({
                           {note.timestamp}
                         </span>
                         {note.isEdited && (
-                          <span className="text-[8px] text-slate-400 italic">(edited)</span>
+                          <span className="text-[8px] text-slate-400 italic">
+                            (edited)
+                          </span>
                         )}
                       </div>
                       {isEditing ? (
                         <div className="bg-white border-2 border-blue-400 shadow-sm rounded-2xl rounded-tl-sm max-w-[85%] p-2.5 flex gap-2 items-end">
                           <textarea
                             value={editingNoteState.text}
-                            onChange={(e) => setEditingNoteState({ ...editingNoteState, text: e.target.value })}
+                            onChange={(e) =>
+                              setEditingNoteState({
+                                ...editingNoteState,
+                                text: e.target.value,
+                              })
+                            }
                             className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-400 resize-none"
                             rows="2"
                             autoFocus
@@ -2194,8 +2230,16 @@ export default function TicketTable({
                           <div className="flex gap-1">
                             <button
                               onClick={() => {
-                                onEditNote(selectedTicketForNotes.id, idx, editingNoteState.text);
-                                setEditingNoteState({ ticketId: null, noteIndex: null, text: "" });
+                                onEditNote(
+                                  selectedTicketForNotes.id,
+                                  idx,
+                                  editingNoteState.text,
+                                );
+                                setEditingNoteState({
+                                  ticketId: null,
+                                  noteIndex: null,
+                                  text: "",
+                                });
                               }}
                               className="p-1.5 bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
                               title="Save edit"
@@ -2203,7 +2247,13 @@ export default function TicketTable({
                               <CheckCircle2 size={14} />
                             </button>
                             <button
-                              onClick={() => setEditingNoteState({ ticketId: null, noteIndex: null, text: "" })}
+                              onClick={() =>
+                                setEditingNoteState({
+                                  ticketId: null,
+                                  noteIndex: null,
+                                  text: "",
+                                })
+                              }
                               className="p-1.5 bg-slate-300 hover:bg-slate-400 text-slate-700 rounded transition-colors"
                               title="Cancel"
                             >
@@ -2220,7 +2270,13 @@ export default function TicketTable({
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
                               {canEdit && (
                                 <button
-                                  onClick={() => setEditingNoteState({ ticketId: selectedTicketForNotes.id, noteIndex: idx, text: note.text })}
+                                  onClick={() =>
+                                    setEditingNoteState({
+                                      ticketId: selectedTicketForNotes.id,
+                                      noteIndex: idx,
+                                      text: note.text,
+                                    })
+                                  }
                                   className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded transition-colors"
                                   title="Edit note (3 hours window)"
                                 >
@@ -2231,7 +2287,10 @@ export default function TicketTable({
                                 <button
                                   onClick={() => {
                                     if (confirm("Delete this note?")) {
-                                      onDeleteNote(selectedTicketForNotes.id, idx);
+                                      onDeleteNote(
+                                        selectedTicketForNotes.id,
+                                        idx,
+                                      );
                                     }
                                   }}
                                   className="p-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded transition-colors"
