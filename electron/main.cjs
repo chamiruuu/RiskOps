@@ -12,7 +12,7 @@ const appIconPath =
     ? (app.isPackaged
         ? path.join(process.resourcesPath, 'icon.icns')
         : path.join(__dirname, 'assets', 'icon.icns'))
-    : path.join(__dirname, 'assets', 'icon.ico');
+    : path.join(__dirname, 'assets', 'icon.iconset', 'icon-rounded-corners.ico');
 
 // Required on Windows so taskbar/pinned icon uses the app identity instead of Electron default.
 if (process.platform === 'win32') {

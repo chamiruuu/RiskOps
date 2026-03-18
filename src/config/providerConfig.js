@@ -271,7 +271,7 @@ export const PROVIDER_CONFIG = {
       // NEW: We changed this to an object so it can hold the image link!
       {
         text: "Log in to the provider's BO -> Fraud tools -> Sexy Hedging Detection -> Select [All Game].",
-        image: "https://snipboard.io/xwYg7X.jpg",
+        image: "https://snipboard.io/bJwEef.jpg",
       },
       "Set Date Range: Select the query period.",
       "Set User ID: Enter the member's game account (q28 + BO1.13 Provider ID).",
