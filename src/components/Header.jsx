@@ -30,12 +30,14 @@ import {
   AlertTriangle,
   AlertCircle,
   ArchiveRestore,
+  Download,
   Search,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
-import notificationSound from "../assets/Notification.mp3";
+import notificationSoundCommon from "../assets/notification sound common.mp3";
+import notificationTicketCreation from "../assets/Notificationforticketcreation.mp3";
 import {
   LOGIC_CODES,
   LOGIC_SEVERITIES,
@@ -130,6 +132,11 @@ export default function Header() {
   const [historySearchQuery, setHistorySearchQuery] = useState("");
   const [historyFilterDuty, setHistoryFilterDuty] = useState("All");
   const [historyFilterStatus, setHistoryFilterStatus] = useState("All");
+  const [isExportingHistoryLog, setIsExportingHistoryLog] = useState(false);
+  const [historyExportNotice, setHistoryExportNotice] = useState({
+    text: "",
+    type: "",
+  });
 
   // --- INFO CENTER STATES ---
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -152,8 +159,13 @@ export default function Header() {
     return `${mins}m ${secs % 60}s ago`;
   }, []);
 
-  const playAlertSound = useCallback(() => {
-    const audio = new Audio(notificationSound);
+  // Plays the ticket creation sound for ticket-created, common sound for others
+  const playAlertSound = useCallback((type) => {
+    let audioSrc = notificationSoundCommon;
+    if (type === "ticket-created") {
+      audioSrc = notificationTicketCreation;
+    }
+    const audio = new Audio(audioSrc);
     audio.play().catch(() => console.log("Audio blocked by browser"));
   }, []);
 
@@ -372,7 +384,7 @@ export default function Header() {
 
       setUpdaterNotification(notification);
       setShowUpdaterToast(true);
-      playAlertSound();
+      playAlertSound("ticket-created");
       maybeShowSystemNotification("Update Ready", notification.text);
     });
 
@@ -454,7 +466,7 @@ export default function Header() {
         id: `shift-start-${Date.now()}`,
         type: "shift-start",
         text: "Your shift has started. Please take over pending investigations.",
-        time: Date.now(),
+        time: new Date().toISOString(),
       };
 
       setOpsNotification(notification);
@@ -504,7 +516,8 @@ export default function Header() {
         time: e.detail.time,
       });
 
-      // TicketTable handles local sound; this handles background OS popups.
+      playAlertSound();
+      // Also trigger OS popup when app is not focused.
       maybeShowSystemNotification("Handover Reminder", text);
     };
     const clearReminder = () => setTrackingReminder(null);
@@ -811,6 +824,22 @@ export default function Header() {
     }
   }, [cyclesList, selectedCycle]);
 
+  useEffect(() => {
+    if (!isAdminOrLeader || !cycleWarning) return;
+    if (!shouldEmitNotification("cycle-warning", cycleWarning, 5 * 60 * 1000)) {
+      return;
+    }
+
+    playAlertSound();
+    maybeShowSystemNotification("Shift Cycle Warning", cycleWarning);
+  }, [
+    cycleWarning,
+    isAdminOrLeader,
+    maybeShowSystemNotification,
+    playAlertSound,
+    shouldEmitNotification,
+  ]);
+
   // --- BROWSER NOTIFICATIONS & HANDOVER ALERTS ---
   useEffect(() => {
     if (
@@ -959,14 +988,30 @@ export default function Header() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "handover_requests" },
-        () => {
+        (payload) => {
+          if (payload?.eventType === "INSERT") {
+            const requester = payload.new?.requester_name || "A user";
+            const duties = Array.isArray(payload.new?.duties)
+              ? payload.new.duties.join(", ")
+              : "requested duties";
+            const text = `${requester} requested emergency handover for ${duties}.`;
+            if (shouldEmitNotification("handover-request", text, 12000)) {
+              playAlertSound();
+              maybeShowSystemNotification("Emergency Handover Request", text);
+            }
+          }
           fetchRequests();
         },
       )
       .subscribe();
 
     return () => supabase.removeChannel(sub);
-  }, [isAdminOrLeader]);
+  }, [
+    isAdminOrLeader,
+    maybeShowSystemNotification,
+    playAlertSound,
+    shouldEmitNotification,
+  ]);
 
   useEffect(() => {
     if (!isAdminOrLeader) return;
@@ -1001,7 +1046,19 @@ export default function Header() {
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "operational_alerts" },
-          () => {
+          (payload) => {
+            if (
+              payload?.eventType === "INSERT" &&
+              payload.new?.status === "open"
+            ) {
+              const title = payload.new?.title || "Operational Alert";
+              const message = payload.new?.message || "New operational alert.";
+              const text = `${title}: ${message}`;
+              if (shouldEmitNotification("operational-alert", text, 12000)) {
+                playAlertSound();
+                maybeShowSystemNotification("Operational Alert", text);
+              }
+            }
             fetchOperationalAlerts();
           },
         )
@@ -1011,7 +1068,12 @@ export default function Header() {
     return () => {
       if (sub) supabase.removeChannel(sub);
     };
-  }, [isAdminOrLeader]);
+  }, [
+    isAdminOrLeader,
+    maybeShowSystemNotification,
+    playAlertSound,
+    shouldEmitNotification,
+  ]);
 
   const handleApproveRequest = async (id, status) => {
     await supabase.from("handover_requests").update({ status }).eq("id", id);
@@ -1382,6 +1444,242 @@ export default function Header() {
     selectedHistoryTicketForNotes?.ic_account,
   );
   const historyModalHeaderClass = getDutyHeaderBg(historyModalDutyKey);
+
+  const parseArchivedNotes = useCallback((notesValue) => {
+    if (!notesValue) return [];
+    if (Array.isArray(notesValue)) return notesValue;
+    if (typeof notesValue === "string") {
+      try {
+        const parsed = JSON.parse(notesValue);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, []);
+
+  const toUtcIso = useCallback((value) => {
+    if (value === null || value === undefined || value === "") return "";
+
+    if (typeof value === "number") {
+      const fromNumber = new Date(value);
+      return Number.isNaN(fromNumber.getTime()) ? "" : fromNumber.toISOString();
+    }
+
+    const fromString = new Date(value);
+    return Number.isNaN(fromString.getTime()) ? "" : fromString.toISOString();
+  }, []);
+
+  const csvEscape = useCallback((value) => {
+    if (value === null || value === undefined) return "";
+    const str = String(value);
+    if (/[",\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }, []);
+
+  const createAuditActionRows = useCallback(
+    (ticketsToExport) => {
+      const rows = [];
+
+      ticketsToExport.forEach((ticket) => {
+        const ticketArchivedAt =
+          toUtcIso(ticket.updated_at) || toUtcIso(ticket.created_at);
+        const ticketNotes = parseArchivedNotes(ticket.notes);
+
+        rows.push({
+          action_at_utc: ticketArchivedAt,
+          action_type: "TICKET_ARCHIVED",
+          actor: ticket.recorder || "Unknown",
+          duty: ticket.ic_account || "",
+          ticket_id: ticket.id,
+          merchant_id:
+            ticket.member_id && ticket.member_id.includes("@")
+              ? ticket.member_id.split("@")[1]
+              : "",
+          login_id: ticket.login_id || "",
+          player_id: ticket.member_id || "",
+          provider: ticket.provider || "",
+          provider_account: ticket.provider_account || "",
+          tracking_no: ticket.tracking_no || "",
+          status: ticket.status || "",
+          note_author: "",
+          note_message: "",
+          note_index: "",
+        });
+
+        ticketNotes.forEach((note, idx) => {
+          const createdAt = toUtcIso(note.createdAt) || ticketArchivedAt;
+
+          rows.push({
+            action_at_utc: createdAt,
+            action_type: "NOTE_ADDED",
+            actor: note.author || "Unknown",
+            duty: ticket.ic_account || "",
+            ticket_id: ticket.id,
+            merchant_id:
+              ticket.member_id && ticket.member_id.includes("@")
+                ? ticket.member_id.split("@")[1]
+                : "",
+            login_id: ticket.login_id || "",
+            player_id: ticket.member_id || "",
+            provider: ticket.provider || "",
+            provider_account: ticket.provider_account || "",
+            tracking_no: ticket.tracking_no || "",
+            status: ticket.status || "",
+            note_author: note.author || "",
+            note_message: note.text || "",
+            note_index: idx + 1,
+          });
+
+          if (note.isEdited) {
+            rows.push({
+              action_at_utc: toUtcIso(note.editedAt) || createdAt,
+              action_type: "NOTE_EDITED",
+              actor: note.author || "Unknown",
+              duty: ticket.ic_account || "",
+              ticket_id: ticket.id,
+              merchant_id:
+                ticket.member_id && ticket.member_id.includes("@")
+                  ? ticket.member_id.split("@")[1]
+                  : "",
+              login_id: ticket.login_id || "",
+              player_id: ticket.member_id || "",
+              provider: ticket.provider || "",
+              provider_account: ticket.provider_account || "",
+              tracking_no: ticket.tracking_no || "",
+              status: ticket.status || "",
+              note_author: note.author || "",
+              note_message: note.text || "",
+              note_index: idx + 1,
+            });
+          }
+        });
+      });
+
+      return rows.sort((a, b) => {
+        const aTs = Date.parse(a.action_at_utc || 0);
+        const bTs = Date.parse(b.action_at_utc || 0);
+        return bTs - aTs;
+      });
+    },
+    [parseArchivedNotes, toUtcIso],
+  );
+
+  const downloadTextFile = useCallback((content, fileName, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExportHistoryActionLog = useCallback(() => {
+    if (!isAdminOrLeader || isExportingHistoryLog) return;
+
+    setIsExportingHistoryLog(true);
+    try {
+      const rows = createAuditActionRows(filteredArchivedTickets);
+      if (rows.length === 0) {
+        setHistoryExportNotice({
+          text: "No records available for export with the current filters.",
+          type: "error",
+        });
+        return;
+      }
+
+      const exportedAt = new Date();
+      const exportDateToken = exportedAt.toISOString().slice(0, 10);
+      const filterSummary = `date:${historyStartDate || "last_30_days"}->${historyEndDate || "today"};duty:${historyFilterDuty};status:${historyFilterStatus};query:${historySearchQuery || "none"}`;
+
+      const headers = [
+        "action_at_utc",
+        "action_type",
+        "actor",
+        "duty",
+        "ticket_id",
+        "merchant_id",
+        "login_id",
+        "player_id",
+        "provider",
+        "provider_account",
+        "tracking_no",
+        "status",
+        "note_author",
+        "note_message",
+        "note_index",
+      ];
+
+      const metadataLines = [
+        "# RiskOps Audit Action Log Export",
+        `# exported_at_utc,${exportedAt.toISOString()}`,
+        `# exported_by,${workName || user?.email || "Unknown"}`,
+        `# exported_role,${userRole || "Unknown"}`,
+        `# ticket_count,${filteredArchivedTickets.length}`,
+        `# action_count,${rows.length}`,
+        `# filters,${filterSummary}`,
+        "",
+      ];
+
+      const csvRows = rows.map((row) =>
+        headers.map((header) => csvEscape(row[header])).join(","),
+      );
+
+      const csvContent = [
+        ...metadataLines,
+        headers.join(","),
+        ...csvRows,
+      ].join("\n");
+
+      downloadTextFile(
+        csvContent,
+        `riskops_audit_action_log_${exportDateToken}.csv`,
+        "text/csv;charset=utf-8",
+      );
+
+      setHistoryExportNotice({
+        text: `Action log exported (${rows.length} records).`,
+        type: "success",
+      });
+    } catch (err) {
+      console.error("Failed to export history action log:", err);
+      setHistoryExportNotice({
+        text: "Export failed. Please retry.",
+        type: "error",
+      });
+    } finally {
+      setIsExportingHistoryLog(false);
+    }
+  }, [
+    createAuditActionRows,
+    csvEscape,
+    downloadTextFile,
+    filteredArchivedTickets,
+    historyEndDate,
+    historyFilterDuty,
+    historyFilterStatus,
+    historySearchQuery,
+    historyStartDate,
+    isAdminOrLeader,
+    isExportingHistoryLog,
+    user?.email,
+    userRole,
+    workName,
+  ]);
+
+  useEffect(() => {
+    if (!historyExportNotice.text) return undefined;
+    const timeoutId = setTimeout(() => {
+      setHistoryExportNotice({ text: "", type: "" });
+    }, 3500);
+    return () => clearTimeout(timeoutId);
+  }, [historyExportNotice]);
   // -----------------------------------------
 
   const formattedDate = currentTime.toLocaleDateString("en-US", {
@@ -1415,20 +1713,36 @@ export default function Header() {
 
   // Build the Global Notifications List
   const globalNotifications = [];
+  const TEN_MINUTES_MS = 10 * 60 * 1000;
 
-  if (trackingReminder) {
+  // Helper to check if notification is still valid (within 10 minutes)
+  const isNotificationValid = (notif) => {
+    if (!notif) return false;
+    let notifTime;
+    // Handle both numeric timestamps and ISO string timestamps
+    if (typeof notif.time === "number") {
+      notifTime = notif.time;
+    } else if (typeof notif.time === "string") {
+      notifTime = new Date(notif.time).getTime();
+    } else {
+      return false;
+    }
+    return currentTime.getTime() - notifTime < TEN_MINUTES_MS;
+  };
+
+  if (isNotificationValid(trackingReminder)) {
     globalNotifications.push(trackingReminder);
   }
 
-  if (updaterNotification) {
+  if (isNotificationValid(updaterNotification)) {
     globalNotifications.push(updaterNotification);
   }
 
-  if (connectionNotification) {
+  if (isNotificationValid(connectionNotification)) {
     globalNotifications.push(connectionNotification);
   }
 
-  if (opsNotification) {
+  if (isNotificationValid(opsNotification)) {
     globalNotifications.push(opsNotification);
   }
 
@@ -1458,7 +1772,7 @@ export default function Header() {
   if (shiftNotifications.length > 0) {
     const activeShiftNotifications = shiftNotifications.filter((n) => {
       const notifTime = new Date(n.created_at).getTime();
-      return currentTime.getTime() - notifTime < 10 * 60 * 1000;
+      return currentTime.getTime() - notifTime < TEN_MINUTES_MS;
     });
 
     activeShiftNotifications.forEach((n) => {
@@ -3043,7 +3357,25 @@ export default function Header() {
                     </button>
                   )}
                 </div>
+
+                <button
+                  onClick={handleExportHistoryActionLog}
+                  disabled={isFetchingHistory || isExportingHistoryLog}
+                  className="h-9.5 inline-flex items-center gap-2 px-4 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-black transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Download audit-ready action log"
+                >
+                  <Download size={14} />
+                  {isExportingHistoryLog ? "Exporting..." : "Export Log"}
+                </button>
               </div>
+
+              {historyExportNotice.text && (
+                <div
+                  className={`text-[11px] font-semibold ${historyExportNotice.type === "success" ? "text-emerald-600" : "text-rose-600"}`}
+                >
+                  {historyExportNotice.text}
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-auto bg-slate-50/50 p-6">
@@ -3091,17 +3423,7 @@ export default function Header() {
                       </tr>
                     ) : (
                       filteredArchivedTickets.map((t) => {
-                        let rowNotes = [];
-                        if (Array.isArray(t.notes)) {
-                          rowNotes = t.notes;
-                        } else if (typeof t.notes === "string") {
-                          try {
-                            const parsed = JSON.parse(t.notes);
-                            rowNotes = Array.isArray(parsed) ? parsed : [];
-                          } catch {
-                            rowNotes = [];
-                          }
-                        }
+                        const rowNotes = parseArchivedNotes(t.notes);
 
                         return (
                           <tr

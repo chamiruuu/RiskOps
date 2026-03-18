@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import notificationSound from "../assets/Notification.mp3";
+import notificationSoundCommon from "../assets/notification sound common.mp3";
 import { resolveActiveShiftFromTime } from "../lib/shiftLogic";
 
 // --- HELPER: Get Current GMT+8 Time ---
@@ -460,7 +460,7 @@ export const DutyProvider = ({ children }) => {
       if (payload.targetId === user.id) {
         setPendingTransferRequest(payload);
 
-        const audio = new Audio(notificationSound);
+        const audio = new Audio(notificationSoundCommon);
         audio.play().catch(() => console.log("Audio blocked by browser"));
 
         if (

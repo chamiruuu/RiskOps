@@ -22,7 +22,7 @@ import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
 import { supabase } from "../lib/supabase"; // <-- NEW: Imported for DB check
-import notificationSound from "../assets/Notification.mp3";
+import notificationTicketCreation from "../assets/Notificationforticketcreation.mp3";
 import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
 // --- HELPER: Get Current GMT+8 Time ---
@@ -44,11 +44,12 @@ const RECENT_PROVIDER_STORAGE_KEY = "riskops_recent_providers";
 const MAX_RECENT_PROVIDERS = 6;
 const FAVORITE_PROVIDER_STORAGE_KEY = "riskops_favorite_providers";
 const MAX_FAVORITE_PROVIDERS = 3;
+const USER_PROVIDER_PREFERENCES_TABLE = "user_provider_preferences";
 
 
 
 export default function TicketForm({ onAddTicket }) {
-  const { selectedDuty, workName, userRole, myAssignedShift } = useDuty();
+  const { selectedDuty, workName, userRole, myAssignedShift, user } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
@@ -64,6 +65,7 @@ export default function TicketForm({ onAddTicket }) {
   const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
+  const [stickyStrictScriptEnabled, setStickyStrictScriptEnabled] = useState(false);
 
   const handleCopyField = (text, fieldId) => {
     navigator.clipboard.writeText(text);
@@ -146,6 +148,17 @@ export default function TicketForm({ onAddTicket }) {
   const isStrictProvider =
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
 
+  useEffect(() => {
+    if (!canCreate) {
+      setStickyStrictScriptEnabled(false);
+      return;
+    }
+
+    if (isStrictProvider) {
+      setStickyStrictScriptEnabled(true);
+    }
+  }, [canCreate, isStrictProvider]);
+
   const gmt8Now = getGMT8Time();
   const gmt8TimeLabel = `${String(gmt8Now.getHours()).padStart(2, "0")}:${String(
     gmt8Now.getMinutes(),
@@ -168,16 +181,78 @@ export default function TicketForm({ onAddTicket }) {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FAVORITE_PROVIDER_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) {
-        setFavoriteProviders(parsed.filter((p) => typeof p === "string"));
+    let cancelled = false;
+
+    const normalizeFavoriteProviders = (value) => {
+      if (!Array.isArray(value)) return [];
+      const deduped = [];
+      value.forEach((provider) => {
+        if (typeof provider !== "string") return;
+        if (!Object.prototype.hasOwnProperty.call(PROVIDER_CONFIG, provider)) return;
+        if (!deduped.includes(provider)) deduped.push(provider);
+      });
+      return deduped.slice(0, MAX_FAVORITE_PROVIDERS);
+    };
+
+    const loadFavoriteProviders = async () => {
+      let localFavorites = [];
+      try {
+        const raw = localStorage.getItem(FAVORITE_PROVIDER_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        localFavorites = normalizeFavoriteProviders(parsed);
+      } catch {
+        localFavorites = [];
       }
-    } catch {
-      setFavoriteProviders([]);
-    }
-  }, []);
+
+      if (!cancelled) {
+        setFavoriteProviders(localFavorites);
+      }
+
+      if (!user?.id) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from(USER_PROVIDER_PREFERENCES_TABLE)
+        .select("favorite_providers")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Failed loading favorite providers:", error);
+        return;
+      }
+
+      const remoteFavorites = normalizeFavoriteProviders(data?.favorite_providers);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (remoteFavorites.length > 0 || data) {
+        setFavoriteProviders(remoteFavorites);
+        localStorage.setItem(
+          FAVORITE_PROVIDER_STORAGE_KEY,
+          JSON.stringify(remoteFavorites),
+        );
+        return;
+      }
+
+      if (localFavorites.length > 0) {
+        await supabase.from(USER_PROVIDER_PREFERENCES_TABLE).upsert({
+          user_id: user.id,
+          favorite_providers: localFavorites,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    };
+
+    void loadFavoriteProviders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     setValidationNotice((prev) =>
@@ -250,6 +325,15 @@ export default function TicketForm({ onAddTicket }) {
         next = [providerKey, ...prev].slice(0, MAX_FAVORITE_PROVIDERS);
       }
       localStorage.setItem(FAVORITE_PROVIDER_STORAGE_KEY, JSON.stringify(next));
+
+      if (user?.id) {
+        void supabase.from(USER_PROVIDER_PREFERENCES_TABLE).upsert({
+          user_id: user.id,
+          favorite_providers: next,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
       return next;
     });
   };
@@ -472,7 +556,7 @@ export default function TicketForm({ onAddTicket }) {
       ipAddress: "",
     });
 
-    const audio = new Audio(notificationSound);
+    const audio = new Audio(notificationTicketCreation);
     audio.play().catch(() => console.log("Audio blocked by browser"));
 
     setShowSuccessToast(true);
@@ -617,9 +701,6 @@ export default function TicketForm({ onAddTicket }) {
               <Lock size={10} /> Shift Locked
             </span>
           )}
-        </div>
-        <div className="mb-2 text-[10px] text-slate-500 font-medium">
-          Debug: Assigned {myAssignedShift || "Off"} | GMT+8 {gmt8TimeLabel}
         </div>
         <div className="flex p-1 bg-slate-100 rounded-lg mb-2">
           <button
@@ -1345,12 +1426,12 @@ export default function TicketForm({ onAddTicket }) {
 
               {/* STRICT PROVIDER LOSS SCRIPT */}
               <button
-                disabled={!isStrictProvider}
+                disabled={!stickyStrictScriptEnabled}
                 onClick={handleCopyStrictLoss}
-                className={`group p-1.5 rounded-lg transition-colors ${!isStrictProvider ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-amber-100 hover:bg-amber-200 shadow-sm border border-amber-200"}`}
+                className={`group p-1.5 rounded-lg transition-colors ${!stickyStrictScriptEnabled ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-amber-100 hover:bg-amber-200 shadow-sm border border-amber-200"}`}
                 title={
-                  !isStrictProvider
-                    ? "Only enabled for strict providers (PG Soft, PA Casino)"
+                  !stickyStrictScriptEnabled
+                    ? "Select a strict provider first (PG Soft or PA Casino). Stays enabled until shift lock."
                     : "Copy Strict Provider Loss Script"
                 }
               >
@@ -1359,7 +1440,7 @@ export default function TicketForm({ onAddTicket }) {
                 ) : (
                   <AlertCircle
                     size={14}
-                    className={`transition-colors ${!isStrictProvider ? "text-slate-400" : "text-amber-600"}`}
+                    className={`transition-colors ${!stickyStrictScriptEnabled ? "text-slate-400" : "text-amber-600"}`}
                   />
                 )}
               </button>

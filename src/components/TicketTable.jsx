@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
-import notificationSound from "../assets/Notification.mp3"; // <-- ADDED SOUND FOR TOAST
 import { PROVIDER_CONFIG } from "../config/providerConfig"; // <-- 2. ADD THIS
 import {
   getGMT8Time,
@@ -338,10 +337,6 @@ export default function TicketTable({
         });
         setShowReminderToast(true);
 
-        // Play Sound
-        const audio = new Audio(notificationSound);
-        audio.play().catch(() => console.log("Audio blocked by browser"));
-
         // Send signal to Notification Bell in Header
         const event = new CustomEvent("tracking-reminder-alert", {
           detail: {
@@ -412,9 +407,6 @@ export default function TicketTable({
         text: reminderText,
       });
       setShowReminderToast(true);
-
-      const audio = new Audio(notificationSound);
-      audio.play().catch(() => console.log("Audio blocked by browser"));
 
       window.dispatchEvent(
         new CustomEvent("tracking-reminder-alert", {
@@ -581,9 +573,6 @@ export default function TicketTable({
         text: reminderText,
       });
       setShowReminderToast(true);
-
-      const audio = new Audio(notificationSound);
-      audio.play().catch(() => console.log("Audio blocked by browser"));
 
       window.dispatchEvent(
         new CustomEvent("tracking-reminder-alert", {
