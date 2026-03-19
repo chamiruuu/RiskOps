@@ -1289,7 +1289,11 @@ export default function TicketTable({
         (ticket.provider_account &&
           ticket.provider_account.toLowerCase().includes(lowerSearch)) ||
         (ticket.tracking_no &&
-          ticket.tracking_no.toLowerCase().includes(lowerSearch));
+          ticket.tracking_no.toLowerCase().includes(lowerSearch)) ||
+        // --- ADDED THIS LINE BELOW FOR LOGIN ID SEARCH ---
+        (ticket.login_id &&
+          ticket.login_id.toLowerCase().includes(lowerSearch));
+
       if (!matches) return false;
     }
     return true;
