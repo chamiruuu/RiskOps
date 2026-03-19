@@ -18,6 +18,7 @@ import {
   Handshake,
   Megaphone,
   FileWarning,
+  Filter,
 } from "lucide-react";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
@@ -209,6 +210,63 @@ export default function TicketTable({
     const isNoteAuthor = note.createdByUserId === user?.id;
     return isNoteAuthor || isAdminOrLeader;
   };
+
+  // --- FILTER SYSTEM STATES ---
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [tableFilters, setTableFilters] = useState({
+    status: "",
+    provider: "",
+    ic_account: "",
+    recorder: "",
+    date: "",
+    handover: "",
+  });
+  const filterMenuRef = useRef(null);
+
+  // Close filter menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        filterMenuRef.current &&
+        !filterMenuRef.current.contains(event.target)
+      ) {
+        setIsFilterMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const activeFilterCount = Object.values(tableFilters).filter(
+    (v) => v !== "",
+  ).length;
+  const clearFilters = () =>
+    setTableFilters({
+      status: "",
+      provider: "",
+      ic_account: "",
+      recorder: "",
+      date: "",
+      handover: "",
+    });
+
+  // Get unique values dynamically from the tickets array for dropdown options
+  const uniqueStatuses = useMemo(
+    () => [...new Set(tickets.map((t) => t.status))].filter(Boolean).sort(),
+    [tickets],
+  );
+  const uniqueProviders = useMemo(
+    () => [...new Set(tickets.map((t) => t.provider))].filter(Boolean).sort(),
+    [tickets],
+  );
+  const uniqueAccounts = useMemo(
+    () => [...new Set(tickets.map((t) => t.ic_account))].filter(Boolean).sort(),
+    [tickets],
+  );
+  const uniqueRecorders = useMemo(
+    () => [...new Set(tickets.map((t) => t.recorder))].filter(Boolean).sort(),
+    [tickets],
+  );
 
   // --- SENDER TRANSFER MODAL STATES (MULTI-SEND) ---
   const [transferModal, setTransferModal] = useState({
@@ -1273,6 +1331,12 @@ export default function TicketTable({
     handoverCompletedForCurrentWindow,
   });
 
+  const isActuallyInWindow = checkIsHandoverWindow();
+  const currentHandoverMarker = buildHandoverMarker();
+  const handedOverSetForMarker =
+    handedOverTicketIdsByMarkerRef.current.get(currentHandoverMarker) ||
+    new Set();
+
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;
 
@@ -1281,6 +1345,7 @@ export default function TicketTable({
       return false;
     }
 
+    // 1. Search Logic
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       const matches =
@@ -1290,16 +1355,61 @@ export default function TicketTable({
           ticket.provider_account.toLowerCase().includes(lowerSearch)) ||
         (ticket.tracking_no &&
           ticket.tracking_no.toLowerCase().includes(lowerSearch)) ||
-        // --- ADDED THIS LINE BELOW FOR LOGIN ID SEARCH ---
         (ticket.login_id &&
           ticket.login_id.toLowerCase().includes(lowerSearch));
 
       if (!matches) return false;
     }
+
+    // 2. Dropdown Filters
+    if (tableFilters.status && ticket.status !== tableFilters.status)
+      return false;
+    if (tableFilters.provider && ticket.provider !== tableFilters.provider)
+      return false;
+    if (
+      tableFilters.ic_account &&
+      ticket.ic_account !== tableFilters.ic_account
+    )
+      return false;
+    if (tableFilters.recorder && ticket.recorder !== tableFilters.recorder)
+      return false;
+
+    // 3. Date Filter (using local date boundaries for simplicity to match visual "today"/"yesterday")
+    if (tableFilters.date) {
+      const tDate = new Date(ticket.created_at);
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const isSameDay = (d1, d2) =>
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+
+      if (tableFilters.date === "today" && !isSameDay(tDate, today))
+        return false;
+      if (tableFilters.date === "yesterday" && !isSameDay(tDate, yesterday))
+        return false;
+    }
+
+    // 4. Handover Status Filter
+    if (tableFilters.handover) {
+      const lastShiftChange = getLastShiftChangeTime();
+      const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
+      const isHandedOverLocally =
+        !isTicketNewSinceLastHandover(ticket) ||
+        handedOverSetForMarker.has(ticket.id);
+      const isActuallyHandedOver = createdInPastShift || isHandedOverLocally;
+
+      if (tableFilters.handover === "handed_over" && !isActuallyHandedOver)
+        return false;
+      if (tableFilters.handover === "pending" && isActuallyHandedOver)
+        return false;
+    }
+
     return true;
   });
 
-  // --- UPDATED VOID SCRIPT GENERATOR ---
   const getGeneratedScript = () => {
     const { type, abnormalType, ticket } = completeModal;
     if (type === "Normal") {
@@ -1311,7 +1421,6 @@ export default function TicketTable({
     }
   };
 
-  // --- UPDATED VOID COMPLETION LOGIC ---
   const handleCopyAndComplete = () => {
     // ONLY copy to clipboard if it's NOT a Void ticket
     if (completeModal.type !== "Void") {
@@ -1444,12 +1553,6 @@ export default function TicketTable({
   const showDutyColumn = dutyArray.includes("IC0") || dutyArray.length > 1;
   const isOutgoingForWindow =
     !!handoverPair && myAssignedShift === handoverPair.outgoing;
-  // CHECK REAL-TIME window instead of stale state (updates every 60s), to avoid button disable race condition.
-  const isActuallyInWindow = checkIsHandoverWindow();
-  const currentHandoverMarker = buildHandoverMarker();
-  const handedOverSetForMarker =
-    handedOverTicketIdsByMarkerRef.current.get(currentHandoverMarker) ||
-    new Set();
   const unhandedPendingCount = tickets.filter(
     (t) =>
       t.status === "Pending" &&
@@ -1618,7 +1721,210 @@ export default function TicketTable({
             </button>
           )}
 
-          <div className="relative ml-2">
+          {/* FILTER DROPDOWN MENU */}
+          <div className="relative ml-1" ref={filterMenuRef}>
+            <button
+              onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+              className={`p-2 rounded-lg shadow-sm transition-colors border flex items-center gap-1.5 ${activeFilterCount > 0 ? "bg-indigo-50 text-indigo-600 border-indigo-200" : "bg-white text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border-slate-200"}`}
+              title="Filter Tickets"
+            >
+              <Filter size={16} />
+              {activeFilterCount > 0 && (
+                <span className="text-[10px] font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {isFilterMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-[340px] bg-white rounded-xl shadow-xl border border-slate-100 z-50 p-4 flex flex-col gap-4 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Filter Tickets
+                  </h3>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={clearFilters}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Status
+                    </label>
+                    <select
+                      value={tableFilters.status}
+                      onChange={(e) =>
+                        setTableFilters({
+                          ...tableFilters,
+                          status: e.target.value,
+                        })
+                      }
+                      className="text-xs p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded-md outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                    >
+                      <option value="">All Statuses</option>
+                      {uniqueStatuses.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Provider
+                    </label>
+                    <select
+                      value={tableFilters.provider}
+                      onChange={(e) =>
+                        setTableFilters({
+                          ...tableFilters,
+                          provider: e.target.value,
+                        })
+                      }
+                      className="text-xs p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded-md outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                    >
+                      <option value="">All Providers</option>
+                      {uniqueProviders.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Duty Account
+                    </label>
+                    <select
+                      value={tableFilters.ic_account}
+                      onChange={(e) =>
+                        setTableFilters({
+                          ...tableFilters,
+                          ic_account: e.target.value,
+                        })
+                      }
+                      className="text-xs p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded-md outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                    >
+                      <option value="">All Duties</option>
+                      {uniqueAccounts.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Recorder
+                    </label>
+                    <select
+                      value={tableFilters.recorder}
+                      onChange={(e) =>
+                        setTableFilters({
+                          ...tableFilters,
+                          recorder: e.target.value,
+                        })
+                      }
+                      className="text-xs p-1.5 border border-slate-200 bg-slate-50 text-slate-700 rounded-md outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+                    >
+                      <option value="">All Recorders</option>
+                      {uniqueRecorders.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Date Added
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() =>
+                          setTableFilters({ ...tableFilters, date: "" })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.date === "" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        All Time
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTableFilters({ ...tableFilters, date: "today" })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.date === "today" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        Today
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTableFilters({
+                            ...tableFilters,
+                            date: "yesterday",
+                          })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.date === "yesterday" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        Yesterday
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">
+                      Handover Status
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() =>
+                          setTableFilters({ ...tableFilters, handover: "" })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.handover === "" ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        All
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTableFilters({
+                            ...tableFilters,
+                            handover: "pending",
+                          })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.handover === "pending" ? "bg-amber-50 text-amber-700 border border-amber-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        Pending
+                      </button>
+                      <button
+                        onClick={() =>
+                          setTableFilters({
+                            ...tableFilters,
+                            handover: "handed_over",
+                          })
+                        }
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded transition-colors ${tableFilters.handover === "handed_over" ? "bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm" : "bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100"}`}
+                      >
+                        Handed Over
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="relative ml-1">
             <Search
               size={16}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -1694,8 +2000,8 @@ export default function TicketTable({
                 >
                   {!canViewTickets
                     ? "Waiting for the previous shift to handover..."
-                    : searchTerm
-                      ? `No tickets found matching "${searchTerm}"`
+                    : searchTerm || activeFilterCount > 0
+                      ? "No tickets found matching your search/filters."
                       : "No active investigations found."}
                 </td>
               </tr>
@@ -2552,7 +2858,7 @@ export default function TicketTable({
                     <div className="py-6 text-center text-slate-600 text-sm font-medium bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
                       Are you sure you want to void this ticket? <br />
                       <span className="text-xs text-slate-400 font-normal mt-2 block">
-                        Was this ticket created by mistake or is it no longer needed? <br /> Void tickets will be marked as closed without action but will <br />remain in the system for record-keeping.
+                        No script will be copied to your clipboard.
                       </span>
                     </div>
                   ) : (
