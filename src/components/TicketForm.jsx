@@ -21,7 +21,7 @@ import {
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
 import { useMerchantData } from "../hooks/useMerchantData";
-import { supabase } from "../lib/supabase"; // <-- NEW: Imported for DB check
+import { supabase } from "../lib/supabase";
 import notificationTicketCreation from "../assets/Notificationforticketcreation.mp3";
 import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
@@ -46,8 +46,6 @@ const FAVORITE_PROVIDER_STORAGE_KEY = "riskops_favorite_providers";
 const MAX_FAVORITE_PROVIDERS = 3;
 const USER_PROVIDER_PREFERENCES_TABLE = "user_provider_preferences";
 
-
-
 export default function TicketForm({ onAddTicket }) {
   const { selectedDuty, workName, userRole, myAssignedShift, user } = useDuty();
   const [activeTab, setActiveTab] = useState("form");
@@ -57,15 +55,15 @@ export default function TicketForm({ onAddTicket }) {
   const [showSuccessToast, setShowSuccessToast] = useState(false);
   const shortWorkName = workName ? workName.split(" ")[0] : "RiskOps";
 
-// Predefined Scripts for BTi and PKQ
+  // Predefined Scripts for BTi and PKQ
   const pkqRules = `Hi there, this is ${shortWorkName}. Please be informed that there are some new rules about checking the players fraud transactions from PokerQ.\n1. Players withdraw over 50x with his last deposit amount ( example : deposit 50K and then withdraw 2.5M ).\n2. First time withdrawal\n3. Suspect of something suspicious about the players transactions and provide the screenshot proof for us.`;
-  
   const btiRules = `Hi Sir this is ${shortWorkName}, please be informed that there are some BTi rules, please check, thanks\n1. Member place bet more than 5 bets within 30 days and the average amount is higher than 900 CNY\n2. profit exceeds 9,000 CNY within 30 days\n\nSince the player does not meet the above criteria, Bti does not provide the query thank you.`;
   const [copiedLoss, setCopiedLoss] = useState(false);
   const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
-  const [stickyStrictScriptEnabled, setStickyStrictScriptEnabled] = useState(false);
+  const [stickyStrictScriptEnabled, setStickyStrictScriptEnabled] =
+    useState(false);
 
   const handleCopyField = (text, fieldId) => {
     navigator.clipboard.writeText(text);
@@ -111,16 +109,13 @@ export default function TicketForm({ onAddTicket }) {
       const time = now.getHours() + now.getMinutes() / 60;
 
       if (myAssignedShift === "Morning") {
-        // Unlocks at 07:10, Locks at 15:00
-        return time >= 7.1667 && time < 15.0;
+        return time >= 7.1833 && time < 15.0;
       }
       if (myAssignedShift === "Afternoon") {
-        // Unlocks at 14:40, Locks at 23:00
-        return time >= 14.6667 && time < 23.0;
+        return time >= 14.6833 && time < 23.0;
       }
       if (myAssignedShift === "Night") {
-        // Unlocks at 22:40, Locks at 07:30 (next day)
-        return time >= 22.6667 || time < 7.5;
+        return time >= 22.6833 || time < 7.5;
       }
       return false;
     };
@@ -143,6 +138,7 @@ export default function TicketForm({ onAddTicket }) {
     betTicket: "",
     roundId: "",
     ipAddress: "",
+    merchantInsists: false, // --- NEW: Toggle State
   });
 
   const isStrictProvider =
@@ -153,16 +149,10 @@ export default function TicketForm({ onAddTicket }) {
       setStickyStrictScriptEnabled(false);
       return;
     }
-
     if (isStrictProvider) {
       setStickyStrictScriptEnabled(true);
     }
   }, [canCreate, isStrictProvider]);
-
-  const gmt8Now = getGMT8Time();
-  const gmt8TimeLabel = `${String(gmt8Now.getHours()).padStart(2, "0")}:${String(
-    gmt8Now.getMinutes(),
-  ).padStart(2, "0")}:${String(gmt8Now.getSeconds()).padStart(2, "0")}`;
 
   useEffect(() => {
     setProviderSearch(formData.provider);
@@ -188,7 +178,8 @@ export default function TicketForm({ onAddTicket }) {
       const deduped = [];
       value.forEach((provider) => {
         if (typeof provider !== "string") return;
-        if (!Object.prototype.hasOwnProperty.call(PROVIDER_CONFIG, provider)) return;
+        if (!Object.prototype.hasOwnProperty.call(PROVIDER_CONFIG, provider))
+          return;
         if (!deduped.includes(provider)) deduped.push(provider);
       });
       return deduped.slice(0, MAX_FAVORITE_PROVIDERS);
@@ -204,13 +195,8 @@ export default function TicketForm({ onAddTicket }) {
         localFavorites = [];
       }
 
-      if (!cancelled) {
-        setFavoriteProviders(localFavorites);
-      }
-
-      if (!user?.id) {
-        return;
-      }
+      if (!cancelled) setFavoriteProviders(localFavorites);
+      if (!user?.id) return;
 
       const { data, error } = await supabase
         .from(USER_PROVIDER_PREFERENCES_TABLE)
@@ -218,16 +204,12 @@ export default function TicketForm({ onAddTicket }) {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (error) {
-        console.error("Failed loading favorite providers:", error);
-        return;
-      }
+      if (error) return;
 
-      const remoteFavorites = normalizeFavoriteProviders(data?.favorite_providers);
-
-      if (cancelled) {
-        return;
-      }
+      const remoteFavorites = normalizeFavoriteProviders(
+        data?.favorite_providers,
+      );
+      if (cancelled) return;
 
       if (remoteFavorites.length > 0 || data) {
         setFavoriteProviders(remoteFavorites);
@@ -248,19 +230,15 @@ export default function TicketForm({ onAddTicket }) {
     };
 
     void loadFavoriteProviders();
-
     return () => {
       cancelled = true;
     };
   }, [user?.id]);
 
   useEffect(() => {
-    setValidationNotice((prev) =>
-      prev.text ? { type: "", text: "" } : prev,
-    );
+    setValidationNotice((prev) => (prev.text ? { type: "", text: "" } : prev));
   }, [formData.provider, formData.memberId, formData.providerAccount]);
 
-  // Handle clicking outside custom dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (providerRef.current && !providerRef.current.contains(event.target)) {
@@ -279,7 +257,6 @@ export default function TicketForm({ onAddTicket }) {
 
   const filteredProviders = useMemo(() => {
     const query = providerSearch.trim().toLowerCase();
-
     const candidates = query
       ? allProviders.filter((p) => p.toLowerCase().includes(query))
       : allProviders;
@@ -287,7 +264,6 @@ export default function TicketForm({ onAddTicket }) {
     return [...candidates].sort((a, b) => {
       const aLower = a.toLowerCase();
       const bLower = b.toLowerCase();
-
       const aStarts = query && aLower.startsWith(query) ? 1 : 0;
       const bStarts = query && bLower.startsWith(query) ? 1 : 0;
       if (aStarts !== bStarts) return bStarts - aStarts;
@@ -309,7 +285,10 @@ export default function TicketForm({ onAddTicket }) {
   }, [allProviders, providerSearch, recentProviders, favoriteProviders]);
 
   const recentProvidersForDropdown = useMemo(
-    () => recentProviders.filter((provider) => !favoriteProviders.includes(provider)),
+    () =>
+      recentProviders.filter(
+        (provider) => !favoriteProviders.includes(provider),
+      ),
     [recentProviders, favoriteProviders],
   );
 
@@ -319,13 +298,11 @@ export default function TicketForm({ onAddTicket }) {
   const toggleFavoriteProvider = (providerKey) => {
     setFavoriteProviders((prev) => {
       let next;
-      if (prev.includes(providerKey)) {
+      if (prev.includes(providerKey))
         next = prev.filter((p) => p !== providerKey);
-      } else {
-        next = [providerKey, ...prev].slice(0, MAX_FAVORITE_PROVIDERS);
-      }
-      localStorage.setItem(FAVORITE_PROVIDER_STORAGE_KEY, JSON.stringify(next));
+      else next = [providerKey, ...prev].slice(0, MAX_FAVORITE_PROVIDERS);
 
+      localStorage.setItem(FAVORITE_PROVIDER_STORAGE_KEY, JSON.stringify(next));
       if (user?.id) {
         void supabase.from(USER_PROVIDER_PREFERENCES_TABLE).upsert({
           user_id: user.id,
@@ -333,21 +310,20 @@ export default function TicketForm({ onAddTicket }) {
           updated_at: new Date().toISOString(),
         });
       }
-
       return next;
     });
   };
 
   const selectProvider = (providerKey) => {
-    setFormData({ ...formData, provider: providerKey });
+    setFormData({ ...formData, provider: providerKey, merchantInsists: false });
     setProviderSearch(providerKey);
     setIsProviderOpen(false);
 
     setRecentProviders((prev) => {
-      const next = [providerKey, ...prev.filter((p) => p !== providerKey)].slice(
-        0,
-        MAX_RECENT_PROVIDERS,
-      );
+      const next = [
+        providerKey,
+        ...prev.filter((p) => p !== providerKey),
+      ].slice(0, MAX_RECENT_PROVIDERS);
       localStorage.setItem(RECENT_PROVIDER_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -358,7 +334,6 @@ export default function TicketForm({ onAddTicket }) {
       setIsProviderOpen(true);
       return;
     }
-
     if (!isProviderOpen) return;
 
     if (e.key === "ArrowDown") {
@@ -369,7 +344,6 @@ export default function TicketForm({ onAddTicket }) {
       );
       return;
     }
-
     if (e.key === "ArrowUp") {
       e.preventDefault();
       if (filteredProviders.length === 0) return;
@@ -379,17 +353,14 @@ export default function TicketForm({ onAddTicket }) {
       );
       return;
     }
-
     if (e.key === "Enter") {
       e.preventDefault();
       if (filteredProviders.length === 0) return;
-      const picked = filteredProviders[highlightedProviderIndex] || filteredProviders[0];
-      if (picked) {
-        selectProvider(picked);
-      }
+      const picked =
+        filteredProviders[highlightedProviderIndex] || filteredProviders[0];
+      if (picked) selectProvider(picked);
       return;
     }
-
     if (e.key === "Escape") {
       setIsProviderOpen(false);
       setProviderSearch(formData.provider);
@@ -401,54 +372,84 @@ export default function TicketForm({ onAddTicket }) {
     setHighlightedProviderIndex(0);
   }, [providerSearch, isProviderOpen]);
 
-  const { name: merchantName, duty: merchantDuty, error: dutyError } = useMerchantData(
-    formData.memberId,
-    selectedDuty,
-  );
+  const {
+    name: merchantName,
+    duty: merchantDuty,
+    error: dutyError,
+  } = useMerchantData(formData.memberId, selectedDuty);
+
   const currentConfig = PROVIDER_CONFIG[formData.provider];
+
+  // --- NEW: DYNAMIC OVERRIDE LOGIC ---
+  const activeRequiredFields = useMemo(() => {
+    if (!currentConfig) return [];
+    if (currentConfig.allowMerchantInsist && formData.merchantInsists) {
+      return currentConfig.insistRequiredFields || [];
+    }
+    return currentConfig.requiredFields || [];
+  }, [currentConfig, formData.merchantInsists]);
+
+  const isActuallyManualOnly = useMemo(() => {
+    if (!currentConfig) return true;
+    if (currentConfig.allowMerchantInsist && formData.merchantInsists) {
+      return false; // Unlocks creation
+    }
+    return currentConfig.isManualCheckOnly || false;
+  }, [currentConfig, formData.merchantInsists]);
 
   const generatedScript = currentConfig
     ? currentConfig.generateScript(formData, shortWorkName)
     : "Select a provider and fill in the required fields to generate the standard script.";
 
+  // --- FIXED: CLEAN VALIDATION ---
   const isFormValid = () => {
     if (!currentConfig) return false;
-    if (currentConfig?.isManualCheckOnly) return false;
+    if (isActuallyManualOnly) return false;
     if (!formData.memberId || dutyError) return false;
 
-    const required = currentConfig?.requiredFields || [];
+    const required = activeRequiredFields;
 
+    // Special logic for Bet Ticket OR Time Range
     if (required.includes("betTicket") && required.includes("timeRange")) {
-      const hasProviderAcc =
-        formData.providerAccount && formData.providerAccount.trim() !== "";
       const hasEitherBetOrTime =
-        (formData.betTicket && formData.betTicket.trim() !== "") ||
-        (formData.timeRange && formData.timeRange.trim() !== "");
+        (formData.betTicket && String(formData.betTicket).trim() !== "") ||
+        (formData.timeRange && String(formData.timeRange).trim() !== "");
+
       const otherFieldsValid = required
         .filter((field) => field !== "betTicket" && field !== "timeRange")
-        .every((field) => formData[field] && formData[field].trim() !== "");
-      return hasProviderAcc && hasEitherBetOrTime && otherFieldsValid;
+        .every(
+          (field) => formData[field] && String(formData[field]).trim() !== "",
+        );
+
+      return hasEitherBetOrTime && otherFieldsValid;
     }
 
+    // Special logic for Round ID OR Time Range
     if (required.includes("roundId") && required.includes("timeRange")) {
-      const hasProviderAcc =
-        formData.providerAccount && formData.providerAccount.trim() !== "";
       const hasEitherRoundOrTime =
-        (formData.roundId && formData.roundId.trim() !== "") ||
-        (formData.timeRange && formData.timeRange.trim() !== "");
+        (formData.roundId && String(formData.roundId).trim() !== "") ||
+        (formData.timeRange && String(formData.timeRange).trim() !== "");
+
       const otherFieldsValid = required
         .filter((field) => field !== "roundId" && field !== "timeRange")
-        .every((field) => formData[field] && formData[field].trim() !== "");
-      return hasProviderAcc && hasEitherRoundOrTime && otherFieldsValid;
+        .every(
+          (field) => formData[field] && String(formData[field]).trim() !== "",
+        );
+
+      return hasEitherRoundOrTime && otherFieldsValid;
     }
 
+    // Standard Validation
     return required.every(
-      (field) => formData[field] && formData[field].trim() !== "",
+      (field) => formData[field] && String(formData[field]).trim() !== "",
     );
   };
 
   const handleCopy = () => {
-    if (!generatedScript.startsWith("//")) {
+    if (
+      !generatedScript.startsWith("//") &&
+      !generatedScript.startsWith("Hi Team, Please be informed that")
+    ) {
       navigator.clipboard.writeText(generatedScript);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -486,7 +487,6 @@ export default function TicketForm({ onAddTicket }) {
     setTimeout(() => setCopiedHold(false), 2000);
   };
 
-  // --- SMART DATE PICKER LOGIC ---
   const applyQuickDate = (daysBack) => {
     const today = getGMT8Time();
 
@@ -518,7 +518,6 @@ export default function TicketForm({ onAddTicket }) {
     setIsDateOpen(false);
   };
 
-  // --- NEW: CREATION EXECUTION BLOCK ---
   const proceedWithCreation = () => {
     const extractedMerchantId = formData.memberId.includes("@")
       ? formData.memberId.split("@")[1]
@@ -526,10 +525,10 @@ export default function TicketForm({ onAddTicket }) {
 
     const newTicket = {
       merchant_name: extractedMerchantId || "-",
-      ic_account: merchantDuty || "IC3",                  
+      ic_account: merchantDuty || "IC3",
       login_id: formData.loginId || "-",
       member_id: formData.memberId,
-      provider_account: formData.providerAccount || "-",   // <--- Now this is the ONLY one we need!
+      provider_account: formData.providerAccount || "-",
       provider: formData.provider,
       time_range: formData.timeRange || "-",
       tracking_no: "",
@@ -539,7 +538,6 @@ export default function TicketForm({ onAddTicket }) {
     };
 
     onAddTicket(newTicket);
-// ... keep the rest of the function the same
 
     setFormData({
       loginId: "",
@@ -554,6 +552,7 @@ export default function TicketForm({ onAddTicket }) {
       betTicket: "",
       roundId: "",
       ipAddress: "",
+      merchantInsists: false,
     });
 
     const audio = new Audio(notificationTicketCreation);
@@ -564,9 +563,7 @@ export default function TicketForm({ onAddTicket }) {
     setPgSoftCheckModal({ isOpen: false, step: "ask", providerAcc: "" });
   };
 
-  // --- NEW: INTERCEPT & CHECK DATABASE LOGIC ---
   const handleCreateClick = async () => {
-    // If it's PG Soft, we must verify the 7-day rule first
     if (formData.provider === "PG Soft") {
       const correlationId = createCorrelationId("PV");
       window.dispatchEvent(
@@ -601,7 +598,6 @@ export default function TicketForm({ onAddTicket }) {
 
         if (error) throw error;
 
-        // If a match is found in the last 7 days, halt creation and ask the agent
         if (data && data.length > 0) {
           setPgSoftCheckModal({
             isOpen: true,
@@ -671,7 +667,6 @@ export default function TicketForm({ onAddTicket }) {
       setIsCheckingPgSoft(false);
     }
 
-    // If not PG Soft, or no recent tickets found, proceed normally!
     proceedWithCreation();
   };
 
@@ -845,9 +840,40 @@ export default function TicketForm({ onAddTicket }) {
               )}
             </div>
 
+            {/* --- NEW: MERCHANT INSISTS TOGGLE --- */}
+            {currentConfig?.allowMerchantInsist && (
+              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between animate-in fade-in zoom-in-95">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={18} className="text-amber-600 shrink-0" />
+                  <div>
+                    <span className="block text-xs font-bold text-amber-900">
+                      Merchant Insists?
+                    </span>
+                    <span className="block text-[10px] font-medium text-amber-700 mt-0.5">
+                      Toggle if they provided a bet ticket.
+                    </span>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={formData.merchantInsists || false}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        merchantInsists: e.target.checked,
+                      })
+                    }
+                  />
+                  <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
+              </div>
+            )}
+
             {currentConfig && (
               <>
-                {!currentConfig?.isManualCheckOnly && (
+                {!isActuallyManualOnly && (
                   <>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
@@ -864,9 +890,7 @@ export default function TicketForm({ onAddTicket }) {
                       />
                     </div>
 
-                    {currentConfig?.requiredFields?.includes(
-                      "providerAccount",
-                    ) && (
+                    {activeRequiredFields.includes("providerAccount") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Provider Account ID{" "}
@@ -887,7 +911,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("currency") && (
+                    {activeRequiredFields.includes("currency") && (
                       <div className="space-y-1.5">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase">
                           Currency <span className="text-red-500">*</span>
@@ -931,9 +955,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes(
-                      "reasonToCheck",
-                    ) && (
+                    {activeRequiredFields.includes("reasonToCheck") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Reason to Check{" "}
@@ -981,7 +1003,7 @@ export default function TicketForm({ onAddTicket }) {
                       )}
                     </div>
 
-                    {currentConfig?.requiredFields?.includes("timeRange") && (
+                    {activeRequiredFields.includes("timeRange") && (
                       <div ref={dateRef} className="relative z-10">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Time Period <span className="text-red-500">*</span>
@@ -1080,7 +1102,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("gameName") && (
+                    {activeRequiredFields.includes("gameName") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Game Name <span className="text-red-500">*</span>
@@ -1100,7 +1122,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("trackingId") && (
+                    {activeRequiredFields.includes("trackingId") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Tracking ID
@@ -1119,7 +1141,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("betTicket") && (
+                    {activeRequiredFields.includes("betTicket") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Bet Ticket Number
@@ -1139,7 +1161,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("roundId") && (
+                    {activeRequiredFields.includes("roundId") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Round ID
@@ -1159,7 +1181,7 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {currentConfig?.requiredFields?.includes("ipAddress") && (
+                    {activeRequiredFields.includes("ipAddress") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           IP Address <span className="text-red-500">*</span>
@@ -1179,10 +1201,13 @@ export default function TicketForm({ onAddTicket }) {
                       </div>
                     )}
 
-                    {!currentConfig?.requiredFields?.includes("trackingId") && (
+                    {!activeRequiredFields.includes("trackingId") && (
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
-                          Login ID
+                          Login ID{" "}
+                          {activeRequiredFields.includes("loginId") && (
+                            <span className="text-red-500">*</span>
+                          )}
                         </label>
                         <input
                           type="text"
@@ -1461,30 +1486,39 @@ export default function TicketForm({ onAddTicket }) {
               </button>
 
               {/* NEW: BTi Icon Button */}
-            {formData.provider === 'BTi' && (
-              <button
-                type="button"
-                onClick={() => handleCopyField(btiRules, 'bti_rules')}
-                title="Copy BTi Query Conditions"
-                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
-              >
-                {copiedField === 'bti_rules' ? <CheckCircle2 size={12} /> : <Copy size={12} />}
-                BTi Rules
-              </button>
-            )}
+              {formData.provider === "BTi" && (
+                <button
+                  type="button"
+                  onClick={() => handleCopyField(btiRules, "bti_rules")}
+                  title="Copy BTi Query Conditions"
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
+                >
+                  {copiedField === "bti_rules" ? (
+                    <CheckCircle2 size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                  BTi Rules
+                </button>
+              )}
 
-            {/* NEW: PokerQ / PKQ Icon Button */}
-            {(formData.provider === 'PKQ' || formData.provider === 'PokerQ') && (
-              <button
-                type="button"
-                onClick={() => handleCopyField(pkqRules, 'pkq_rules')}
-                title="Copy PKQ Query Conditions"
-                className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
-              >
-                {copiedField === 'pkq_rules' ? <CheckCircle2 size={12} /> : <Copy size={12} />}
-                PKQ Rules
-              </button>
-            )}
+              {/* NEW: PokerQ / PKQ Icon Button */}
+              {(formData.provider === "PKQ" ||
+                formData.provider === "PokerQ") && (
+                <button
+                  type="button"
+                  onClick={() => handleCopyField(pkqRules, "pkq_rules")}
+                  title="Copy PKQ Query Conditions"
+                  className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1.5 animate-in zoom-in-95"
+                >
+                  {copiedField === "pkq_rules" ? (
+                    <CheckCircle2 size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                  PKQ Rules
+                </button>
+              )}
             </div>
           </div>
 

@@ -944,18 +944,32 @@ Time period：${timeRange}`;
   "Next Spin": {
     channel: "No Query Service Available",
     sla: "N/A",
-    conditions: ["The provider does not offer a standard query service."],
+    conditions: [
+      "The provider does not offer a standard query service.",
+      "If the merchant insists and provides a Bet Ticket, toggle the switch to proceed."
+    ],
     process: [
       "Inform the merchant that a formal query service is unavailable using the script provided.",
       "SOP Note: If a merchant is highly insistent, they must provide a specific bet ticket number for manual confirmation.",
+      "If they provide the ticket, enable the 'Merchant Insists' toggle, input the details, and create the ticket."
     ],
     reminder:
       "Formal queries are not supported. Only individual bet tickets can be checked manually if provided.",
 
-    requiredFields: [], // Hides all input fields
-    isManualCheckOnly: true, // Disables the 'Create Ticket' button logic
+    // --- NEW: Merchant Insists Override Logic ---
+    allowMerchantInsist: true,
+    insistRequiredFields: ["memberId", "providerAccount" , "betTicket"],
+    
+    requiredFields: [], // Hides all input fields by default
+    isManualCheckOnly: true, // Disables the 'Create Ticket' button logic by default
 
     generateScript: (data, workName) => {
+      // If the override toggle is ON, generate the check script
+      if (data.merchantInsists) {
+        return `Hello Team, could you please help us to check if this bet is normal or not? Thank you.\n\nMember ID: ${data.providerAccount}\nBet Ticket: ${data.betTicket}`;
+      }
+      
+      // Default standard rejection script
       return `Hi Team, Please be informed that the Next Spin provider doesn't provide to check the abnormality status of a member. However, if you have concerns about a specific bet, please provide the bet ticket number for confirmation. Thank You - ${workName}`;
     },
   },
