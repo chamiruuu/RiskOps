@@ -384,7 +384,7 @@ export default function Header() {
 
       setUpdaterNotification(notification);
       setShowUpdaterToast(true);
-      playAlertSound("ticket-created");
+      playAlertSound;
       maybeShowSystemNotification("Update Ready", notification.text);
     });
 

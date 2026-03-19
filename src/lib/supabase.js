@@ -1,4 +1,7 @@
+
 import { createClient } from '@supabase/supabase-js';
+// Import custom storage for Electron
+import { electronSupabaseStorage } from './electronSupabaseStorage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -15,11 +18,27 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
 }
 
+
 if (!supabaseUrl?.startsWith('https://')) {
   console.warn('Warning: VITE_SUPABASE_URL should be an HTTPS URL');
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+// Explicitly set session persistence and auto-refresh to avoid unexpected logout issues
+
+// Detect if running in Electron (window.electronAPI is exposed in preload)
+const isElectron = typeof window !== 'undefined' && window.electronAPI;
+
+export const supabase = createClient(
+  supabaseUrl || '',
+  supabaseAnonKey || '',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      ...(isElectron ? { storage: electronSupabaseStorage } : {}),
+    },
+  }
+);
 
 export const isMissingSupabaseRelationError = (error) => {
   if (!error) return false;
