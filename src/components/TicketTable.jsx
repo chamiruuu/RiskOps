@@ -1299,23 +1299,33 @@ export default function TicketTable({
     return true;
   });
 
+  // --- UPDATED VOID SCRIPT GENERATOR ---
   const getGeneratedScript = () => {
     const { type, abnormalType, ticket } = completeModal;
     if (type === "Normal") {
       return `Hi sir as we checked, the member bet is normal in provider ${ticket?.provider || "-"}. Thank you - ${shortWorkName}.`;
+    } else if (type === "Void") {
+      return `[System Note] This ticket was marked as Void by ${shortWorkName}. No action required.`;
     } else {
       return `Hello team, this is ${shortWorkName}. Please refer to the below information from provider, Thank You.\n\nAnnouncement：【${ticket?.provider || "Provider"}】 confirm this member is【${abnormalType.toUpperCase()}】,you may decide whether to let member withdrawal or not, the decision is rest in your hand, thank you, sir.\n\nmember：${ticket?.member_id || "Unknown"}`;
     }
   };
 
+  // --- UPDATED VOID COMPLETION LOGIC ---
   const handleCopyAndComplete = () => {
-    const script = getGeneratedScript();
-    navigator.clipboard.writeText(script);
+    // ONLY copy to clipboard if it's NOT a Void ticket
+    if (completeModal.type !== "Void") {
+      const script = getGeneratedScript();
+      navigator.clipboard.writeText(script);
+    }
 
     const finalStatus =
       completeModal.type === "Normal"
         ? "Normal"
-        : completeModal.abnormalType.toUpperCase();
+        : completeModal.type === "Void"
+          ? "VOID"
+          : completeModal.abnormalType.toUpperCase();
+
     const targetTicketId = completeModal.ticket.id;
 
     if (completeModal.ticket?.status === "Pending") {
@@ -1693,6 +1703,15 @@ export default function TicketTable({
               filteredTickets.map((ticket) => {
                 const isCompleted = ticket.status !== "Pending";
 
+                // NEW: Determine if ticket is securely locked from deletion
+                const lastShiftChange = getLastShiftChangeTime();
+                const createdInPastShift =
+                  new Date(ticket.created_at) < lastShiftChange;
+                const isHandedOverLocally =
+                  !isTicketNewSinceLastHandover(ticket);
+                const isLockedFromDeletion =
+                  isCompleted || createdInPastShift || isHandedOverLocally;
+
                 return (
                   <tr
                     key={ticket.id}
@@ -1780,7 +1799,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2 text-center">
                       <span
-                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${!isCompleted ? "bg-amber-50 text-amber-700 border-amber-200" : ticket.status === "Normal" || ticket.status === "NORMAL" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"}`}
+                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${!isCompleted ? "bg-amber-50 text-amber-700 border-amber-200" : ticket.status === "Normal" || ticket.status === "NORMAL" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : ticket.status === "VOID" || ticket.status === "Void" ? "bg-slate-100 text-slate-500 border-slate-300" : "bg-rose-50 text-rose-700 border-rose-200"}`}
                       >
                         {!isCompleted ? "Wait for provider" : ticket.status}
                       </span>
@@ -1827,16 +1846,20 @@ export default function TicketTable({
                               <CheckCircle2 size={16} />
                             </button>
                           )}
+
+                          {/* --- UPDATED: DISABLED TRASH BUTTON FOR HANDOVER TICKETS --- */}
                           <button
                             onClick={() => {
                               setDeletingRowId(ticket.id);
                             }}
-                            disabled={isCompleted}
-                            className={`transition-colors ${isCompleted ? "text-slate-200 cursor-not-allowed" : "text-slate-400 hover:text-rose-500"}`}
+                            disabled={isLockedFromDeletion}
+                            className={`transition-colors ${isLockedFromDeletion ? "text-slate-200 cursor-not-allowed" : "text-slate-400 hover:text-rose-500"}`}
                             title={
                               isCompleted
                                 ? "Cannot delete completed ticket"
-                                : "Delete Ticket"
+                                : createdInPastShift || isHandedOverLocally
+                                  ? "Already handed over! Please complete as 'Void' instead."
+                                  : "Delete Ticket"
                             }
                           >
                             <Trash2 size={16} />
@@ -2391,6 +2414,7 @@ export default function TicketTable({
                         className="text-emerald-400 group-hover:text-emerald-600"
                       />
                     </button>
+
                     <button
                       onClick={() =>
                         setCompleteModal({
@@ -2412,6 +2436,31 @@ export default function TicketTable({
                       <AlertTriangle
                         size={20}
                         className="text-rose-400 group-hover:text-rose-600"
+                      />
+                    </button>
+
+                    {/* --- NEW VOID BUTTON --- */}
+                    <button
+                      onClick={() =>
+                        setCompleteModal({
+                          ...completeModal,
+                          type: "Void",
+                          step: "script",
+                        })
+                      }
+                      className="w-full flex items-center justify-between px-4 py-3 bg-white border border-slate-200 hover:border-slate-400 hover:bg-slate-50 rounded-xl transition-all group shadow-sm text-left mt-2"
+                    >
+                      <div>
+                        <span className="block text-sm font-bold text-slate-700 group-hover:text-slate-800">
+                          Void
+                        </span>
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          Ticket was created by mistake or is no longer needed.
+                        </span>
+                      </div>
+                      <X
+                        size={20}
+                        className="text-slate-400 group-hover:text-slate-600"
                       />
                     </button>
                   </div>
@@ -2475,7 +2524,8 @@ export default function TicketTable({
                         setCompleteModal({
                           ...completeModal,
                           step:
-                            completeModal.type === "Normal"
+                            completeModal.type === "Normal" ||
+                            completeModal.type === "Void"
                               ? "select"
                               : "input-abnormal",
                         })
@@ -2485,23 +2535,53 @@ export default function TicketTable({
                       &larr; Back
                     </button>
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${completeModal.type === "Normal" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        completeModal.type === "Normal"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : completeModal.type === "Void"
+                            ? "bg-slate-200 text-slate-700"
+                            : "bg-rose-100 text-rose-700"
+                      }`}
                     >
-                      {completeModal.type} Script
+                      {completeModal.type}{" "}
+                      {completeModal.type !== "Void" && "Script"}
                     </span>
                   </div>
-                  <div className="relative group">
-                    <textarea
-                      readOnly
-                      value={getGeneratedScript()}
-                      className="w-full h-36 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-mono resize-none focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors leading-relaxed"
-                    />
-                  </div>
+
+                  {completeModal.type === "Void" ? (
+                    <div className="py-6 text-center text-slate-600 text-sm font-medium bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                      Are you sure you want to void this ticket? <br />
+                      <span className="text-xs text-slate-400 font-normal mt-2 block">
+                        Was this ticket created by mistake or is it no longer needed? <br /> Void tickets will be marked as closed without action but will <br />remain in the system for record-keeping.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="relative group">
+                      <textarea
+                        readOnly
+                        value={getGeneratedScript()}
+                        className="w-full h-36 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-mono resize-none focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors leading-relaxed"
+                      />
+                    </div>
+                  )}
+
                   <button
                     onClick={handleCopyAndComplete}
-                    className="w-full py-3 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center justify-center gap-2"
+                    className={`w-full py-3 text-white text-sm font-bold rounded-lg transition-colors shadow-md flex items-center justify-center gap-2 ${
+                      completeModal.type === "Void"
+                        ? "bg-slate-800 hover:bg-slate-900"
+                        : "bg-indigo-600 hover:bg-indigo-700"
+                    }`}
                   >
-                    <Copy size={16} /> Copy Script & Mark Completed
+                    {completeModal.type === "Void" ? (
+                      <>
+                        <CheckCircle2 size={16} /> Confirm & Void Ticket
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={16} /> Copy Script & Mark Completed
+                      </>
+                    )}
                   </button>
                 </div>
               )}
