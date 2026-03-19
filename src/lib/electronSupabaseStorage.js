@@ -1,28 +1,18 @@
 // src/lib/electronSupabaseStorage.js
-// Custom storage adapter for Supabase in Electron using electron-store
-
-let ElectronStore;
-let store;
-
-// Only require electron-store if running in Electron
-if (typeof window !== 'undefined' && window.electronAPI) {
-  ElectronStore = require('electron-store');
-  store = new ElectronStore({ name: 'supabase-auth' });
-}
 
 const STORAGE_KEY = 'supabase.auth.token';
 
 export const electronSupabaseStorage = {
-  getItem: async (key) => {
-    if (!store) return null;
-    return store.get(key || STORAGE_KEY) || null;
+  getItem: (key) => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(key || STORAGE_KEY);
   },
-  setItem: async (key, value) => {
-    if (!store) return;
-    store.set(key || STORAGE_KEY, value);
+  setItem: (key, value) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(key || STORAGE_KEY, value);
   },
-  removeItem: async (key) => {
-    if (!store) return;
-    store.delete(key || STORAGE_KEY);
+  removeItem: (key) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(key || STORAGE_KEY);
   },
 };
