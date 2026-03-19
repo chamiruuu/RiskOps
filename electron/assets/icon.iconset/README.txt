@@ -1,0 +1,1 @@
+This folder is intended to store iconset images for Electron app packaging. Place platform-specific icon files here (e.g., .ico, .icns, .png).
