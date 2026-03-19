@@ -1428,47 +1428,41 @@ export default function TicketForm({ onAddTicket }) {
             </span>
 
             <div className="flex items-center gap-1.5">
-              {/* NORMAL LOSS SCRIPT */}
-              <button
-                disabled={isStrictProvider}
-                onClick={handleCopyLoss}
-                className={`group p-1.5 rounded-lg transition-colors ${isStrictProvider ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-slate-100 hover:bg-slate-200"}`}
-                title={
-                  isStrictProvider
-                    ? `Disabled for ${formData.provider}`
-                    : "Copy Loss Confirmation Script"
-                }
-              >
-                {copiedLoss ? (
-                  <Check size={14} className="text-emerald-500" />
-                ) : (
-                  <TrendingDown
-                    size={14}
-                    className="text-slate-400 group-hover:text-indigo-500 transition-colors"
-                  />
-                )}
-              </button>
+              {/* NORMAL LOSS SCRIPT - ONLY VISIBLE IF NOT A STRICT PROVIDER */}
+              {!isStrictProvider && (
+                <button
+                  onClick={handleCopyLoss}
+                  className="group p-1.5 rounded-lg transition-colors bg-slate-100 hover:bg-slate-200"
+                  title="Copy Loss Confirmation Script"
+                >
+                  {copiedLoss ? (
+                    <Check size={14} className="text-emerald-500" />
+                  ) : (
+                    <TrendingDown
+                      size={14}
+                      className="text-slate-400 group-hover:text-indigo-500 transition-colors"
+                    />
+                  )}
+                </button>
+              )}
 
-              {/* STRICT PROVIDER LOSS SCRIPT */}
-              <button
-                disabled={!stickyStrictScriptEnabled}
-                onClick={handleCopyStrictLoss}
-                className={`group p-1.5 rounded-lg transition-colors ${!stickyStrictScriptEnabled ? "bg-slate-50 opacity-40 cursor-not-allowed" : "bg-amber-100 hover:bg-amber-200 shadow-sm border border-amber-200"}`}
-                title={
-                  !stickyStrictScriptEnabled
-                    ? "Select a strict provider first (PG Soft or PA Casino). Stays enabled until shift lock."
-                    : "Copy Strict Provider Loss Script"
-                }
-              >
-                {copiedStrictLoss ? (
-                  <Check size={14} className="text-emerald-500" />
-                ) : (
-                  <AlertCircle
-                    size={14}
-                    className={`transition-colors ${!stickyStrictScriptEnabled ? "text-slate-400" : "text-amber-600"}`}
-                  />
-                )}
-              </button>
+              {/* STRICT PROVIDER LOSS SCRIPT - ONLY VISIBLE FOR STRICT PROVIDERS */}
+              {isStrictProvider && (
+                <button
+                  onClick={handleCopyStrictLoss}
+                  className="group p-1.5 rounded-lg transition-colors bg-amber-100 hover:bg-amber-200 shadow-sm border border-amber-200"
+                  title="Copy Strict Provider Loss Script"
+                >
+                  {copiedStrictLoss ? (
+                    <Check size={14} className="text-emerald-500" />
+                  ) : (
+                    <TrendingDown
+                      size={14}
+                      className="transition-colors text-amber-600 group-hover:text-amber-700"
+                    />
+                  )}
+                </button>
+              )}
 
               <button
                 onClick={handleCopyHold}
