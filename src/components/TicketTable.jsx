@@ -33,6 +33,9 @@ import {
 } from "../lib/shiftLogic";
 import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
+// --- NEW: Directly import the sound for guaranteed playback ---
+import notificationSound from "../assets/notification sound common.mp3";
+
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
   switch (dutyName) {
@@ -363,6 +366,12 @@ export default function TicketTable({
     [lastHandoverTimestamp],
   );
 
+  // --- GUARANTEED LOCAL AUDIO PLAYER ---
+  const playAlertSound = useCallback(() => {
+    const audio = new Audio(notificationSound);
+    audio.play().catch((err) => console.log("Audio play error:", err));
+  }, []);
+
   // --- SMART 5-MIN HANDOVER REMINDER ---
   useEffect(() => {
     const checkReminder = () => {
@@ -400,6 +409,7 @@ export default function TicketTable({
           text: reminderText,
         });
         setShowReminderToast(true);
+        playAlertSound();
 
         // Send signal to Notification Bell in Header
         const event = new CustomEvent("tracking-reminder-alert", {
@@ -419,7 +429,13 @@ export default function TicketTable({
     checkReminder();
     const timer = setInterval(checkReminder, 30000); // Check every 30s
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, isMyShiftActive, tickets, lastReminderHour]);
+  }, [
+    isAdminOrLeader,
+    isMyShiftActive,
+    tickets,
+    lastReminderHour,
+    playAlertSound,
+  ]);
 
   // --- POST-START HANDOVER REMINDER (REPEATS EVERY MINUTE) ---
   useEffect(() => {
@@ -471,6 +487,7 @@ export default function TicketTable({
         text: reminderText,
       });
       setShowReminderToast(true);
+      playAlertSound();
 
       window.dispatchEvent(
         new CustomEvent("tracking-reminder-alert", {
@@ -488,7 +505,7 @@ export default function TicketTable({
     checkPostStartReminder();
     const timer = setInterval(checkPostStartReminder, 30000);
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, myAssignedShift, dutyKey, tickets]);
+  }, [isAdminOrLeader, myAssignedShift, dutyKey, tickets, playAlertSound]);
 
   // --- WINDOW HANDOVER COMPLETION STATUS (CONTROLS INCOMING VISIBILITY) ---
   useEffect(() => {
@@ -637,6 +654,7 @@ export default function TicketTable({
         text: reminderText,
       });
       setShowReminderToast(true);
+      playAlertSound();
 
       window.dispatchEvent(
         new CustomEvent("tracking-reminder-alert", {
@@ -654,7 +672,7 @@ export default function TicketTable({
     checkHardLockWarning();
     const timer = setInterval(checkHardLockWarning, 30000);
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, myAssignedShift, dutyKey]);
+  }, [isAdminOrLeader, myAssignedShift, dutyKey, playAlertSound]);
 
   // --- AUTO-CLEAR BELL REMINDER IF FIXED ---
   useEffect(() => {
@@ -1587,6 +1605,7 @@ export default function TicketTable({
     const now = getGMT8Time();
     const h = now.getHours();
     const m = now.getMinutes();
+    
     // Trigger at exact enable times
     const isEnableTime =
       (h === 6 && m === 45) || (h === 14 && m === 15) || (h === 22 && m === 15);
@@ -1599,22 +1618,27 @@ export default function TicketTable({
     if (window.__lastHandoverEnableMarker === enableMarker) return;
     window.__lastHandoverEnableMarker = enableMarker;
 
-    // Show toast notification
+    const notifText = "The handover window is now open. Please proceed with the handover if all tasks are complete.";
+
+    // 1. Show local on-screen toast
     setReminderToast({
       title: "Handover Enabled",
-      text: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
+      text: notifText,
     });
     setShowReminderToast(true);
     setTimeout(() => setShowReminderToast(false), 8000);
 
-    // System notification (if allowed)
-    if (document.visibilityState !== "visible" || !document.hasFocus()) {
-      if (window.Notification && Notification.permission === "granted") {
-        new Notification("Handover Enabled", {
-          body: "The handover window is now open. Please proceed with the handover if all tasks are complete.",
-        });
-      }
-    }
+    // 2. Send to Header.jsx (This puts it in the Bell Icon & plays the sound natively!)
+    window.dispatchEvent(
+      new CustomEvent("tracking-reminder-alert", {
+        detail: {
+          missingCount: 0,
+          time: Date.now(),
+          text: notifText,
+        },
+      }),
+    );
+    
   }, [
     isAdminOrLeader,
     isOutgoingForWindow,
@@ -1801,7 +1825,7 @@ export default function TicketTable({
 
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-bold text-slate-400 uppercase">
-                      Duty Account
+                      Duty / IC
                     </label>
                     <select
                       value={tableFilters.ic_account}
