@@ -89,8 +89,8 @@ export const PROVIDER_CONFIG = {
     channel: "QQ288 - PKQ integration group",
     sla: "Standard",
     conditions: [
-      "1. The member's withdrawal exceeds 50 times their deposit amount (e.g., a deposit of 50K followed by a withdrawal of 2.5M).",
-      "2. It is the member's first withdrawal.",
+      "1. The amount transferred out of PKQ by the player is more than 50 times the amount transferred in. (e.g., The player transferred 50K from the main wallet to PKQ, then transferred 2.5M from PKQ back to the main wallet.).",
+      "2. The member's first transfer from PKQ to the main wallet.",
       "3. Merchant suspect a player's betting has any suspicious aspects, so a screenshot is provided.",
     ],
     conditionScript: (workName) => {
@@ -112,10 +112,10 @@ export const PROVIDER_CONFIG = {
       "timeRange",
     ],
     options: {
-      currencies: ["IDR", "THB", "VND", "MYR", "PHP", "SGD", "USD", "KRW"],
+      currencies: ["IDR", "THB", "VND", "MYR", "USD"],
       reasons: [
-        "1. The member's withdrawal exceeds 50 times their deposit amount (e.g., a deposit of 50K followed by a withdrawal of 2.5M).",
-        "2. It is the member's first withdrawal.",
+        "The amount transferred out of PKQ by the player is more than 50 times the amount transferred in. (e.g., The player transferred 50K from the main wallet to PKQ, then transferred 2.5M from PKQ back to the main wallet.).",         "2. It is the member's first withdrawal.",
+        "2. The member's first transfer from PKQ to the main wallet.",
         "3. Merchant suspect a player's betting has any suspicious aspects, so a screenshot is provided.",
       ],
     },
