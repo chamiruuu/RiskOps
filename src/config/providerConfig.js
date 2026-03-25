@@ -668,12 +668,12 @@ export const PROVIDER_CONFIG = {
 
       if (providerAccount && currency && timeRange) {
         const prefixMap = {
-          IDR: "F2ZZ",
-          MYR: "F311",
-          CNY: "F312",
-          THB: "F313",
-          KRW: "F315",
-          USD: "F316",
+          IDR: "F2ZZ.",
+          MYR: "F311.",
+          CNY: "F312.",
+          THB: "F313.",
+          KRW: "F315.",
+          USD: "F316.",
         };
 
         const prefix = prefixMap[currency.toUpperCase()] || "";
