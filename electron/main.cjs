@@ -88,8 +88,6 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  emitUpdaterStatus({ type: 'checking', message: 'Checking for updates...' });
-
   autoUpdater.on('checking-for-update', () => {
     emitUpdaterStatus({ type: 'checking', message: 'Checking for updates...' });
   });
@@ -133,6 +131,7 @@ function setupAutoUpdater() {
     });
   });
 
+  // 1. Initial check when the app first opens
   autoUpdater.checkForUpdates().catch((error) => {
     const message = error == null ? 'unknown error' : error.message;
     console.error('Auto update check failed:', message);
@@ -141,6 +140,15 @@ function setupAutoUpdater() {
       message: `Update check failed: ${message}`,
     });
   });
+
+  // 2. NEW: Continuous background check every 1 hour (3600000 milliseconds)
+  // This ensures if you push an update while agents are working, they get it automatically.
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      // Fail silently in the background (e.g. if network drops temporarily)
+      console.error('Background update check failed silently:', error == null ? 'unknown' : error.message);
+    });
+  }, 60 * 60 * 1000); 
 }
 
 async function checkForUpdatesManually() {

@@ -1708,27 +1708,26 @@ export default function TicketTable({
           )}
 
           {/* --- NEW: FOLLOW-UP SCRIPTS BUTTON --- */}
-          {!dutyArray.includes("IC0") &&
-            (isMyShiftActive || isAdminOrLeader) && (
-              <button
-                onClick={() => setFollowUpModal(true)}
-                className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
-                title="Bulk Follow-up Scripts"
-              >
-                <Megaphone size={16} />
-              </button>
-            )}
+          {(isAdminOrLeader || (isMyShiftActive && !dutyArray.includes("IC0"))) && (
+            <button
+              onClick={() => setFollowUpModal(true)}
+              className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+              title="Follow-up Scripts"
+            >
+              <Megaphone size={16} />
+            </button>
+          )}
 
-          {!dutyArray.includes("IC0") &&
-            (isMyShiftActive || isAdminOrLeader) && (
-              <button
-                onClick={handleOpenTransfer}
-                className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
-                title="Transfer Duty to Teammate"
-              >
-                <Send size={16} />
-              </button>
-            )}
+          {/* --- TRANSFER DUTY BUTTON --- */}
+          {(isAdminOrLeader || (isMyShiftActive && !dutyArray.includes("IC0"))) && (
+            <button
+              onClick={handleOpenTransfer}
+              className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
+              title="Transfer Duty to Teammate"
+            >
+              <Send size={16} />
+            </button>
+          )}
 
           {!dutyArray.includes("IC0") && (
             <button

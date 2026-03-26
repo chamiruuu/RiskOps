@@ -446,10 +446,8 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const handleCopy = () => {
-    if (
-      !generatedScript.startsWith("//") &&
-      !generatedScript.startsWith("Hi Team, Please be informed that")
-    ) {
+    // Only copy if a provider is selected AND it's not a manual checking comment
+    if (currentConfig && !generatedScript.startsWith("//")) {
       navigator.clipboard.writeText(generatedScript);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -1519,10 +1517,10 @@ export default function TicketForm({ onAddTicket }) {
           <div
             onClick={handleCopy}
             className={`relative group bg-white border rounded-xl p-4 text-xs font-mono h-[130px] overflow-y-auto shadow-sm leading-relaxed transition-all 
-              ${!generatedScript.startsWith("//") ? "cursor-pointer hover:border-indigo-400 hover:ring-4 hover:ring-indigo-50 text-slate-700" : "text-slate-400 cursor-not-allowed border-slate-200"} 
+              ${currentConfig && !generatedScript.startsWith("//") ? "cursor-pointer hover:border-indigo-400 hover:ring-4 hover:ring-indigo-50 text-slate-700" : "text-slate-400 cursor-not-allowed border-slate-200"} 
               ${copied ? "border-emerald-500 bg-emerald-50 ring-4 ring-emerald-50" : "border-slate-200"}`}
             title={
-              !generatedScript.startsWith("//") ? "Click to copy script" : ""
+              currentConfig && !generatedScript.startsWith("//") ? "Click to copy script" : ""
             }
           >
             {copied ? (
@@ -1534,7 +1532,7 @@ export default function TicketForm({ onAddTicket }) {
               <div className="whitespace-pre-wrap">{generatedScript}</div>
             )}
 
-            {!generatedScript.startsWith("//") && !copied && (
+            {currentConfig && !generatedScript.startsWith("//") && !copied && (
               <div className="sticky bottom-0 right-0 float-right opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
                 <Copy size={12} /> Click anywhere to copy
               </div>
