@@ -191,33 +191,36 @@ export default function Header() {
     [user?.id],
   );
 
-  const pushLogicHealthEntry = useCallback((entry) => {
-    let next = [entry, ...logicHealthEntriesRef.current];
-    const toPersist = [entry];
+  const pushLogicHealthEntry = useCallback(
+    (entry) => {
+      let next = [entry, ...logicHealthEntriesRef.current];
+      const toPersist = [entry];
 
-    if (
-      shouldEscalateLogicEntry({
-        nextEntry: entry,
-        entries: next,
-      })
-    ) {
-      const escalation = buildEscalationEntry({
-        code: entry.code,
-        level: entry.level,
-        at: entry.at,
-        correlationId: entry.correlationId,
+      if (
+        shouldEscalateLogicEntry({
+          nextEntry: entry,
+          entries: next,
+        })
+      ) {
+        const escalation = buildEscalationEntry({
+          code: entry.code,
+          level: entry.level,
+          at: entry.at,
+          correlationId: entry.correlationId,
+        });
+        next = [escalation, ...next];
+        toPersist.push(escalation);
+      }
+
+      const limited = next.slice(0, 80);
+      logicHealthEntriesRef.current = limited;
+      setLogicHealthEntries(limited);
+      toPersist.forEach((item) => {
+        void persistLogicHealthEntry(item);
       });
-      next = [escalation, ...next];
-      toPersist.push(escalation);
-    }
-
-    const limited = next.slice(0, 80);
-    logicHealthEntriesRef.current = limited;
-    setLogicHealthEntries(limited);
-    toPersist.forEach((item) => {
-      void persistLogicHealthEntry(item);
-    });
-  }, [persistLogicHealthEntry]);
+    },
+    [persistLogicHealthEntry],
+  );
 
   const runLogicQuickChecks = useCallback(() => {
     const result = runQuickChecks({
@@ -248,7 +251,8 @@ export default function Header() {
     const q = logicHealthSearch.trim().toLowerCase();
     return logicHealthEntries.filter((entry) => {
       const matchesLevel =
-        logicHealthLevelFilter === "all" || entry.level === logicHealthLevelFilter;
+        logicHealthLevelFilter === "all" ||
+        entry.level === logicHealthLevelFilter;
       if (!matchesLevel) return false;
       if (!q) return true;
       return [
@@ -302,23 +306,26 @@ export default function Header() {
     };
   }, []);
 
-  const shouldEmitNotification = useCallback((key, text, cooldownMs = 15000) => {
-    const now = Date.now();
-    const token = `${key}|${text || ""}`;
-    const lastSeen = notificationDedupRef.current.get(token) || 0;
-    if (now - lastSeen < cooldownMs) return false;
-    notificationDedupRef.current.set(token, now);
+  const shouldEmitNotification = useCallback(
+    (key, text, cooldownMs = 15000) => {
+      const now = Date.now();
+      const token = `${key}|${text || ""}`;
+      const lastSeen = notificationDedupRef.current.get(token) || 0;
+      if (now - lastSeen < cooldownMs) return false;
+      notificationDedupRef.current.set(token, now);
 
-    // Keep map small over long sessions.
-    if (notificationDedupRef.current.size > 80) {
-      for (const [k, ts] of notificationDedupRef.current.entries()) {
-        if (now - ts > 2 * 60 * 1000) {
-          notificationDedupRef.current.delete(k);
+      // Keep map small over long sessions.
+      if (notificationDedupRef.current.size > 80) {
+        for (const [k, ts] of notificationDedupRef.current.entries()) {
+          if (now - ts > 2 * 60 * 1000) {
+            notificationDedupRef.current.delete(k);
+          }
         }
       }
-    }
-    return true;
-  }, []);
+      return true;
+    },
+    [],
+  );
 
   const shouldShowSystemNotification = useCallback(
     () => document.visibilityState !== "visible" || !document.hasFocus(),
@@ -384,7 +391,7 @@ export default function Header() {
 
       setUpdaterNotification(notification);
       setShowUpdaterToast(true);
-      playAlertSound;
+      playAlertSound(); // <-- Added ()
       maybeShowSystemNotification("Update Ready", notification.text);
     });
 
@@ -525,7 +532,8 @@ export default function Header() {
       const eventDetail = normalizeLogicEventDetail(e.detail, {
         code: LOGIC_CODES.REALTIME_ERROR,
         title: "Realtime Error",
-        detail: "Live ticket sync connection issue detected. Trying to reconnect...",
+        detail:
+          "Live ticket sync connection issue detected. Trying to reconnect...",
         level: "error",
         source: "realtime",
       });
@@ -537,7 +545,9 @@ export default function Header() {
         time: eventTime,
       };
 
-      if (!shouldEmitNotification("connection-error", notification.text, 20000)) {
+      if (
+        !shouldEmitNotification("connection-error", notification.text, 20000)
+      ) {
         return;
       }
 
@@ -574,7 +584,9 @@ export default function Header() {
         time: eventTime,
       };
 
-      if (!shouldEmitNotification("connection-restored", notification.text, 12000)) {
+      if (
+        !shouldEmitNotification("connection-restored", notification.text, 12000)
+      ) {
         return;
       }
 
@@ -598,7 +610,8 @@ export default function Header() {
       const eventDetail = normalizeLogicEventDetail(e.detail, {
         code: LOGIC_CODES.REALTIME_DEGRADED,
         title: "Realtime Degraded",
-        detail: "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
+        detail:
+          "Realtime sync is degraded. Using fallback refresh every 15 seconds.",
         level: "warning",
         source: "realtime",
       });
@@ -610,7 +623,9 @@ export default function Header() {
         time: eventTime,
       };
 
-      if (!shouldEmitNotification("connection-degraded", notification.text, 30000)) {
+      if (
+        !shouldEmitNotification("connection-degraded", notification.text, 30000)
+      ) {
         return;
       }
 
@@ -647,7 +662,9 @@ export default function Header() {
         time: eventTime,
       };
 
-      if (!shouldEmitNotification("ownership-conflict", notification.text, 12000)) {
+      if (
+        !shouldEmitNotification("ownership-conflict", notification.text, 12000)
+      ) {
         return;
       }
 
@@ -720,7 +737,10 @@ export default function Header() {
       handleOwnershipConflict,
     );
     window.addEventListener("logic-health-event", handleLogicHealthEvent);
-    window.addEventListener("provider-validation-event", handleProviderValidation);
+    window.addEventListener(
+      "provider-validation-event",
+      handleProviderValidation,
+    );
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
@@ -1412,18 +1432,21 @@ export default function Header() {
 
   const filteredArchivedTickets = useMemo(() => {
     return archivedTickets.filter((t) => {
-      // search 
+      // search
       const query = historySearchQuery.toLowerCase();
-      const matchesSearch = query === "" || 
+      const matchesSearch =
+        query === "" ||
         (t.member_id && t.member_id.toLowerCase().includes(query)) ||
         (t.tracking_no && t.tracking_no.toLowerCase().includes(query)) ||
-        (t.provider_account && t.provider_account.toLowerCase().includes(query)) ||
+        (t.provider_account &&
+          t.provider_account.toLowerCase().includes(query)) ||
         (t.provider && t.provider.toLowerCase().includes(query)) ||
         (t.recorder && t.recorder.toLowerCase().includes(query)) ||
         (t.login_id && t.login_id.toLowerCase().includes(query));
 
-      const matchesDuty = historyFilterDuty === "All" || t.ic_account === historyFilterDuty;
-      
+      const matchesDuty =
+        historyFilterDuty === "All" || t.ic_account === historyFilterDuty;
+
       const normalizedRowStatus = t.status ? t.status.toUpperCase() : "";
       let matchesStatus = true;
       if (historyFilterStatus !== "All") {
@@ -1436,7 +1459,12 @@ export default function Header() {
 
       return matchesSearch && matchesDuty && matchesStatus;
     });
-  }, [archivedTickets, historySearchQuery, historyFilterDuty, historyFilterStatus]);
+  }, [
+    archivedTickets,
+    historySearchQuery,
+    historyFilterDuty,
+    historyFilterStatus,
+  ]);
 
   const historyArchiveDuties = ["All", "IC1", "IC2", "IC3", "IC5"];
 
@@ -1631,11 +1659,9 @@ export default function Header() {
         headers.map((header) => csvEscape(row[header])).join(","),
       );
 
-      const csvContent = [
-        ...metadataLines,
-        headers.join(","),
-        ...csvRows,
-      ].join("\n");
+      const csvContent = [...metadataLines, headers.join(","), ...csvRows].join(
+        "\n",
+      );
 
       downloadTextFile(
         csvContent,
@@ -1798,17 +1824,20 @@ export default function Header() {
     {
       version: "0.0.2",
       date: "2026-02",
-      notes: "Shift transition logic improvements: Fixed incoming shift screen unlock mechanism, adjusted target shift calculation during post-start windows. Implemented session-based ticket completion tracking to enforce strict outgoing shift visibility rules during handover cycles. Auto-archiving suspension during shared transition windows.",
+      notes:
+        "Shift transition logic improvements: Fixed incoming shift screen unlock mechanism, adjusted target shift calculation during post-start windows. Implemented session-based ticket completion tracking to enforce strict outgoing shift visibility rules during handover cycles. Auto-archiving suspension during shared transition windows.",
     },
     {
       version: "0.0.1",
       date: "2026-01",
-      notes: "Ticket visibility enhancements during shift overlaps. Incoming shifts restricted to pending tickets only during shared handover windows. Outgoing shifts enhanced to view both pending and completed tickets until shift lock. Desktop installer and release pipeline improvements.",
+      notes:
+        "Ticket visibility enhancements during shift overlaps. Incoming shifts restricted to pending tickets only during shared handover windows. Outgoing shifts enhanced to view both pending and completed tickets until shift lock. Desktop installer and release pipeline improvements.",
     },
     {
       version: "0.0.0",
       date: "2025-12",
-      notes: "Initial production release with core shift handover system, Google Sheets integration, ticket management, and real-time duty roster.",
+      notes:
+        "Initial production release with core shift handover system, Google Sheets integration, ticket management, and real-time duty roster.",
     },
   ];
 
@@ -2326,7 +2355,9 @@ export default function Header() {
                               </p>
                               <button
                                 onClick={() =>
-                                  handleAcknowledgeOperationalAlert(notif.data.id)
+                                  handleAcknowledgeOperationalAlert(
+                                    notif.data.id,
+                                  )
                                 }
                                 className="mt-2 w-full py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition-colors"
                               >
@@ -2473,10 +2504,23 @@ export default function Header() {
                           <div className="font-bold uppercase tracking-wider text-slate-400">
                             Presence Debug
                           </div>
-                          <div>Status: {presenceDebug?.lastSubscribeStatus || "IDLE"}</div>
-                          <div>Reconnects: {presenceDebug?.reconnectCount || 0}</div>
-                          <div>Heartbeat: {formatPresenceAgo(presenceDebug?.lastHeartbeatAt)}</div>
-                          <div>Last Sync: {formatPresenceAgo(presenceDebug?.lastPresenceSyncAt)}</div>
+                          <div>
+                            Status:{" "}
+                            {presenceDebug?.lastSubscribeStatus || "IDLE"}
+                          </div>
+                          <div>
+                            Reconnects: {presenceDebug?.reconnectCount || 0}
+                          </div>
+                          <div>
+                            Heartbeat:{" "}
+                            {formatPresenceAgo(presenceDebug?.lastHeartbeatAt)}
+                          </div>
+                          <div>
+                            Last Sync:{" "}
+                            {formatPresenceAgo(
+                              presenceDebug?.lastPresenceSyncAt,
+                            )}
+                          </div>
                         </div>
 
                         <div className="px-2 pb-2">
@@ -3307,8 +3351,10 @@ export default function Header() {
                     onChange={(e) => setHistoryFilterDuty(e.target.value)}
                     className="text-xs font-bold border-none bg-transparent outline-none text-slate-700 cursor-pointer"
                   >
-                    {historyArchiveDuties.map(duty => (
-                      <option key={duty} value={duty}>{duty}</option>
+                    {historyArchiveDuties.map((duty) => (
+                      <option key={duty} value={duty}>
+                        {duty}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -3703,7 +3749,9 @@ export default function Header() {
               {infoView === "logic" && isAdminOrLeader && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-bold text-slate-800">Logic Health</h4>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      Logic Health
+                    </h4>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={clearLogicHealthEntries}
@@ -3781,7 +3829,8 @@ export default function Header() {
 
                   {filteredLogicHealthEntries.length === 0 ? (
                     <div className="text-xs text-slate-500 border border-slate-200 rounded-lg bg-slate-50 px-3 py-2">
-                      No matching logic alerts. Adjust filters or run quick checks.
+                      No matching logic alerts. Adjust filters or run quick
+                      checks.
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -3799,7 +3848,9 @@ export default function Header() {
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-slate-800">{entry.code}</span>
+                            <span className="text-xs font-bold text-slate-800">
+                              {entry.code}
+                            </span>
                             <span className="text-[10px] font-medium text-slate-500">
                               {formatPresenceAgo(entry.at)}
                             </span>

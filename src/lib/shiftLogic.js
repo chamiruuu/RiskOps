@@ -144,19 +144,19 @@ export const computeTransitionViewState = ({
   const isIncomingTransitionViewer =
     !!handoverPair &&
     (isInManualWindow || isInSharedZone) &&
-    myAssignedShift === handoverPair.incoming &&
-    handoverCompletedForCurrentWindow;
+    myAssignedShift === handoverPair.incoming;
 
+  // BUG FIX: Only hold the incoming view BEFORE their shift officially starts (e.g., 14:15 - 14:39).
+  // Once 14:40 hits, do NOT lock them out, even if the previous shift didn't click handover.
   const shouldHoldIncomingViewUntilHandover =
     !!handoverPair &&
-    isInSharedZone &&
+    isInManualWindow && 
     myAssignedShift === handoverPair.incoming &&
     !handoverCompletedForCurrentWindow;
 
   const canViewTickets =
     (isMyShiftActive && !shouldHoldIncomingViewUntilHandover) ||
     isOutgoingTransitionViewer ||
-    isIncomingTransitionViewer ||
     isAdminOrLeader;
 
   return {

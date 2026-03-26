@@ -647,26 +647,27 @@ export default function TicketTable({
       lockWarningMarkerRef.current = warningMarker;
 
       const reminderText =
-        "Shift lock in 10 minutes. Finalize remaining work now before visibility is revoked.";
+              "Shift lock in 10 minutes. Finalize remaining work now before visibility is revoked.";
 
-      setReminderToast({
-        title: "Shift Lock Warning",
-        text: reminderText,
-      });
-      setShowReminderToast(true);
-      playAlertSound();
+            setReminderToast({
+              title: "Shift Lock Warning",
+              text: reminderText,
+            });
+            setShowReminderToast(true);
+            
+            // REMOVED: playAlertSound(); <--- Deleting this fixes the silence!
 
-      window.dispatchEvent(
-        new CustomEvent("tracking-reminder-alert", {
-          detail: {
-            missingCount: 0,
-            time: Date.now(),
-            text: reminderText,
-          },
-        }),
-      );
+            window.dispatchEvent(
+              new CustomEvent("tracking-reminder-alert", {
+                detail: {
+                  missingCount: 0,
+                  time: Date.now(),
+                  text: reminderText,
+                },
+              }),
+            );
 
-      setTimeout(() => setShowReminderToast(false), 8000);
+            setTimeout(() => setShowReminderToast(false), 8000);
     };
 
     checkHardLockWarning();
@@ -681,10 +682,13 @@ export default function TicketTable({
       (t) =>
         !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "",
     );
-    if (missing.length === 0) {
+    
+    // BUG FIX: Only clear the bell if the CURRENT reminder is specifically about missing tracking IDs.
+    // This stops it from accidentally deleting your "Handover Required" or "Handover Enabled" notifications!
+    if (missing.length === 0 && reminderToast.title === "Missing Tracking IDs") {
       window.dispatchEvent(new CustomEvent("clear-tracking-reminder"));
     }
-  }, [tickets]);
+  }, [tickets, reminderToast.title]);
 
   // --- LISTEN FOR TRANSFER HANDSHAKE RESPONSES ---
   useEffect(() => {
@@ -1178,7 +1182,8 @@ export default function TicketTable({
   }, [dutyKey, user?.id]);
 
   useEffect(() => {
-    const attemptAutoHandover = () => {
+    // 1. Made this function async so we can await the sync
+    const attemptAutoHandover = async () => {
       const transitionCtx = getTransitionContext();
       if (!transitionCtx) {
         return;
@@ -1210,7 +1215,29 @@ export default function TicketTable({
       if (autoHandoverLoggedRef.current === marker) return;
       autoHandoverLoggedRef.current = marker;
 
-      syncHandoverAndNotify(pendingTix, "Auto");
+      // 2. Await the handover process
+      await syncHandoverAndNotify(pendingTix, "Auto");
+
+      // 3. NEW: Notify the user that auto-handover just happened!
+      const notifText = `System automatically handed over ${pendingTix.length} pending ticket(s) to the ${transitionCtx.pair.incoming} shift.`;
+      
+      setReminderToast({
+        title: "Auto-Handover Executed",
+        text: notifText,
+      });
+      setShowReminderToast(true);
+      playAlertSound();
+
+      // 4. Send it to the Bell Icon
+      window.dispatchEvent(
+        new CustomEvent("tracking-reminder-alert", {
+          detail: {
+            missingCount: 0,
+            time: Date.now(),
+            text: notifText,
+          },
+        }),
+      );
     };
 
     attemptAutoHandover();
@@ -1224,6 +1251,7 @@ export default function TicketTable({
     dutyArray,
     syncHandoverAndNotify,
     buildHandoverMarker,
+    playAlertSound // <-- Added this dependency for the sound
   ]);
 
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
@@ -1358,8 +1386,12 @@ export default function TicketTable({
   const filteredTickets = tickets.filter((ticket) => {
     if (!canViewTickets) return false;
 
-    // Incoming shift during transition can only see pending handover tickets.
-    if (isIncomingTransitionViewer && ticket.status !== "Pending") {
+    // BUG FIX: Incoming shift should not see the PREVIOUS shift's completed tickets.
+    // But they MUST be able to see tickets they created and completed during their own shift!
+    const lastShiftChange = getLastShiftChangeTime();
+    const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
+
+    if (isIncomingTransitionViewer && ticket.status !== "Pending" && createdInPastShift) {
       return false;
     }
 
@@ -1690,7 +1722,7 @@ export default function TicketTable({
           )}
 
           {/* --- NEW: ABNORMAL SCRIPT GENERATOR BUTTON --- */}
-          {(isMyShiftActive || isAdminOrLeader) && (
+          {(isMyShiftActive || isOutgoingTransitionViewer || isAdminOrLeader) && (
             <button
               onClick={() =>
                 setAbnormalModalState({
