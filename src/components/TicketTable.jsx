@@ -2208,23 +2208,18 @@ export default function TicketTable({
                             </button>
                           )}
 
-                          {/* --- UPDATED: DISABLED TRASH BUTTON FOR HANDOVER TICKETS --- */}
-                          <button
-                            onClick={() => {
-                              setDeletingRowId(ticket.id);
-                            }}
-                            disabled={isLockedFromDeletion}
-                            className={`transition-colors ${isLockedFromDeletion ? "text-slate-200 cursor-not-allowed" : "text-slate-400 hover:text-rose-500"}`}
-                            title={
-                              isCompleted
-                                ? "Cannot delete completed ticket"
-                                : createdInPastShift || isHandedOverLocally
-                                  ? "Already handed over! Please complete as 'Void' instead."
-                                  : "Delete Ticket"
-                            }
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS --- */}
+                          {!isLockedFromDeletion && (
+                            <button
+                              onClick={() => {
+                                setDeletingRowId(ticket.id);
+                              }}
+                              className="text-slate-400 hover:text-rose-500 transition-colors"
+                              title="Delete Ticket"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
