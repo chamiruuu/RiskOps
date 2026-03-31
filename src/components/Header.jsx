@@ -1141,20 +1141,30 @@ export default function Header() {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this user? This will instantly revoke their access.",
-      )
-    )
+    // Standard confirmation prompt
+    if (!window.confirm("Are you sure you want to permanently delete this user?")) {
       return;
-    setTeamMembers(teamMembers.filter((member) => member.id !== userId));
-    const { error } = await supabase.rpc("delete_user_by_admin", {
-      target_user_id: userId,
-    });
-    if (error)
-      alert(
-        "Error: Could not delete user from Authentication. Please check database permissions.",
-      );
+    }
+
+    try {
+      // 1. Call the secure Edge Function
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: userId }
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // 2. Success! Remove them from your local screen/state
+      alert("User successfully deleted.");
+      
+      // If you have a state array of users, filter them out so the UI updates instantly:
+      // setUsers(users.filter(u => u.id !== userId));
+
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Failed to delete user: " + error.message);
+    }
   };
 
   const togglePasswordVisibility = (id) =>
