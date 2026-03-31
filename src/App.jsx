@@ -751,12 +751,13 @@ function ProtectedRoute({ children }) {
     );
 
   // --- NEW: THE INVITE TRAP ---
-  // If the URL contains "type=invite" (which Supabase adds to invite links), 
-  // immediately redirect them to the Set Password page so they can't access the dashboard!
+  // If the URL contains "type=invite" (which Supabase adds to email invite links), 
+  // immediately kick them back to the Set Password page. No sneaking into the dashboard!
   if (window.location.hash.includes('type=invite')) {
     return <Navigate to="/set-password" />;
   }
 
+  // --- MODIFIED: Added check for empty array ---
   if (!user || !selectedDuty || selectedDuty.length === 0) {
     return <Navigate to="/login" />;
   }

@@ -1,15 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { ShieldCheck, Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../lib/supabase";
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  ArrowRight,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 
 export default function SetPassword() {
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
+  const [userEmail, setUserEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSessionReady, setIsSessionReady] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const navigate = useNavigate();
   const passwordInputRef = useRef(null);
 
@@ -17,27 +24,31 @@ export default function SetPassword() {
     let subscription = null; // Store the whole object
 
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session?.user) {
         setUserEmail(session.user.email);
         setIsSessionReady(true);
       } else {
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-          if (session?.user) {
-            setUserEmail(session.user.email);
-            setIsSessionReady(true);
-          }
-        });
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+          (event, session) => {
+            if (session?.user) {
+              setUserEmail(session.user.email);
+              setIsSessionReady(true);
+            }
+          },
+        );
         subscription = authListener.subscription; // Save the object
       }
     };
-    
+
     checkSession();
-    
+
     return () => {
       // Call unsubscribe() directly on the object
-      if (subscription) subscription.unsubscribe(); 
+      if (subscription) subscription.unsubscribe();
     };
   }, []);
 
@@ -47,7 +58,9 @@ export default function SetPassword() {
     setError("");
 
     if (!isSessionReady) {
-      setError("Secure session not found. Please ensure you clicked a valid invite link.");
+      setError(
+        "Secure session not found. Please ensure you clicked a valid invite link.",
+      );
       setIsLoading(false);
       return;
     }
@@ -60,7 +73,7 @@ export default function SetPassword() {
     }
 
     const { error: updateError } = await supabase.auth.updateUser({
-      password: password
+      password: password,
     });
 
     if (updateError) {
@@ -68,7 +81,12 @@ export default function SetPassword() {
       setIsLoading(false);
       passwordInputRef.current?.focus();
     } else {
-      navigate('/dashboard');
+      // --- THE STRICT DOOR FIX ---
+      // 1. Destroy the temporary "magic link" session so they can't sneak in
+      await supabase.auth.signOut();
+
+      // 2. Force them to the login screen to type their new password
+      navigate("/login");
     }
   };
 
@@ -83,10 +101,17 @@ export default function SetPassword() {
           </div>
           <div className="relative z-10 flex flex-col items-center">
             <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-lg mb-4 transform rotate-3 animate-in fade-in duration-700">
-              <ShieldCheck size={32} className="text-indigo-700 transform -rotate-3" />
+              <ShieldCheck
+                size={32}
+                className="text-indigo-700 transform -rotate-3"
+              />
             </div>
-            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight drop-shadow">Welcome to RiskOps</h2>
-            <p className="text-indigo-100 text-sm font-medium">Secure your account to continue</p>
+            <h2 className="text-2xl font-extrabold text-white mb-1 tracking-tight drop-shadow">
+              Welcome to RiskOps
+            </h2>
+            <p className="text-indigo-100 text-sm font-medium">
+              Secure your account to continue
+            </p>
           </div>
         </div>
         {/* Form Section */}
@@ -94,33 +119,58 @@ export default function SetPassword() {
           {error && (
             <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700 animate-in slide-in-from-top-2 shadow-sm">
               <AlertCircle size={20} className="shrink-0 mt-0.5" />
-              <p className="text-xs font-semibold leading-relaxed" role="alert">{error}</p>
+              <p className="text-xs font-semibold leading-relaxed" role="alert">
+                {error}
+              </p>
             </div>
           )}
           {!isSessionReady && !error ? (
             <div className="flex flex-col items-center justify-center py-8 text-slate-400 animate-pulse">
-              <Loader2 size={36} className="animate-spin mb-4 text-indigo-500" />
-              <p className="text-base font-semibold">Verifying secure token...</p>
+              <Loader2
+                size={36}
+                className="animate-spin mb-4 text-indigo-500"
+              />
+              <p className="text-base font-semibold">
+                Verifying secure token...
+              </p>
             </div>
           ) : (
-            <form onSubmit={handleSetPassword} className="space-y-7" autoComplete="off">
+            <form
+              onSubmit={handleSetPassword}
+              className="space-y-7"
+              autoComplete="off"
+            >
               {/* Read-only Email Display */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2" htmlFor="email-display">
+                <label
+                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
+                  htmlFor="email-display"
+                >
                   Account Email
                 </label>
                 <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 select-text">
                   <Mail size={20} className="text-slate-400" />
-                  <span id="email-display" className="text-sm font-semibold truncate">{userEmail || "Loading..."}</span>
+                  <span
+                    id="email-display"
+                    className="text-sm font-semibold truncate"
+                  >
+                    {userEmail || "Loading..."}
+                  </span>
                 </div>
               </div>
               {/* Password Input with toggle */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2" htmlFor="password-input">
+                <label
+                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
+                  htmlFor="password-input"
+                >
                   Create New Password <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
-                  <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Lock
+                    size={20}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
                   <input
                     ref={passwordInputRef}
                     id="password-input"
@@ -137,18 +187,54 @@ export default function SetPassword() {
                   <button
                     type="button"
                     tabIndex={0}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 focus:outline-none"
                     onClick={() => setShowPassword((v) => !v)}
                   >
                     {showPassword ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.336-3.236.938-4.675m2.122-2.122A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.657-.336 3.236-.938 4.675m-2.122 2.122A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10 0-1.657.336-3.236.938-4.675" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.336-3.236.938-4.675m2.122-2.122A9.956 9.956 0 0112 3c5.523 0 10 4.477 10 10 0 1.657-.336 3.236-.938 4.675m-2.122 2.122A9.956 9.956 0 0112 21c-5.523 0-10-4.477-10-10 0-1.657.336-3.236.938-4.675"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
                     ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M9.88 9.88A3 3 0 0112 9c1.657 0 3 1.343 3 3 0 .512-.13 1-.36 1.42m-1.42 1.42A3 3 0 0112 15c-1.657 0-3-1.343-3-3 0-.512.13-1 .36-1.42m1.42-1.42A3 3 0 0112 9c1.657 0 3 1.343 3 3 0 .512-.13 1-.36 1.42m-1.42 1.42A3 3 0 0112 15c-1.657 0-3-1.343-3-3 0-.512.13-1 .36-1.42" /></svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 3l18 18M9.88 9.88A3 3 0 0112 9c1.657 0 3 1.343 3 3 0 .512-.13 1-.36 1.42m-1.42 1.42A3 3 0 0112 15c-1.657 0-3-1.343-3-3 0-.512.13-1 .36-1.42m1.42-1.42A3 3 0 0112 9c1.657 0 3 1.343 3 3 0 .512-.13 1-.36 1.42m-1.42 1.42A3 3 0 0112 15c-1.657 0-3-1.343-3-3 0-.512.13-1 .36-1.42"
+                        />
+                      </svg>
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Password must be at least 6 characters.</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Password must be at least 6 characters.
+                </p>
               </div>
               <button
                 type="submit"
@@ -163,7 +249,10 @@ export default function SetPassword() {
                 ) : (
                   <>
                     Secure Account & Login
-                    <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight
+                      size={20}
+                      className="group-hover:translate-x-1 transition-transform"
+                    />
                   </>
                 )}
               </button>
