@@ -556,7 +556,6 @@ export default function TicketForm({ onAddTicket }) {
       recorder: workName || "RiskOps",
       status: "Pending",
       notes: [],
-      // ... keep the rest of your ticket fields ...
     };
 
     onAddTicket(newTicket);
