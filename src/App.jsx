@@ -25,6 +25,13 @@ const getGMT8Time = () => {
   return new Date(utc + 3600000 * 8);
 };
 
+// --- NEW: Helper to ensure the Google Sheet name is always clean ---
+const getCleanHandoverName = (rawName) => {
+  if (!rawName) return "Agent";
+  // This removes " IPCS" (case-insensitive) from the name so it only leaves "Fernando"
+  return rawName.replace(/ IPCS/gi, "").trim();
+};
+
 const isOutgoingHandoverSheetWindow = (
   assignedShift,
   inputNow = getGMT8Time(),
@@ -532,12 +539,15 @@ function Dashboard() {
         invokeSyncSheets({
           action: "APPEND",
           tickets: [data[0]],
-          handoverBy: workName || "Agent",
-        }).then(({ error: sheetError }) => {
+          // --- UPDATED: Force the clean name ---
+          handoverBy: getCleanHandoverName(workName),
+        })
+        .then(({ error: sheetError }) => {
           if (sheetError) {
             console.error("Sheet Create Error:", sheetError);
           }
-        });
+        })
+        .catch((err) => console.error("Sheet sync error on new ticket:", err));
       }
     }
   };

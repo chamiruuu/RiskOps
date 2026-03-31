@@ -36,6 +36,12 @@ import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 // --- NEW: Directly import the sound for guaranteed playback ---
 import notificationSound from "../assets/notification sound common.mp3";
 
+// --- NEW: Helper to ensure the Google Sheet name is always clean ---
+const getCleanHandoverName = (rawName) => {
+  if (!rawName) return "Agent";
+  return rawName.replace(/ IPCS/gi, "").trim();
+};
+
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
   switch (dutyName) {
@@ -476,18 +482,25 @@ export default function TicketTable({
       }
       lastPostStartReminderMinuteRef.current = minuteKey;
 
-      const pendingTix = tickets.filter((t) => t.status === "Pending");
-      const reminderText =
-        pendingTix.length > 0
-          ? `Handover reminder: ${pendingTix.length} pending ticket(s) still require handover to ${handoverPair.incoming} shift.`
-          : `Handover reminder: please complete your shift handover to ${handoverPair.incoming} shift.`;
+      // --- BUG FIX: Only count tickets that are Pending AND haven't been handed over yet ---
+      const pendingTix = tickets.filter(
+        (t) => t.status === "Pending" && isTicketNewSinceLastHandover(t),
+      );
+
+      // --- BUG FIX: If there are 0 tickets left to hand over, kill the endless loop! ---
+      if (pendingTix.length === 0) {
+        autoHandoverLoggedRef.current = marker; // Engage the kill-switch for future minutes
+        return;
+      }
+
+      const reminderText = `Handover reminder: ${pendingTix.length} pending ticket(s) still require handover to ${handoverPair.incoming} shift.`;
 
       setReminderToast({
         title: "Handover Required",
         text: reminderText,
       });
       setShowReminderToast(true);
-      playAlertSound();
+      // playAlertSound(); // (Assuming you removed this earlier so it doesn't double-play!)
 
       window.dispatchEvent(
         new CustomEvent("tracking-reminder-alert", {
@@ -505,7 +518,14 @@ export default function TicketTable({
     checkPostStartReminder();
     const timer = setInterval(checkPostStartReminder, 30000);
     return () => clearInterval(timer);
-  }, [isAdminOrLeader, myAssignedShift, dutyKey, tickets, playAlertSound]);
+  }, [
+    isAdminOrLeader,
+    myAssignedShift,
+    dutyKey,
+    tickets,
+    playAlertSound,
+    isTicketNewSinceLastHandover,
+  ]); // <-- Added isTicketNewSinceLastHandover to dependencies
 
   // --- WINDOW HANDOVER COMPLETION STATUS (CONTROLS INCOMING VISIBILITY) ---
   useEffect(() => {
@@ -647,27 +667,27 @@ export default function TicketTable({
       lockWarningMarkerRef.current = warningMarker;
 
       const reminderText =
-              "Shift lock in 10 minutes. Finalize remaining work now before visibility is revoked.";
+        "Shift lock in 10 minutes. Finalize remaining work now before visibility is revoked.";
 
-            setReminderToast({
-              title: "Shift Lock Warning",
-              text: reminderText,
-            });
-            setShowReminderToast(true);
-            
-            // REMOVED: playAlertSound(); <--- Deleting this fixes the silence!
+      setReminderToast({
+        title: "Shift Lock Warning",
+        text: reminderText,
+      });
+      setShowReminderToast(true);
 
-            window.dispatchEvent(
-              new CustomEvent("tracking-reminder-alert", {
-                detail: {
-                  missingCount: 0,
-                  time: Date.now(),
-                  text: reminderText,
-                },
-              }),
-            );
+      // REMOVED: playAlertSound(); <--- Deleting this fixes the silence!
 
-            setTimeout(() => setShowReminderToast(false), 8000);
+      window.dispatchEvent(
+        new CustomEvent("tracking-reminder-alert", {
+          detail: {
+            missingCount: 0,
+            time: Date.now(),
+            text: reminderText,
+          },
+        }),
+      );
+
+      setTimeout(() => setShowReminderToast(false), 8000);
     };
 
     checkHardLockWarning();
@@ -682,10 +702,13 @@ export default function TicketTable({
       (t) =>
         !t.tracking_no || t.tracking_no === "-" || t.tracking_no.trim() === "",
     );
-    
+
     // BUG FIX: Only clear the bell if the CURRENT reminder is specifically about missing tracking IDs.
     // This stops it from accidentally deleting your "Handover Required" or "Handover Enabled" notifications!
-    if (missing.length === 0 && reminderToast.title === "Missing Tracking IDs") {
+    if (
+      missing.length === 0 &&
+      reminderToast.title === "Missing Tracking IDs"
+    ) {
       window.dispatchEvent(new CustomEvent("clear-tracking-reminder"));
     }
   }, [tickets, reminderToast.title]);
@@ -785,7 +808,8 @@ export default function TicketTable({
           body: {
             action: "APPEND",
             tickets: handoverTickets,
-            handoverBy: shortWorkName,
+            // --- UPDATED: Force the clean name ---
+            handoverBy: getCleanHandoverName(shortWorkName),
           },
         });
 
@@ -883,7 +907,8 @@ export default function TicketTable({
           payload: {
             action: "APPEND",
             tickets: ticketsToRetry,
-            handoverBy: shortWorkName,
+            // --- UPDATED: Force the clean name ---
+            handoverBy: getCleanHandoverName(shortWorkName),
           },
           status: "pending",
           first_failed_at: firstFailedAt,
@@ -1220,7 +1245,7 @@ export default function TicketTable({
 
       // 3. NEW: Notify the user that auto-handover just happened!
       const notifText = `System automatically handed over ${pendingTix.length} pending ticket(s) to the ${transitionCtx.pair.incoming} shift.`;
-      
+
       setReminderToast({
         title: "Auto-Handover Executed",
         text: notifText,
@@ -1251,7 +1276,7 @@ export default function TicketTable({
     dutyArray,
     syncHandoverAndNotify,
     buildHandoverMarker,
-    playAlertSound // <-- Added this dependency for the sound
+    playAlertSound, // <-- Added this dependency for the sound
   ]);
 
   // --- HANDOVER WORKFLOW (Reporting & Cleaning) ---
@@ -1391,7 +1416,11 @@ export default function TicketTable({
     const lastShiftChange = getLastShiftChangeTime();
     const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
 
-    if (isIncomingTransitionViewer && ticket.status !== "Pending" && createdInPastShift) {
+    if (
+      isIncomingTransitionViewer &&
+      ticket.status !== "Pending" &&
+      createdInPastShift
+    ) {
       return false;
     }
 
@@ -1637,7 +1666,7 @@ export default function TicketTable({
     const now = getGMT8Time();
     const h = now.getHours();
     const m = now.getMinutes();
-    
+
     // Trigger at exact enable times
     const isEnableTime =
       (h === 6 && m === 45) || (h === 14 && m === 15) || (h === 22 && m === 15);
@@ -1650,7 +1679,8 @@ export default function TicketTable({
     if (window.__lastHandoverEnableMarker === enableMarker) return;
     window.__lastHandoverEnableMarker = enableMarker;
 
-    const notifText = "The handover window is now open. Please proceed with the handover if all tasks are complete.";
+    const notifText =
+      "The handover window is now open. Please proceed with the handover if all tasks are complete.";
 
     // 1. Show local on-screen toast
     setReminderToast({
@@ -1670,7 +1700,6 @@ export default function TicketTable({
         },
       }),
     );
-    
   }, [
     isAdminOrLeader,
     isOutgoingForWindow,
@@ -1722,7 +1751,9 @@ export default function TicketTable({
           )}
 
           {/* --- NEW: ABNORMAL SCRIPT GENERATOR BUTTON --- */}
-          {(isMyShiftActive || isOutgoingTransitionViewer || isAdminOrLeader) && (
+          {(isMyShiftActive ||
+            isOutgoingTransitionViewer ||
+            isAdminOrLeader) && (
             <button
               onClick={() =>
                 setAbnormalModalState({
@@ -1740,7 +1771,8 @@ export default function TicketTable({
           )}
 
           {/* --- NEW: FOLLOW-UP SCRIPTS BUTTON --- */}
-          {(isAdminOrLeader || (isMyShiftActive && !dutyArray.includes("IC0"))) && (
+          {(isAdminOrLeader ||
+            (isMyShiftActive && !dutyArray.includes("IC0"))) && (
             <button
               onClick={() => setFollowUpModal(true)}
               className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
@@ -1751,7 +1783,8 @@ export default function TicketTable({
           )}
 
           {/* --- TRANSFER DUTY BUTTON --- */}
-          {(isAdminOrLeader || (isMyShiftActive && !dutyArray.includes("IC0"))) && (
+          {(isAdminOrLeader ||
+            (isMyShiftActive && !dutyArray.includes("IC0"))) && (
             <button
               onClick={handleOpenTransfer}
               className="p-2 bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-lg shadow-sm transition-colors border border-slate-200 ml-1"
@@ -2064,14 +2097,26 @@ export default function TicketTable({
               filteredTickets.map((ticket) => {
                 const isCompleted = ticket.status !== "Pending";
 
-                // NEW: Determine if ticket is securely locked from deletion
+                // --- NEW: 1. Check if created in the 20-min Sheet Handover overlap ---
+                const d = new Date(ticket.created_at);
+                const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+                const gmt8 = new Date(utc + 3600000 * 8);
+                const tTime = gmt8.getHours() + gmt8.getMinutes() / 60;
+                
+                const isCreatedInOverlap = 
+                  (tTime >= 7.15 && tTime < 7.5) ||   // 07:09 - 07:30
+                  (tTime >= 14.65 && tTime < 15.0) || // 14:39 - 15:00
+                  (tTime >= 22.65 && tTime < 23.0);   // 22:39 - 23:00
+
+                // --- NEW: 2. Strict Delete Lock (Applies to EVERYONE, including Admins) ---
                 const lastShiftChange = getLastShiftChangeTime();
-                const createdInPastShift =
-                  new Date(ticket.created_at) < lastShiftChange;
-                const isHandedOverLocally =
-                  !isTicketNewSinceLastHandover(ticket);
+                const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
+                const isHandedOverLocally = !isTicketNewSinceLastHandover(ticket);
+                
+                // If it meets ANY of these conditions, it is on the Sheet. 
+                // Because we don't include 'isAdminOrLeader' here, it strictly blocks Admins too!
                 const isLockedFromDeletion =
-                  isCompleted || createdInPastShift || isHandedOverLocally;
+                  isCompleted || createdInPastShift || isHandedOverLocally || isCreatedInOverlap;
 
                 return (
                   <tr
