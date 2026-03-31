@@ -71,6 +71,8 @@ export default function TicketForm({ onAddTicket }) {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const [crossDutySelect, setCrossDutySelect] = useState("");
+
   // --- Searchable Provider Dropdown States ---
   const [isProviderOpen, setIsProviderOpen] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
@@ -407,7 +409,19 @@ export default function TicketForm({ onAddTicket }) {
     if (isActuallyManualOnly) return false;
     if (!formData.memberId || dutyError) return false;
 
+    // --- NEW: Force duty selection for special cross-duty merchants ---
+    const extractedMerchantId = formData.memberId.includes("@")
+      ? formData.memberId.split("@")[1].trim()
+      : "";
+    if (
+      ["262", "232", "135"].includes(extractedMerchantId) &&
+      !crossDutySelect
+    ) {
+      return false;
+    }
+
     const required = activeRequiredFields;
+    // ... rest of the existing isFormValid code stays the same
 
     // Special logic for Bet Ticket OR Time Range
     if (required.includes("betTicket") && required.includes("timeRange")) {
@@ -518,21 +532,24 @@ export default function TicketForm({ onAddTicket }) {
 
   const proceedWithCreation = () => {
     const extractedMerchantId = formData.memberId.includes("@")
-      ? formData.memberId.split("@")[1]
+      ? formData.memberId.split("@")[1].trim()
       : "-";
+
+    // --- NEW: Check if it's a special cross-duty merchant ---
+    const isSpecialMerchant = ["262", "232", "135"].includes(
+      extractedMerchantId,
+    );
 
     const newTicket = {
       merchant_name: extractedMerchantId || "-",
-      ic_account: merchantDuty || "IC3",
+      // --- NEW: Use the toggled duty if it's special, otherwise use default ---
+      ic_account:
+        isSpecialMerchant && crossDutySelect
+          ? crossDutySelect
+          : merchantDuty || "IC3",
       login_id: formData.loginId || "-",
       member_id: formData.memberId,
-      provider_account: formData.providerAccount || "-",
-      provider: formData.provider,
-      time_range: formData.timeRange || "-",
-      tracking_no: "",
-      recorder: workName || "RiskOps",
-      status: "Pending",
-      notes: [],
+      // ... keep the rest of your ticket fields ...
     };
 
     onAddTicket(newTicket);
@@ -552,6 +569,7 @@ export default function TicketForm({ onAddTicket }) {
       ipAddress: "",
       merchantInsists: false,
     });
+    setCrossDutySelect("");
 
     const audio = new Audio(notificationTicketCreation);
     audio.play().catch(() => console.log("Audio blocked by browser"));
@@ -988,6 +1006,35 @@ export default function TicketForm({ onAddTicket }) {
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                         Merchant Group
                       </label>
+                      {/* --- NEW: CROSS-DUTY SELECTOR FOR 262, 232, 135 --- */}
+                      {["262", "232", "135"].includes(
+                        formData.memberId.includes("@")
+                          ? formData.memberId.split("@")[1].trim()
+                          : "",
+                      ) && (
+                        <div className="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl animate-in fade-in zoom-in-95">
+                          <label className="block text-[10px] font-bold text-indigo-900 uppercase mb-2">
+                            Which Duty Account asked this?{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCrossDutySelect("IC3")}
+                              className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${crossDutySelect === "IC3" ? "bg-indigo-600 text-white border-indigo-700 shadow-md" : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100"}`}
+                            >
+                              IC3
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCrossDutySelect(merchantDuty)}
+                              className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-colors ${crossDutySelect === merchantDuty ? "bg-indigo-600 text-white border-indigo-700 shadow-md" : "bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100"}`}
+                            >
+                              {merchantDuty || "Normal Duty"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <input
                         type="text"
                         readOnly
@@ -1520,7 +1567,9 @@ export default function TicketForm({ onAddTicket }) {
               ${currentConfig && !generatedScript.startsWith("//") ? "cursor-pointer hover:border-indigo-400 hover:ring-4 hover:ring-indigo-50 text-slate-700" : "text-slate-400 cursor-not-allowed border-slate-200"} 
               ${copied ? "border-emerald-500 bg-emerald-50 ring-4 ring-emerald-50" : "border-slate-200"}`}
             title={
-              currentConfig && !generatedScript.startsWith("//") ? "Click to copy script" : ""
+              currentConfig && !generatedScript.startsWith("//")
+                ? "Click to copy script"
+                : ""
             }
           >
             {copied ? (

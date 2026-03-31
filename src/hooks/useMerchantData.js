@@ -60,14 +60,21 @@ export function useMerchantData(memberId, selectedDuty) {
       const match = merchantData.find((m) => m.id === idToSearch);
 
       if (match) {
+        // --- NEW: Bypass error if merchant is 262, 232, or 135 AND the agent is on IC3 ---
+        const isSpecialCrossDuty = ["262", "232", "135"].includes(idToSearch);
+        const hasIC3Access = dutyArray.includes("IC3");
+        const canBypass = isSpecialCrossDuty && hasIC3Access;
+
         // Gatekeeper Logic for Arrays
         const error =
-          !isAdmin && !dutyArray.includes(match.duty)
+          !isAdmin && !dutyArray.includes(match.duty) && !canBypass
             ? `Access Denied: ${match.name} is under ${match.duty}.`
             : "";
 
         return { name: match.name, duty: match.duty, error };
       }
+
+      // FIX: Added the missing fallback return and closing bracket here!
       return { name: "", duty: "", error: "" };
     }
     // Logic B: Default Rule (No @ suffix) -> Always QQ288
