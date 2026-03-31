@@ -82,10 +82,7 @@ export default function Header() {
   // --- Create User States ---
   const [newEmail, setNewEmail] = useState("");
   const [newWorkName, setNewWorkName] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("User");
-
-  const [generatedPwdDisplay, setGeneratedPwdDisplay] = useState("");
 
   const [isCreating, setIsCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState({ text: "", type: "" });
@@ -1169,88 +1166,33 @@ export default function Header() {
     setTimeout(() => setCopiedRowId(null), 2000);
   };
 
-  const handleGenerateClick = () => {
-    const chars =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-    let pwd = "";
-    for (let i = 0; i < 12; i++)
-      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-    setGeneratedPwdDisplay(pwd);
-  };
+  // Password generator removed
 
-  const copyGeneratedPassword = () => {
-    if (!generatedPwdDisplay) return;
-    navigator.clipboard.writeText(generatedPwdDisplay);
-    setCopiedPwd(true);
-    setTimeout(() => setCopiedPwd(false), 2000);
-  };
+  // Copy password logic removed
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
     setIsCreating(true);
     setCreateMsg({ text: "", type: "" });
-
     try {
-      const projectUrl =
-        supabase.supabaseUrl ||
-        (typeof import.meta !== "undefined" &&
-          import.meta.env?.VITE_SUPABASE_URL);
-      const projectKey =
-        supabase.supabaseKey ||
-        (typeof import.meta !== "undefined" &&
-          import.meta.env?.VITE_SUPABASE_ANON_KEY);
-
-      if (!projectUrl || !projectKey)
-        throw new Error("Could not initialize ghost client missing variables.");
-
-      const ghostSupabase = createClient(projectUrl, projectKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
+      // Call Edge Function to invite user
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: {
+          email: newEmail,
+          role: newRole,
+          workName: newWorkName,
         },
       });
-
-      const { data, error } = await ghostSupabase.auth.signUp({
-        email: newEmail,
-        password: newPassword,
-      });
-
       if (error) {
         setCreateMsg({ text: error.message, type: "error" });
         setIsCreating(false);
         return;
       }
-
-      if (data?.user) {
-        await supabase
-          .from("profiles")
-          .update({
-            role: newRole,
-            work_name: newWorkName,
-            visible_password: newPassword,
-          })
-          .eq("id", data.user.id);
-
-        if (activeCycle !== "None") {
-          await supabase.from("shift_assignments").insert([
-            {
-              user_id: data.user.id,
-              shift_type: "Off",
-              cycle_period: activeCycle,
-            },
-          ]);
-        }
-      }
-
-      setCreateMsg({ text: "User created successfully!", type: "success" });
+      setCreateMsg({ text: "User invited successfully!", type: "success" });
       setNewEmail("");
       setNewWorkName("");
-      setNewPassword("");
-      setGeneratedPwdDisplay("");
       setNewRole("User");
       fetchTeam();
-
       setTimeout(() => {
         setActiveTab("list");
         setCreateMsg({ text: "", type: "" });
@@ -3231,52 +3173,7 @@ export default function Header() {
                       </select>
                     </div>
 
-                    <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                          Password <span className="text-red-500">*</span>
-                        </label>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          Paste generated password below
-                        </span>
-                      </div>
-
-                      <input
-                        type="text"
-                        required
-                        minLength={6}
-                        placeholder="Paste password here..."
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 transition-all font-mono text-slate-700"
-                      />
-
-                      <div className="flex gap-3">
-                        <div className="flex-1 px-4 py-2.5 bg-white border border-dashed border-slate-300 rounded-lg text-sm font-mono text-slate-500 flex items-center">
-                          {generatedPwdDisplay || "Click Generate ->"}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleGenerateClick}
-                          className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg transition-all flex items-center gap-2"
-                        >
-                          <RefreshCw size={14} /> Generate
-                        </button>
-                        {generatedPwdDisplay && (
-                          <button
-                            type="button"
-                            onClick={copyGeneratedPassword}
-                            className="px-4 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-black transition-all flex items-center gap-2"
-                          >
-                            {copiedPwd ? (
-                              <Check size={14} />
-                            ) : (
-                              <Copy size={14} />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    {/* Password input removed: now handled by invite-user Edge Function */}
 
                     <button
                       type="submit"

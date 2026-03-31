@@ -14,6 +14,7 @@ import { createCorrelationId, LOGIC_CODES } from "./lib/logicHealth";
 import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
 import TicketTable from "./components/TicketTable";
+import SetPassword from "./pages/SetPassword"; // <-- ADD THIS
 
 const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
 const REALTIME_ERROR_ANNOUNCE_DELAY_MS = 12000;
@@ -766,6 +767,7 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/set-password" element={<SetPassword />} />
           <Route
             path="/dashboard"
             element={
