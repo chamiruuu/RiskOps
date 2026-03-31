@@ -549,6 +549,13 @@ export default function TicketForm({ onAddTicket }) {
           : merchantDuty || "IC3",
       login_id: formData.loginId || "-",
       member_id: formData.memberId,
+      provider_account: formData.providerAccount || "-",
+      provider: formData.provider,
+      time_range: formData.timeRange || "-",
+      tracking_no: "",
+      recorder: workName || "RiskOps",
+      status: "Pending",
+      notes: [],
       // ... keep the rest of your ticket fields ...
     };
 
