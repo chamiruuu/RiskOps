@@ -785,13 +785,15 @@ function DeepLinkListener() {
         const refreshToken = params.get("refresh_token");
 
         if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          navigate("/secure-setup/auth-token");
-        }
+            // 1. Manually log them into Supabase inside the desktop app!
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            
+            // 2. THIS WAS THE TYPO: Navigate to the obscure URL!
+            navigate('/secure-setup/auth-token'); 
+          }
       } catch (err) {
         console.error("Deep link auth failed:", err);
       }
