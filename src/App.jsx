@@ -754,7 +754,8 @@ function ProtectedRoute({ children }) {
   // If the URL contains "type=invite" (which Supabase adds to email invite links), 
   // immediately kick them back to the Set Password page. No sneaking into the dashboard!
   if (window.location.hash.includes('type=invite')) {
-    return <Navigate to="/set-password" />;
+    // Kick them to the obscure URL instead!
+    return <Navigate to="/secure-setup/auth-token" />; 
   }
 
   // --- MODIFIED: Added check for empty array ---
@@ -774,7 +775,8 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/set-password" element={<SetPassword />} />
+          {/* Change this route to the obscure one */}
+          <Route path="/secure-setup/auth-token" element={<SetPassword />} />
           <Route
             path="/dashboard"
             element={

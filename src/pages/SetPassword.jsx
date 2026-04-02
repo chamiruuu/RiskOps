@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import {
   ShieldCheck,
@@ -8,6 +7,7 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 
 export default function SetPassword() {
@@ -17,11 +17,14 @@ export default function SetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [error, setError] = useState("");
-  const navigate = useNavigate();
+
+  // --- NEW: Track if they finished the setup ---
+  const [isSuccess, setIsSuccess] = useState(false);
+
   const passwordInputRef = useRef(null);
 
   useEffect(() => {
-    let subscription = null; // Store the whole object
+    let subscription = null;
 
     const checkSession = async () => {
       const {
@@ -40,14 +43,13 @@ export default function SetPassword() {
             }
           },
         );
-        subscription = authListener.subscription; // Save the object
+        subscription = authListener.subscription;
       }
     };
 
     checkSession();
 
     return () => {
-      // Call unsubscribe() directly on the object
       if (subscription) subscription.unsubscribe();
     };
   }, []);
@@ -81,19 +83,53 @@ export default function SetPassword() {
       setIsLoading(false);
       passwordInputRef.current?.focus();
     } else {
-      // --- THE STRICT DOOR FIX ---
-      // 1. Destroy the temporary "magic link" session so they can't sneak in
+      // 1. Destroy the temporary "magic link" session
       await supabase.auth.signOut();
 
-      // 2. Force them to the login screen to type their new password
-      navigate("/login");
+      // 2. Trigger the Dead End Success Screen!
+      setIsSuccess(true);
+
+      // (Next step: We will trigger the success email function right here)
     }
   };
 
+  // --- NEW: THE DEAD END SUCCESS UI ---
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 font-sans selection:bg-indigo-500/30">
+        <div className="max-w-md w-full bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-500 text-center p-10">
+          <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle size={40} className="text-emerald-500" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-white mb-3 tracking-tight">
+            Security Setup Complete
+          </h2>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+            Your RiskOps account is now secure. For security reasons, web access
+            is disabled.
+          </p>
+          <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50 mb-6">
+            <p className="text-sm font-medium text-slate-300">
+              Please close this browser tab and launch the{" "}
+              <span className="text-white font-bold">RiskOps Desktop App</span>{" "}
+              to log in.
+            </p>
+          </div>
+          <button
+            onClick={() => window.close()}
+            className="text-slate-500 hover:text-white text-xs font-semibold uppercase tracking-wider transition-colors"
+          >
+            Close Window
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- STANDARD FORM UI (Unchanged) ---
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-100 to-indigo-50 flex items-center justify-center p-4 font-sans">
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
-        {/* Header Section */}
         <div className="bg-indigo-700 px-8 py-10 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
             <div className="absolute transform -rotate-45 -top-10 -left-10 w-40 h-40 bg-white rounded-3xl"></div>
@@ -114,7 +150,7 @@ export default function SetPassword() {
             </p>
           </div>
         </div>
-        {/* Form Section */}
+
         <div className="p-8">
           {error && (
             <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700 animate-in slide-in-from-top-2 shadow-sm">
@@ -140,30 +176,20 @@ export default function SetPassword() {
               className="space-y-7"
               autoComplete="off"
             >
-              {/* Read-only Email Display */}
               <div>
-                <label
-                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
-                  htmlFor="email-display"
-                >
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Account Email
                 </label>
                 <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 select-text">
                   <Mail size={20} className="text-slate-400" />
-                  <span
-                    id="email-display"
-                    className="text-sm font-semibold truncate"
-                  >
+                  <span className="text-sm font-semibold truncate">
                     {userEmail || "Loading..."}
                   </span>
                 </div>
               </div>
-              {/* Password Input with toggle */}
+
               <div>
-                <label
-                  className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2"
-                  htmlFor="password-input"
-                >
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Create New Password <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
@@ -173,7 +199,6 @@ export default function SetPassword() {
                   />
                   <input
                     ref={passwordInputRef}
-                    id="password-input"
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={password}
@@ -182,14 +207,9 @@ export default function SetPassword() {
                     required
                     minLength={6}
                     autoComplete="new-password"
-                    aria-required="true"
                   />
                   <button
                     type="button"
-                    tabIndex={0}
-                    aria-label={
-                      showPassword ? "Hide password" : "Show password"
-                    }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 focus:outline-none"
                     onClick={() => setShowPassword((v) => !v)}
                   >
@@ -232,15 +252,11 @@ export default function SetPassword() {
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
-                  Password must be at least 6 characters.
-                </p>
               </div>
               <button
                 type="submit"
                 disabled={isLoading}
                 className="w-full mt-2 py-3.5 bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 text-white text-base font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed group focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                aria-busy={isLoading}
               >
                 {isLoading ? (
                   <>
@@ -248,11 +264,7 @@ export default function SetPassword() {
                   </>
                 ) : (
                   <>
-                    Secure Account & Login
-                    <ArrowRight
-                      size={20}
-                      className="group-hover:translate-x-1 transition-transform"
-                    />
+                    <Lock size={18} /> Secure Account
                   </>
                 )}
               </button>
