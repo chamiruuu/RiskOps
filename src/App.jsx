@@ -4,6 +4,7 @@ import {
   Routes,
   Route,
   Navigate,
+  useNavigate,
 } from "react-router-dom";
 import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
@@ -15,6 +16,7 @@ import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
 import TicketTable from "./components/TicketTable";
 import SetPassword from "./pages/SetPassword"; // <-- ADD THIS
+import DesktopRouter from "./pages/DesktopRouter";
 
 const OWNERSHIP_CONFLICT_WINDOW_MS = 30 * 1000;
 const REALTIME_ERROR_ANNOUNCE_DELAY_MS = 12000;
@@ -766,17 +768,57 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function DeepLinkListener() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Electron-only deep-link hook: riskops://auth#access_token=...&refresh_token=...
+    if (!window.electronAPI || !window.electronAPI.onDeepLink) return;
+
+    window.electronAPI.onDeepLink(async (url) => {
+      try {
+        const hashString = url?.split("#")[1];
+        if (!hashString) return;
+
+        const params = new URLSearchParams(hashString);
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+
+        if (accessToken && refreshToken) {
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          navigate("/secure-setup/auth-token");
+        }
+      } catch (err) {
+        console.error("Deep link auth failed:", err);
+      }
+    });
+  }, [navigate]);
+
+  return null;
+}
+
 export default function App() {
   const Router =
     window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
+  const isVercelWeb =
+    import.meta.env.VERCEL === "1" ||
+    import.meta.env.MODE === "production";
+
   return (
     <DutyProvider>
       <Router>
+        <DeepLinkListener />
         <Routes>
           <Route path="/login" element={<Login />} />
-          {/* Change this route to the obscure one */}
-          <Route path="/secure-setup/auth-token" element={<SetPassword />} />
+          <Route
+            path="/secure-setup/auth-token"
+            element={isVercelWeb ? <DesktopRouter /> : <SetPassword />}
+          />
           <Route
             path="/dashboard"
             element={
