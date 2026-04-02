@@ -20,10 +20,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   isElectron: true,
 
-  // --- NEW: Deep Linking Listener ---
-  onDeepLink: (callback) =>
-    ipcRenderer.on("on-deep-link", (_event, url) => callback(url)),
-
   // ✅ Add rate limiting to prevent abuse
   checkForUpdates: async () => {
     if (!isUpdateCheckAllowed()) {

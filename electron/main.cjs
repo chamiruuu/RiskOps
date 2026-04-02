@@ -5,13 +5,6 @@ const { autoUpdater } = require("electron-updater");
 
 const isDev = !app.isPackaged;
 let mainWindow;
-let startupDeepLink = null;
-
-// --- Catch Windows "Cold Start" link ---
-const initialLink = process.argv.find((arg) => arg.startsWith('riskops://'));
-if (initialLink) {
-  startupDeepLink = initialLink;
-}
 
 const appIconPath =
   process.platform === "darwin"
@@ -62,14 +55,6 @@ function createWindow() {
   // Show window when ready to prevent visual flash
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
-  });
-
-  // --- Wait for React to load, then send the Cold Start link ---
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (startupDeepLink) {
-      mainWindow.webContents.send('on-deep-link', startupDeepLink);
-      startupDeepLink = null; // Clear it so it doesn't fire twice
-    }
   });
 
   if (isDev) {
@@ -211,49 +196,12 @@ async function checkForUpdatesManually() {
   }
 }
 
-// --- DEEP LINKING: REGISTER CUSTOM PROTOCOL ---
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("riskops", process.execPath, [
-      path.resolve(process.argv[1]),
-    ]);
-  }
-} else {
-  app.setAsDefaultProtocolClient("riskops");
-}
-
 // Ensure only one instance of the app is running
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
   app.quit();
 } else {
-  // --- DEEP LINKING: CATCH LINK ON WINDOWS/LINUX ---
-  app.on("second-instance", (event, commandLine, workingDirectory) => {
-    // Someone clicked a link while the app was already open! Focus the window.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-
-    // Find the riskops:// link in the command line arguments
-    const deepLink = commandLine.find((arg) => arg.startsWith("riskops://"));
-    if (deepLink && mainWindow) {
-      mainWindow.webContents.send("on-deep-link", deepLink);
-    }
-  });
-
-  // --- DEEP LINKING: CATCH LINK ON MACOS ---
-  app.on('open-url', (event, url) => {
-    event.preventDefault();
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('on-deep-link', url);
-    } else {
-      // If window isn't ready yet, save it for the did-finish-load event
-      startupDeepLink = url; 
-    }
-  });
-
   app.whenReady().then(() => {
     createWindow();
 
