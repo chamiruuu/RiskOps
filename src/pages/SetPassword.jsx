@@ -87,9 +87,8 @@ export default function SetPassword() {
       await supabase.auth.signOut();
 
       // 2. Trigger the Dead End Success Screen!
+      // (Supabase automatically sends the "Password Changed" email here)
       setIsSuccess(true);
-
-      // (Next step: We will trigger the success email function right here)
     }
   };
 
@@ -105,8 +104,8 @@ export default function SetPassword() {
             Security Setup Complete
           </h2>
           <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-            Your RiskOps account is now secure. For security reasons, web access
-            is disabled.
+            Your RiskOps account is now secure. If have any questions or need
+            assistance, please contact Carmen. Thank You.
           </p>
           <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50 mb-6">
             <p className="text-sm font-medium text-slate-300">
@@ -146,7 +145,7 @@ export default function SetPassword() {
               Welcome to RiskOps
             </h2>
             <p className="text-indigo-100 text-sm font-medium">
-              Secure your account to continue
+              Secure your account with a password to continue
             </p>
           </div>
         </div>
@@ -178,7 +177,7 @@ export default function SetPassword() {
             >
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Account Email
+                  Registered Email
                 </label>
                 <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 select-text">
                   <Mail size={20} className="text-slate-400" />
@@ -190,7 +189,7 @@ export default function SetPassword() {
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Create New Password <span className="text-rose-500">*</span>
+                  Set Your Password <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
                   <Lock
