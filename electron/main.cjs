@@ -5,7 +5,13 @@ const { autoUpdater } = require("electron-updater");
 
 const isDev = !app.isPackaged;
 let mainWindow;
-let updaterInitialized = false;
+let startupDeepLink = null;
+
+// --- Catch Windows "Cold Start" link ---
+const initialLink = process.argv.find((arg) => arg.startsWith('riskops://'));
+if (initialLink) {
+  startupDeepLink = initialLink;
+}
 
 const appIconPath =
   process.platform === "darwin"
@@ -56,6 +62,14 @@ function createWindow() {
   // Show window when ready to prevent visual flash
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
+  });
+
+  // --- Wait for React to load, then send the Cold Start link ---
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (startupDeepLink) {
+      mainWindow.webContents.send('on-deep-link', startupDeepLink);
+      startupDeepLink = null; // Clear it so it doesn't fire twice
+    }
   });
 
   if (isDev) {
@@ -230,10 +244,13 @@ if (!gotTheLock) {
   });
 
   // --- DEEP LINKING: CATCH LINK ON MACOS ---
-  app.on("open-url", (event, url) => {
+  app.on('open-url', (event, url) => {
     event.preventDefault();
-    if (mainWindow) {
-      mainWindow.webContents.send("on-deep-link", url);
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('on-deep-link', url);
+    } else {
+      // If window isn't ready yet, save it for the did-finish-load event
+      startupDeepLink = url; 
     }
   });
 
