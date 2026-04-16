@@ -335,7 +335,7 @@ export default function Header() {
       if (Notification.permission === "granted") {
         new Notification(title, {
           body,
-          icon: "/vite.svg",
+          icon: "../assets/icon-cirlce.png",
         });
       }
     },
