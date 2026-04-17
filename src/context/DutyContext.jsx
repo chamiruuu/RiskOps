@@ -61,7 +61,6 @@ export const DutyProvider = ({ children }) => {
   });
 
   // --- NEW: Connection Refresh Trigger ---
-  const [presenceTrigger, setPresenceTrigger] = useState(0);
   const onlineUsersRef = useRef([]);
 
   const fetchUserProfile = async (userId) => {
@@ -302,26 +301,25 @@ export const DutyProvider = ({ children }) => {
     }
   }, [selectedDuty]);
 
-  // --- 3. STATIC PRESENCE TRACKING ARCHITECTURE ---
-  // 3a. Initialize the Channel ONLY ONCE (OR when forced to refresh)
+  // --- 3. STATIC PRESENCE TRACKING ARCHITECTURE (Golden Pattern) ---
   useEffect(() => {
-    if (!user?.id) return;
+    // 1. Wait until the user data is actually loaded before connecting
+    if (!user?.id || !workName || !userRole) return;
 
-    // 1. Force completely clean up old connection if we are refreshing
+    // 2. Clean up any ghost connections
     if (presenceChannelRef.current) {
       supabase.removeChannel(presenceChannelRef.current);
-      presenceChannelRef.current = null;
     }
 
     const channel = supabase.channel("online-users", {
       config: { presence: { key: user.id } },
     });
 
+    presenceChannelRef.current = channel;
+
     const flushRecentlyOfflineUsers = (activeUsers = []) => {
       const now = Date.now();
-      const activeKeys = new Set(
-        activeUsers.map((u) => String(u.id || u.workName || "")),
-      );
+      const activeKeys = new Set(activeUsers.map((u) => String(u.id || u.workName || "")));
       const recent = [];
 
       for (const [key, entry] of presenceLastSeenRef.current.entries()) {
@@ -329,22 +327,14 @@ export const DutyProvider = ({ children }) => {
           presenceLastSeenRef.current.delete(key);
           continue;
         }
-
-        const age = now - entry.lastSeenAt;
-        if (age > RECENTLY_ONLINE_GRACE_MS) {
+        if (now - entry.lastSeenAt > RECENTLY_ONLINE_GRACE_MS) {
           presenceLastSeenRef.current.delete(key);
           continue;
         }
-
         if (!activeKeys.has(key)) {
-          recent.push({
-            ...entry.record,
-            lastSeenAt: entry.lastSeenAt,
-            presenceState: "recently-offline",
-          });
+          recent.push({ ...entry.record, lastSeenAt: entry.lastSeenAt, presenceState: "recently-offline" });
         }
       }
-
       recent.sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
       setRecentlyOfflineUsers(recent);
     };
@@ -358,46 +348,42 @@ export const DutyProvider = ({ children }) => {
         Object.keys(newState).forEach((key) => {
           const userRecords = newState[key];
           if (userRecords && userRecords.length > 0) {
-            // --- NEW FIX: Sort by timestamp to ALWAYS grab the newest record ---
-            // This guarantees we ignore old ghost records from Supabase
             const latestRecord = [...userRecords].sort((a, b) => (b._timestamp || 0) - (a._timestamp || 0))[0];
             activeUsers.push(latestRecord);
-
-            const identityKey = String(
-              latestRecord.id || latestRecord.workName || key,
-            );
-            presenceLastSeenRef.current.set(identityKey, {
-              record: latestRecord,
-              lastSeenAt: now,
-            });
+            presenceLastSeenRef.current.set(String(latestRecord.id || latestRecord.workName || key), { record: latestRecord, lastSeenAt: now });
           }
         });
 
         setOnlineUsers(activeUsers);
         onlineUsersRef.current = activeUsers;
-        setPresenceDebug((prev) => ({
-          ...prev,
-          lastPresenceSyncAt: now,
-        }));
+        setPresenceDebug((prev) => ({ ...prev, lastPresenceSyncAt: now }));
         flushRecentlyOfflineUsers(activeUsers);
       })
-      .subscribe((status) => {
+      .subscribe(async (status) => {
         const prevStatus = lastPresenceStatusRef.current;
         lastPresenceStatusRef.current = status;
 
         setPresenceDebug((prev) => ({
           ...prev,
           lastSubscribeStatus: status,
-          reconnectCount:
-            status === "SUBSCRIBED" &&
-            prevStatus !== "IDLE" &&
-            prevStatus !== "SUBSCRIBED"
-              ? prev.reconnectCount + 1
-              : prev.reconnectCount,
+          reconnectCount: status === "SUBSCRIBED" && prevStatus !== "IDLE" && prevStatus !== "SUBSCRIBED" ? prev.reconnectCount + 1 : prev.reconnectCount,
         }));
+
+        // 3. THE GOLDEN FIX: Only track once we are officially SUBSCRIBED. No setInterval loop!
+        if (status === "SUBSCRIBED") {
+          const now = Date.now();
+          await channel.track({
+            id: user.id,
+            workName: workName || user.email?.split("@")[0] || "Unknown User",
+            duties: selectedDuty || [],
+            role: userRole || "User",
+            _timestamp: now,
+          });
+
+          setPresenceDebug((prev) => ({ ...prev, lastHeartbeatAt: now }));
+        }
       });
 
-    presenceChannelRef.current = channel;
     const recentTicker = setInterval(() => {
       flushRecentlyOfflineUsers(onlineUsersRef.current);
     }, 5000);
@@ -409,41 +395,8 @@ export const DutyProvider = ({ children }) => {
         presenceChannelRef.current = null;
       }
     };
-  }, [user?.id, presenceTrigger]); // <-- Rebuilds connection when presenceTrigger changes!
-
-  // 3b. Push state updates dynamically without breaking the connection
-  useEffect(() => {
-    if (!user?.id || !workName || !userRole || !presenceChannelRef.current)
-      return;
-
-    const updatePresence = async () => {
-      try {
-        const now = Date.now();
-        await presenceChannelRef.current.track({
-          id: user.id,
-          workName: workName || user.email?.split("@")[0] || "Unknown User",
-          duties: selectedDuty || [],
-          role: userRole || "User",
-          _timestamp: now, // Forces screen to recognize this as the newest
-        });
-
-        setPresenceDebug((prev) => ({
-          ...prev,
-          lastHeartbeatAt: now,
-        }));
-      } catch {
-        // Socket may not be ready yet; heartbeat retries will sync shortly.
-      }
-    };
-
-    const timeoutId = setTimeout(updatePresence, 300);
-    const heartbeatId = setInterval(updatePresence, 10000);
-
-    return () => {
-      clearTimeout(timeoutId);
-      clearInterval(heartbeatId);
-    };
-  }, [user?.id, user?.email, workName, userRole, selectedDuty, presenceTrigger]);
+  // 4. By putting selectedDuty here, if they change IC duty, it cleanly re-syncs!
+  }, [user?.id, user?.email, workName, userRole, selectedDuty]);
 
   // --- 4. STATIC REAL-TIME HANDSHAKE BROADCASTING ---
   useEffect(() => {
@@ -485,7 +438,6 @@ export const DutyProvider = ({ children }) => {
             (prev || []).filter((duty) => !payload.duties.includes(duty))
           );
           // REFRESH THE CONNECTION to clear ghosts!
-          setTimeout(() => setPresenceTrigger(prev => prev + 1), 600);
         }
       }
     });
@@ -529,7 +481,6 @@ export const DutyProvider = ({ children }) => {
         Array.from(new Set([...(prev || []), ...duties])),
       );
       // REFRESH THE CONNECTION to clear ghosts!
-      setTimeout(() => setPresenceTrigger(prev => prev + 1), 600);
     }
   };
 
