@@ -47,6 +47,7 @@ import {
   runQuickChecks,
   shouldEscalateLogicEntry,
 } from "../lib/logicHealth";
+import { APP_VERSION, VERSION_HISTORY_ITEMS } from "../config/changelog";
 
 const LOGIC_HEALTH_HISTORY_HOURS = 24;
 
@@ -107,6 +108,7 @@ export default function Header() {
   // --- TRACKING REMINDER STATE ---
   const [trackingReminder, setTrackingReminder] = useState(null);
   const [showDutySwitchConfirm, setShowDutySwitchConfirm] = useState(false);
+  const [manualUpdateStatus, setManualUpdateStatus] = useState("idle");
   const [updaterNotification, setUpdaterNotification] = useState(null);
   const [showUpdaterToast, setShowUpdaterToast] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
@@ -373,23 +375,39 @@ export default function Header() {
     }
 
     const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
-      if (payload?.type !== "downloaded") {
-        return;
+      // 1. Update the manual status text in the Info Center
+      if (payload?.type === "checking-for-update")
+        setManualUpdateStatus("checking");
+      else if (
+        payload?.type === "update-available" ||
+        payload?.type === "download-progress"
+      )
+        setManualUpdateStatus("downloading");
+      else if (payload?.type === "update-not-available")
+        setManualUpdateStatus("up-to-date");
+      else if (payload?.type === "error")
+        setManualUpdateStatus("Error checking for updates.");
+
+      // 2. Keep the existing Toast Notification ONLY when the download is 100% finished
+      if (
+        payload?.type === "downloaded" ||
+        payload?.type === "update-downloaded"
+      ) {
+        setManualUpdateStatus("ready");
+        const notification = {
+          id: `update-ready-${Date.now()}`,
+          type: "update-ready",
+          text:
+            payload.message ||
+            "A new RiskOps update is ready. Restart the app to apply it.",
+          time: new Date().toISOString(),
+        };
+
+        setUpdaterNotification(notification);
+        setShowUpdaterToast(true);
+        playAlertSound();
+        maybeShowSystemNotification("Update Ready", notification.text);
       }
-
-      const notification = {
-        id: `update-ready-${Date.now()}`,
-        type: "update-ready",
-        text:
-          payload.message ||
-          "A new RiskOps update is ready. Restart the app to apply it.",
-        time: new Date().toISOString(),
-      };
-
-      setUpdaterNotification(notification);
-      setShowUpdaterToast(true);
-      playAlertSound(); // <-- Added ()
-      maybeShowSystemNotification("Update Ready", notification.text);
     });
 
     return () => {
@@ -1765,34 +1783,6 @@ export default function Header() {
 
   const hasNotifications = globalNotifications.length > 0;
 
-  const APP_VERSION = "0.0.3";
-  const VERSION_HISTORY_ITEMS = [
-    {
-      version: "0.0.3",
-      date: "2026-03",
-      notes:
-        "Shift handover workflow fixes: corrected Google Sheets sync error handling, fixed incoming shift auto-unlock on database confirmation. Enhanced archive history with real-time search (Player ID, Tracking No., Provider), duty filters (IC1/IC2/IC3/IC5), and status filtering (Normal/Abnormal). Implemented strict shift-overlap visibility—incoming shifts see only pending tickets until handover completes; outgoing shifts see pending + tickets they completed during the current handover window. Removed misleading clock-based notifications in favor of database-aware table locking.",
-    },
-    {
-      version: "0.0.2",
-      date: "2026-02",
-      notes:
-        "Shift transition logic improvements: Fixed incoming shift screen unlock mechanism, adjusted target shift calculation during post-start windows. Implemented session-based ticket completion tracking to enforce strict outgoing shift visibility rules during handover cycles. Auto-archiving suspension during shared transition windows.",
-    },
-    {
-      version: "0.0.1",
-      date: "2026-01",
-      notes:
-        "Ticket visibility enhancements during shift overlaps. Incoming shifts restricted to pending tickets only during shared handover windows. Outgoing shifts enhanced to view both pending and completed tickets until shift lock. Desktop installer and release pipeline improvements.",
-    },
-    {
-      version: "0.0.0",
-      date: "2025-12",
-      notes:
-        "Initial production release with core shift handover system, Google Sheets integration, ticket management, and real-time duty roster.",
-    },
-  ];
-
   const closeInfoModal = () => {
     setShowInfoModal(false);
     setInfoView("menu");
@@ -1815,6 +1805,28 @@ export default function Header() {
       await window.electronAPI.restartToInstallUpdate();
     } catch {
       setIsInstallingUpdate(false);
+    }
+  };
+
+  const handleManualUpdateCheck = async () => {
+    // If it's already downloaded, clicking the button just restarts the app!
+    if (manualUpdateStatus === "ready") {
+      handleRestartForUpdate();
+      return;
+    }
+
+    if (
+      window.electronAPI &&
+      typeof window.electronAPI.checkForUpdates === "function"
+    ) {
+      setManualUpdateStatus("checking");
+      try {
+        await window.electronAPI.checkForUpdates();
+      } catch {
+        setManualUpdateStatus("Error checking for updates.");
+      }
+    } else {
+      setManualUpdateStatus("Updater not available in browser mode.");
     }
   };
 
@@ -3622,16 +3634,57 @@ export default function Header() {
               )}
 
               {infoView === "versions" && (
-                <div className="bg-white border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-3 shrink-0">
                     <h4 className="text-sm font-bold text-slate-800">
-                      Version History
+                      Version History (v{APP_VERSION})
                     </h4>
                     <button
                       onClick={() => setInfoView("menu")}
                       className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                     >
                       Back
+                    </button>
+                  </div>
+
+                  {/* NEW: Manual Check for Updates Banner */}
+                  <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-between shrink-0">
+                    <div>
+                      <p className="text-xs font-bold text-indigo-900">App Updates</p>
+                      <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
+                        {manualUpdateStatus === "idle"
+                          ? "Automatically checks in background."
+                          : manualUpdateStatus === "checking"
+                            ? "Checking for updates..."
+                            : manualUpdateStatus === "downloading"
+                              ? "Downloading update in background..."
+                              : manualUpdateStatus === "ready"
+                                ? "Update ready to install!"
+                                : manualUpdateStatus === "up-to-date"
+                                  ? "You are on the latest version."
+                                  : manualUpdateStatus}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleManualUpdateCheck}
+                      disabled={
+                        manualUpdateStatus === "checking" ||
+                        manualUpdateStatus === "downloading"
+                      }
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-sm ${manualUpdateStatus === "ready" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+                    >
+                      <RefreshCw
+                        size={13}
+                        className={
+                          manualUpdateStatus === "checking" ||
+                          manualUpdateStatus === "downloading"
+                            ? "animate-spin"
+                            : ""
+                        }
+                      />
+                      {manualUpdateStatus === "ready"
+                        ? "Restart App"
+                        : "Check Now"}
                     </button>
                   </div>
 
