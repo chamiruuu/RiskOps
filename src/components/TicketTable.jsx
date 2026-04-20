@@ -780,7 +780,7 @@ export default function TicketTable({
 
       const oldCompletedTickets = tickets.filter(
         (t) =>
-          t.status !== "Pending" && new Date(t.created_at) < lastShiftStart,
+          t.status !== "Pending" && new Date(t.updated_at || t.created_at) < lastShiftStart,
       );
 
       if (oldCompletedTickets.length > 0) {
@@ -1412,14 +1412,16 @@ export default function TicketTable({
     if (!canViewTickets) return false;
 
     // BUG FIX: Incoming shift should not see the PREVIOUS shift's completed tickets.
-    // But they MUST be able to see tickets they created and completed during their own shift!
+    // But they MUST be able to see tickets they created/completed during their own shift!
     const lastShiftChange = getLastShiftChangeTime();
-    const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
+    
+    // Check when it was actually completed/updated, not just when it was created
+    const completedInPastShift = new Date(ticket.updated_at || ticket.created_at) < lastShiftChange;
 
     if (
       isIncomingTransitionViewer &&
       ticket.status !== "Pending" &&
-      createdInPastShift
+      completedInPastShift
     ) {
       return false;
     }
