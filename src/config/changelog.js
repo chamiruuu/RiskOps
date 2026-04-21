@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.5";
+export const APP_VERSION = "1.0.6";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.6",
+    date: "2026-04",
+    notes:
+      "Bug fixing the update ready to install state and ensuring the restart button only works when an update is ready.",
+  },
   {
     version: "1.0.5",
     date: "2026-04",
@@ -31,31 +37,31 @@ export const VERSION_HISTORY_ITEMS = [
   },
   {
     version: "1.0.1",
-    date: "2026-04",
+    date: "2026-03",
     notes:
       "Updated the document title to reflect version 1.0.0.",
   },
   {
     version: "1.0.0",
-    date: "2026-04",
+    date: "2026-03",
     notes:
       "Reverted deep linking and restored the web setup flow.",
   },
   {
     version: "0.1.10",
-    date: "2026-04",
+    date: "2026-03",
     notes:
       "Reverted deep linking and restored the web setup flow.",
   },
   {
     version: "0.1.9",
-    date: "2026-04",
+    date: "2026-03",
     notes:
       "Updated the version to 0.1.9 and fixed a DeepLinkListener navigation typo.",
   },
   {
     version: "0.1.8",
-    date: "2026-04",
+    date: "2026-03",
     notes:
       "Implemented deep linking support with DesktopRouter for secure token transfer and user prompts.",
   },

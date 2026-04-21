@@ -5,6 +5,8 @@ const { autoUpdater } = require("electron-updater");
 
 const isDev = !app.isPackaged;
 let mainWindow;
+let updaterInitialized = false;
+let updateReadyToInstall = false; 
 
 const appIconPath =
   process.platform === "darwin"
@@ -137,6 +139,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", async (info) => {
+    updateReadyToInstall = true;
     emitUpdaterStatus({
       type: "update-downloaded",
       version: info.version,
@@ -213,6 +216,7 @@ if (!gotTheLock) {
 
     ipcMain.handle("updater:check-now", async () => checkForUpdatesManually());
     ipcMain.handle("updater:restart-now", async () => {
+      if (!updateReadyToInstall) return { ok: false };
       emitUpdaterStatus({
         type: "installing",
         message: "Restarting to install update...",
