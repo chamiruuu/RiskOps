@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.6";
+export const APP_VERSION = "1.0.7";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.7",
+    date: "2026-04",
+    notes:
+      "Version updated to 1.0.7 (TESTING OF UPDATE FEATURE).",
+  },
   {
     version: "1.0.6",
     date: "2026-04",
