@@ -376,17 +376,29 @@ export default function Header() {
 
     const unsubscribe = window.electronAPI.onUpdaterStatus((payload) => {
       // 1. Update the manual status text in the Info Center
-      if (payload?.type === "checking-for-update")
+      if (
+        payload?.type === "checking-for-update" ||
+        payload?.type === "checking"
+      )
         setManualUpdateStatus("checking");
       else if (
         payload?.type === "update-available" ||
-        payload?.type === "download-progress"
+        payload?.type === "available" ||
+        payload?.type === "download-progress" ||
+        payload?.type === "downloading"
       )
         setManualUpdateStatus("downloading");
-      else if (payload?.type === "update-not-available")
+      else if (
+        payload?.type === "update-not-available" ||
+        payload?.type === "none"
+      )
         setManualUpdateStatus("up-to-date");
       else if (payload?.type === "error")
-        setManualUpdateStatus("Error checking for updates.");
+        setManualUpdateStatus(
+          payload?.message || "Error checking for updates.",
+        );
+      else if (payload?.type === "installing")
+        setManualUpdateStatus("ready");
 
       // 2. Keep the existing Toast Notification ONLY when the download is 100% finished
       if (
@@ -1821,7 +1833,14 @@ export default function Header() {
     ) {
       setManualUpdateStatus("checking");
       try {
-        await window.electronAPI.checkForUpdates();
+        const result = await window.electronAPI.checkForUpdates();
+        if (result?.ok === false) {
+          setManualUpdateStatus(
+            result.reason === "rate_limited"
+              ? "Please wait before checking again."
+              : result.message || "Error checking for updates.",
+          );
+        }
       } catch {
         setManualUpdateStatus("Error checking for updates.");
       }

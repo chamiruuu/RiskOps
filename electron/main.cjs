@@ -93,7 +93,10 @@ function setupAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("checking-for-update", () => {
-    emitUpdaterStatus({ type: "checking", message: "Checking for updates..." });
+    emitUpdaterStatus({
+      type: "checking-for-update",
+      message: "Checking for updates...",
+    });
   });
 
   autoUpdater.on("error", (error) => {
@@ -110,7 +113,7 @@ function setupAutoUpdater() {
   autoUpdater.on("update-available", (info) => {
     console.log("Update available:", info.version);
     emitUpdaterStatus({
-      type: "available",
+      type: "update-available",
       version: info.version,
       message: `Update ${info.version} found. Downloading now...`,
     });
@@ -119,7 +122,7 @@ function setupAutoUpdater() {
   autoUpdater.on("update-not-available", () => {
     console.log("No update available.");
     emitUpdaterStatus({
-      type: "none",
+      type: "update-not-available",
       message: "You are on the latest version.",
     });
   });
@@ -127,7 +130,7 @@ function setupAutoUpdater() {
   autoUpdater.on("download-progress", (progressObj) => {
     const percent = Number(progressObj?.percent || 0);
     emitUpdaterStatus({
-      type: "downloading",
+      type: "download-progress",
       percent,
       message: `Downloading update... ${percent.toFixed(1)}%`,
     });
@@ -135,7 +138,7 @@ function setupAutoUpdater() {
 
   autoUpdater.on("update-downloaded", async (info) => {
     emitUpdaterStatus({
-      type: "downloaded",
+      type: "update-downloaded",
       version: info.version,
       message: `Update ${info.version} is ready. Restart to install.`,
     });
@@ -170,7 +173,7 @@ function setupAutoUpdater() {
 async function checkForUpdatesManually() {
   if (isDev) {
     emitUpdaterStatus({
-      type: "none",
+      type: "error",
       message: "Manual update check is only available in packaged builds.",
     });
     return { ok: false, reason: "dev" };
@@ -181,7 +184,10 @@ async function checkForUpdatesManually() {
     return { ok: true, reason: "initialized" };
   }
 
-  emitUpdaterStatus({ type: "checking", message: "Checking for updates..." });
+  emitUpdaterStatus({
+    type: "checking-for-update",
+    message: "Checking for updates...",
+  });
 
   try {
     await autoUpdater.checkForUpdates();
