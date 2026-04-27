@@ -6,6 +6,12 @@ export const APP_VERSION = "1.0.7";
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
   {
+    version: "1.0.8",
+    date: "2026-04",
+    notes:
+      "Fixed the auto vanish behavior of a handover ticket right after completing that ticket",
+  },
+  {
     version: "1.0.7",
     date: "2026-04",
     notes:

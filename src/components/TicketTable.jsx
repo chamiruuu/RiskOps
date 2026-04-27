@@ -140,6 +140,9 @@ const EditableField = ({
     setIsEditing(false);
     if (value !== (ticket[fieldKey] || "")) {
       onUpdateTicket(ticket.id, fieldKey, value);
+      
+      // 👇 BUG FIX: Bump updated_at so the sweeper knows it's actively being worked on
+      onUpdateTicket(ticket.id, "updated_at", new Date().toISOString());
     }
   };
 
@@ -778,10 +781,16 @@ export default function TicketTable({
 
       const lastShiftStart = getLastShiftChangeTime();
 
-      const oldCompletedTickets = tickets.filter(
-        (t) =>
-          t.status !== "Pending" && new Date(t.updated_at || t.created_at) < lastShiftStart,
-      );
+      const oldCompletedTickets = tickets.filter((t) => {
+        if (t.status === "Pending") return false;
+        
+        // 👈 NEW FIX: Convert to GMT+8 for safe comparison
+        const d = new Date(t.updated_at || t.created_at);
+        const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+        const gmt8 = new Date(utc + 3600000 * 8);
+
+        return gmt8 < lastShiftStart;
+      });
 
       if (oldCompletedTickets.length > 0) {
         const idsToArchive = oldCompletedTickets.map((t) => t.id);
@@ -1415,8 +1424,11 @@ export default function TicketTable({
     // But they MUST be able to see tickets they created/completed during their own shift!
     const lastShiftChange = getLastShiftChangeTime();
     
-    // Check when it was actually completed/updated, not just when it was created
-    const completedInPastShift = new Date(ticket.updated_at || ticket.created_at) < lastShiftChange;
+    // 👈 NEW FIX: Convert to GMT+8 for safe comparison
+    const d = new Date(ticket.updated_at || ticket.created_at);
+    const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+    const gmt8 = new Date(utc + 3600000 * 8);
+    const completedInPastShift = gmt8 < lastShiftChange;
 
     if (
       isIncomingTransitionViewer &&
@@ -1502,7 +1514,7 @@ export default function TicketTable({
     }
   };
 
-  const handleCopyAndComplete = () => {
+  const handleCopyAndComplete = async () => { // 👈 ADD async HERE
     // ONLY copy to clipboard if it's NOT a Void ticket
     if (completeModal.type !== "Void") {
       const script = getGeneratedScript();
@@ -1528,6 +1540,16 @@ export default function TicketTable({
 
     // Update inside your RiskOps Database
     onUpdateTicket(targetTicketId, "status", finalStatus);
+
+    // 👈 NEW FIX: Explicitly set updated_at so the sweeper knows it was completed *during this shift*!
+    try {
+      await supabase
+        .from("tickets")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", targetTicketId);
+    } catch (e) {
+      console.error("Failed to sync timestamp", e);
+    }
 
     setCompleteModal({
       isOpen: false,
