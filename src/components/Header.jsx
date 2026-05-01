@@ -63,6 +63,7 @@ export default function Header() {
     pendingTransferRequest,
     respondToTransferRequest,
     setDuty,
+    clearDutyMemory,
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
 

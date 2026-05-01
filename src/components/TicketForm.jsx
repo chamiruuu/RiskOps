@@ -907,7 +907,10 @@ export default function TicketForm({ onAddTicket }) {
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
                         value={formData.memberId}
                         onChange={(e) =>
-                          setFormData({ ...formData, memberId: e.target.value })
+                          setFormData({
+                            ...formData,
+                            memberId: e.target.value.replace(/\s/g, ""),
+                          })
                         }
                       />
                     </div>
@@ -926,7 +929,10 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              providerAccount: e.target.value,
+                              providerAccount: e.target.value.replace(
+                                /\s/g,
+                                "",
+                              ),
                             })
                           }
                         />
@@ -1185,7 +1191,7 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              trackingId: e.target.value,
+                              trackingId: e.target.value.replace(/\s/g, ""),
                             })
                           }
                         />
@@ -1205,7 +1211,7 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              betTicket: e.target.value,
+                              betTicket: e.target.value.replace(/\s/g, ""),
                             })
                           }
                         />
@@ -1225,7 +1231,7 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              roundId: e.target.value,
+                              roundId: e.target.value.replace(/\s/g, ""),
                             })
                           }
                         />
@@ -1245,7 +1251,7 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              ipAddress: e.target.value,
+                              ipAddress: e.target.value.replace(/\s/g, ""),
                             })
                           }
                         />
@@ -1267,7 +1273,7 @@ export default function TicketForm({ onAddTicket }) {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              loginId: e.target.value,
+                              loginId: e.target.value.replace(/\s/g, ""),
                             })
                           }
                         />

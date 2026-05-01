@@ -487,6 +487,12 @@ export const DutyProvider = ({ children }) => {
   const resetTransferResponse = () => setTransferResponse(null);
   const setDuty = (val) => setSelectedDuty(val);
 
+  // NEW: Ghost Mode - Clears local storage for the next shift, but keeps current session active
+  const clearDutyMemory = () => {
+    localStorage.removeItem("riskops_duty_account");
+    // Note: Make sure "riskops_duty_account" perfectly matches the key you use in this file!
+  };
+
   return (
     <DutyContext.Provider
       value={{
@@ -508,6 +514,7 @@ export const DutyProvider = ({ children }) => {
         sendTransferRequest,
         respondToTransferRequest,
         resetTransferResponse,
+        clearDutyMemory,
       }}
     >
       {children}

@@ -153,7 +153,7 @@ const EditableField = ({
         type="text"
         placeholder={placeholder}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => setValue(e.target.value.replace(/\s/g, ""))}
         onBlur={handleSave}
         onKeyDown={(e) => e.key === "Enter" && handleSave()}
         className="w-28 px-2 py-1.5 text-xs bg-white border-2 border-indigo-400 rounded outline-none shadow-sm font-mono text-slate-800"
@@ -203,6 +203,7 @@ export default function TicketTable({
     transferResponse,
     resetTransferResponse,
     setDuty,
+    clearDutyMemory,
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
 
@@ -1018,6 +1019,9 @@ export default function TicketTable({
         marker,
       });
 
+      // Shift lock is confirmed; clear stored duty account memory for the next shift.
+      clearDutyMemory();
+
       uniquePendingTix.forEach((t) => handedOverSet.add(t.id));
       handedOverTicketIdsByMarkerRef.current.set(marker, handedOverSet);
 
@@ -1056,6 +1060,7 @@ export default function TicketTable({
       queueSheetRetryJob,
       isTicketNewSinceLastHandover,
       shortWorkName,
+      clearDutyMemory,
     ],
   );
 
@@ -3194,7 +3199,7 @@ export default function TicketTable({
                   onChange={(e) =>
                     setAbnormalModalState({
                       ...abnormalModalState,
-                      memberId: e.target.value,
+                      memberId: e.target.value.replace(/\s/g, ""),
                     })
                   }
                 />

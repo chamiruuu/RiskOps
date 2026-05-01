@@ -1,10 +1,22 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.7";
+export const APP_VERSION = "1.0.10";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.10",
+    date: "2026-05",
+    notes:
+      "Added silent duty-memory clear after confirmed shift handover so the next shift must select duty fresh.",
+  },
+  {
+    version: "1.0.9",
+    date: "2026-04",
+    notes:
+      "Fixed Allbet Zapport log-in field and when typing in the input fields no space can be added",
+  },
   {
     version: "1.0.8",
     date: "2026-04",

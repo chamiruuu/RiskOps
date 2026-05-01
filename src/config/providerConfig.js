@@ -1846,13 +1846,13 @@ Time period：${timeRange}`;
 
       if (providerAccount && currency && timeRange && ipAddress) {
         const zapportMap = {
-          THB: "QQDUTYTHB／fsgwpy4",
-          IDR: "QQDUTYIDR／fsgwpyf",
-          CNY: "QQDUTYCNY／fsgwpy2",
-          MYR: "QQDUTYMYR／fsgwpy5",
-          VND: "QQDUTYVND／fsgwpyg",
-          USD: "QQDUTYUSD／fsgwpyb",
-          KRW: "QQDUTYKRW／fsgwpy6",
+          THB: "fsgwpy4",
+          IDR: "fsgwpyf",
+          CNY: "fsgwpy2",
+          MYR: "fsgwpy5",
+          VND: "fsgwpyg",
+          USD: "fsgwpyb",
+          KRW: "fsgwpy6",
         };
 
         const zapportLogin = zapportMap[currency.toUpperCase()] || "N/A";
