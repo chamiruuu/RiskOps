@@ -1428,7 +1428,7 @@ export default function TicketTable({
     // BUG FIX: Incoming shift should not see the PREVIOUS shift's completed tickets.
     // But they MUST be able to see tickets they created/completed during their own shift!
     const lastShiftChange = getLastShiftChangeTime();
-    
+
     // 👈 NEW FIX: Convert to GMT+8 for safe comparison
     const d = new Date(ticket.updated_at || ticket.created_at);
     const utc = d.getTime() + d.getTimezoneOffset() * 60000;
