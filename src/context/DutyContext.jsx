@@ -75,7 +75,8 @@ export const DutyProvider = ({ children }) => {
         setUserRole(data.role);
         setWorkName(data.work_name || "");
 
-        if (data.role === "Admin" || data.role === "Leader") {
+        // Include "QC" so they auto-bypass duty selection and see all tickets
+        if (data.role === "Admin" || data.role === "Leader" || data.role === "QC") {
           setSelectedDuty((prev) => {
             if (prev && prev.length > 0 && prev.includes("IC0")) return prev;
             return ["IC0"];

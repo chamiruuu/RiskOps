@@ -48,6 +48,7 @@ const USER_PROVIDER_PREFERENCES_TABLE = "user_provider_preferences";
 
 export default function TicketForm({ onAddTicket }) {
   const { selectedDuty, workName, userRole, myAssignedShift, user } = useDuty();
+  const isQC = userRole === "QC";
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
@@ -1283,18 +1284,18 @@ export default function TicketForm({ onAddTicket }) {
                 )}
 
                 <button
-                  disabled={!isFormValid() || !canCreate || isCheckingPgSoft}
+                  disabled={!isFormValid() || !canCreate || isCheckingPgSoft || isQC}
                   onClick={handleCreateClick}
                   className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 
                     ${
-                      !canCreate
+                      !canCreate || isQC
                         ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
                         : isFormValid() && !isCheckingPgSoft
                           ? "bg-black hover:bg-slate-800 text-white"
                           : "bg-slate-200 text-slate-400 cursor-not-allowed"
                     }`}
                 >
-                  {!canCreate ? (
+                  {!canCreate || isQC ? (
                     <Lock size={16} />
                   ) : isCheckingPgSoft ? (
                     <RefreshCw
@@ -1306,9 +1307,11 @@ export default function TicketForm({ onAddTicket }) {
                   )}
                   {!canCreate
                     ? "Shift Locked"
-                    : isCheckingPgSoft
-                      ? "Checking Database..."
-                      : "Create Ticket"}
+                    : isQC
+                      ? "QC View Only"
+                      : isCheckingPgSoft
+                        ? "Checking Database..."
+                        : "Create Ticket"}
                 </button>
 
                 {validationNotice.text && (

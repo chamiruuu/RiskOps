@@ -119,6 +119,7 @@ const EditableField = ({
   placeholder,
   addText,
   onUpdateTicket,
+  readOnly,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(ticket[fieldKey] || "");
@@ -145,6 +146,17 @@ const EditableField = ({
       onUpdateTicket(ticket.id, "updated_at", new Date().toISOString());
     }
   };
+
+  // If this field is rendered in read-only mode (e.g. QC users), show plain text only
+  if (readOnly) {
+    return (
+      <div className="py-1">
+        <span className="font-mono text-slate-700 font-medium">
+          {ticket[fieldKey] || "-"}
+        </span>
+      </div>
+    );
+  }
 
   if (isEditing) {
     return (
@@ -206,6 +218,7 @@ export default function TicketTable({
     clearDutyMemory,
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+  const isQC = userRole === "QC";
 
   // Helper function to check if a note can be edited (within 3 hours and authored by current user or admin/leader)
   const canEditNote = (note) => {
@@ -2174,6 +2187,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC}
                         ticket={ticket}
                         fieldKey="login_id"
                         placeholder="Login ID"
@@ -2183,6 +2197,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC}
                         ticket={ticket}
                         fieldKey="member_id"
                         placeholder="Player ID"
@@ -2192,6 +2207,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC}
                         ticket={ticket}
                         fieldKey="provider_account"
                         placeholder="Account"
@@ -2204,6 +2220,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC}
                         ticket={ticket}
                         fieldKey="tracking_no"
                         placeholder="Track No."
@@ -2240,61 +2257,65 @@ export default function TicketTable({
                       </span>
                     </td>
                     <td className="px-4 py-2 text-center">
-                      {deletingRowId === ticket.id ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-500">
-                            Delete?
-                          </span>
-                          <button
-                            onClick={() => {
-                              if (onDeleteTicket) onDeleteTicket(ticket.id);
-                              setDeletingRowId(null);
-                            }}
-                            className="px-2 py-1 text-[10px] font-bold bg-rose-500 text-white hover:bg-rose-600 rounded transition-colors"
-                          >
-                            Yes
-                          </button>
-                          <button
-                            onClick={() => setDeletingRowId(null)}
-                            className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-3">
-                          {!isCompleted && (
+                      {!isQC ? (
+                        deletingRowId === ticket.id ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-[10px] font-bold text-slate-500">
+                              Delete?
+                            </span>
                             <button
                               onClick={() => {
-                                setCompleteModal({
-                                  isOpen: true,
-                                  ticket: ticket,
-                                  step: "select",
-                                  type: "",
-                                  abnormalType: "",
-                                });
+                                if (onDeleteTicket) onDeleteTicket(ticket.id);
                                 setDeletingRowId(null);
                               }}
-                              className="text-emerald-500 hover:text-emerald-600 transition-colors"
-                              title="Complete Ticket"
+                              className="px-2 py-1 text-[10px] font-bold bg-rose-500 text-white hover:bg-rose-600 rounded transition-colors"
                             >
-                              <CheckCircle2 size={16} />
+                              Yes
                             </button>
-                          )}
-
-                          {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS --- */}
-                          {!isLockedFromDeletion && (
                             <button
-                              onClick={() => {
-                                setDeletingRowId(ticket.id);
-                              }}
-                              className="text-slate-400 hover:text-rose-500 transition-colors"
-                              title="Delete Ticket"
+                              onClick={() => setDeletingRowId(null)}
+                              className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
                             >
-                              <Trash2 size={16} />
+                              <X size={14} />
                             </button>
-                          )}
-                        </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-3">
+                            {!isCompleted && (
+                              <button
+                                onClick={() => {
+                                  setCompleteModal({
+                                    isOpen: true,
+                                    ticket: ticket,
+                                    step: "select",
+                                    type: "",
+                                    abnormalType: "",
+                                  });
+                                  setDeletingRowId(null);
+                                }}
+                                className="text-emerald-500 hover:text-emerald-600 transition-colors"
+                                title="Complete Ticket"
+                              >
+                                <CheckCircle2 size={16} />
+                              </button>
+                            )}
+
+                            {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS --- */}
+                            {!isLockedFromDeletion && (
+                              <button
+                                onClick={() => {
+                                  setDeletingRowId(ticket.id);
+                                }}
+                                className="text-slate-400 hover:text-rose-500 transition-colors"
+                                title="Delete Ticket"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">View Only</span>
                       )}
                     </td>
                   </tr>
@@ -2765,28 +2786,30 @@ export default function TicketTable({
                 })
               )}
             </div>
-            <div className="p-4 bg-white border-t border-slate-200">
-              <div className="relative flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Type a note..."
-                  value={newNoteText}
-                  onChange={(e) => setNewNoteText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSendNote()}
-                  className={`flex-1 pl-4 pr-10 py-2.5 bg-slate-100 border border-slate-200 rounded-full text-xs outline-none focus:bg-white focus:ring-4 transition-all ${getDutyBorderRing(selectedTicketForNotes.ic_account)}`}
-                  autoFocus
-                />
-                <button
-                  onClick={handleSendNote}
-                  className={`absolute right-1.5 p-1.5 rounded-full transition-colors flex items-center justify-center ${newNoteText.trim() ? `${getDutyButton(selectedTicketForNotes.ic_account)} text-white shadow-md` : "bg-slate-200 text-slate-400"}`}
-                >
-                  <Send
-                    size={14}
-                    className={newNoteText.trim() ? "ml-0.5" : ""}
+            {!isQC && (
+              <div className="p-4 bg-white border-t border-slate-200">
+                <div className="relative flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type a note..."
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendNote()}
+                    className={`flex-1 pl-4 pr-10 py-2.5 bg-slate-100 border border-slate-200 rounded-full text-xs outline-none focus:bg-white focus:ring-4 transition-all ${getDutyBorderRing(selectedTicketForNotes.ic_account)}`}
+                    autoFocus
                   />
-                </button>
+                  <button
+                    onClick={handleSendNote}
+                    className={`absolute right-1.5 p-1.5 rounded-full transition-colors flex items-center justify-center ${newNoteText.trim() ? `${getDutyButton(selectedTicketForNotes.ic_account)} text-white shadow-md` : "bg-slate-200 text-slate-400"}`}
+                  >
+                    <Send
+                      size={14}
+                      className={newNoteText.trim() ? "ml-0.5" : ""}
+                    />
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

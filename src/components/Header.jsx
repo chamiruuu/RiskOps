@@ -65,6 +65,7 @@ export default function Header() {
     setDuty,
     clearDutyMemory,
   } = useDuty();
+  const isQC = userRole === "QC";
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // --- Admin Modal States ---
@@ -1948,7 +1949,7 @@ export default function Header() {
 
         <div className="flex items-center gap-4">
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
-          {!isAdminOrLeader && (
+          {!isAdminOrLeader && !isQC && (
             <button
               onClick={() => setShowDutySwitchConfirm(true)}
               className="flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2 bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -3094,7 +3095,7 @@ export default function Header() {
                           </td>
 
                           <td className="px-5 py-4 text-center">
-                            {editingId === member.id ? (
+                              {editingId === member.id ? (
                               <select
                                 value={tempRole}
                                 onChange={(e) => setTempRole(e.target.value)}
@@ -3104,6 +3105,7 @@ export default function Header() {
                                 <option value="Admin">Admin</option>
                                 <option value="Leader">Leader</option>
                                 <option value="User">Normal</option>
+                                <option value="QC">QC (View Only)</option>
                               </select>
                             ) : (
                               <span
@@ -3214,9 +3216,10 @@ export default function Header() {
                         onChange={(e) => setNewRole(e.target.value)}
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 cursor-pointer transition-all text-slate-700 font-medium appearance-none"
                       >
-                        <option value="User">Normal</option>
-                        <option value="Leader">Leader</option>
                         <option value="Admin">Admin</option>
+                        <option value="Leader">Leader</option>
+                        <option value="User">Normal</option>
+                        <option value="QC">QC (View Only)</option>
                       </select>
                     </div>
 
