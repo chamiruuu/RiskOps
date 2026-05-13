@@ -17,6 +17,7 @@ import {
   RefreshCw,
   X,
   Star,
+  Eye,
 } from "lucide-react";
 import { useDuty } from "../context/DutyContext";
 import { PROVIDER_CONFIG } from "../config/providerConfig";
@@ -48,6 +49,7 @@ const USER_PROVIDER_PREFERENCES_TABLE = "user_provider_preferences";
 
 export default function TicketForm({ onAddTicket }) {
   const { selectedDuty, workName, userRole, myAssignedShift, user } = useDuty();
+  const isQcViewOnly = userRole === "QC";
   const [activeTab, setActiveTab] = useState("form");
   const [copied, setCopied] = useState(false);
   const [copiedSop, setCopiedSop] = useState(false);
@@ -147,14 +149,14 @@ export default function TicketForm({ onAddTicket }) {
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
 
   useEffect(() => {
-    if (!canCreate) {
+    if (!canCreate && !isQcViewOnly) {
       setStickyStrictScriptEnabled(false);
       return;
     }
     if (isStrictProvider) {
       setStickyStrictScriptEnabled(true);
     }
-  }, [canCreate, isStrictProvider]);
+  }, [canCreate, isQcViewOnly, isStrictProvider]);
 
   useEffect(() => {
     setProviderSearch(formData.provider);
@@ -710,14 +712,21 @@ export default function TicketForm({ onAddTicket }) {
           <h2 className="text-lg font-bold text-slate-900">
             New Investigation
           </h2>
-          {!canCreate && (
+          {isQcViewOnly ? (
+            <span
+              className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
+              title="QC users can review the full ticket generator but cannot create tickets."
+            >
+              <Eye size={10} /> QC View Only
+            </span>
+          ) : !canCreate ? (
             <span
               className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
               title="You are outside your ticket creation window for this shift."
             >
               <Lock size={10} /> Shift Locked
             </span>
-          )}
+          ) : null}
         </div>
         <div className="flex p-1 bg-slate-100 rounded-lg mb-2">
           <button
@@ -1287,14 +1296,18 @@ export default function TicketForm({ onAddTicket }) {
                   onClick={handleCreateClick}
                   className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 
                     ${
-                      !canCreate
+                      isQcViewOnly
+                        ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed"
+                        : !canCreate
                         ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
                         : isFormValid() && !isCheckingPgSoft
                           ? "bg-black hover:bg-slate-800 text-white"
                           : "bg-slate-200 text-slate-400 cursor-not-allowed"
                     }`}
                 >
-                  {!canCreate ? (
+                  {isQcViewOnly ? (
+                    <Eye size={16} />
+                  ) : !canCreate ? (
                     <Lock size={16} />
                   ) : isCheckingPgSoft ? (
                     <RefreshCw
@@ -1304,7 +1317,9 @@ export default function TicketForm({ onAddTicket }) {
                   ) : (
                     <Plus size={18} />
                   )}
-                  {!canCreate
+                  {isQcViewOnly
+                    ? "QC View Only"
+                    : !canCreate
                     ? "Shift Locked"
                     : isCheckingPgSoft
                       ? "Checking Database..."

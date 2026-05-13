@@ -75,7 +75,7 @@ export const DutyProvider = ({ children }) => {
         setUserRole(data.role);
         setWorkName(data.work_name || "");
 
-        if (data.role === "Admin" || data.role === "Leader") {
+        if (data.role === "Admin" || data.role === "Leader" || data.role === "QC") {
           setSelectedDuty((prev) => {
             if (prev && prev.length > 0 && prev.includes("IC0")) return prev;
             return ["IC0"];

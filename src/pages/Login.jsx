@@ -25,7 +25,7 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    if (user && (userRole === 'Admin' || userRole === 'Leader')) {
+    if (user && (userRole === 'Admin' || userRole === 'Leader' || userRole === 'QC')) {
       console.log(`Auto-redirecting ${userRole} to dashboard...`);
       navigate('/dashboard');
     }
@@ -98,7 +98,7 @@ export default function Login() {
     }
   };
 
-  if (loading || (user && (userRole === 'Admin' || userRole === 'Leader'))) {
+  if (loading || (user && (userRole === 'Admin' || userRole === 'Leader' || userRole === 'QC'))) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>

@@ -149,6 +149,9 @@ export default function Header() {
   const [logicHealthSearch, setLogicHealthSearch] = useState("");
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+  const isQcViewOnly = userRole === "QC";
+  const canViewAdminSections = isAdminOrLeader || isQcViewOnly;
+  const canWriteData = userRole === "Admin" || userRole === "Leader";
 
   const formatPresenceAgo = useCallback((timestamp) => {
     if (!timestamp) return "-";
@@ -989,6 +992,11 @@ export default function Header() {
   }, [cyclesList]);
 
   const handleAddCycle = async () => {
+    if (!canWriteData) {
+      alert("QC users can view the shift planner but cannot create cycles.");
+      return;
+    }
+
     const cycle = nextCycleSuggestion;
 
     if (cyclesList.includes(cycle)) {
@@ -1009,6 +1017,10 @@ export default function Header() {
   };
 
   const handleShiftChange = async (userId, newShift) => {
+    if (!canWriteData) {
+      return;
+    }
+
     setShiftData((prev) => ({ ...prev, [userId]: newShift }));
     await supabase.from("shift_assignments").upsert({
       user_id: userId,
@@ -1157,17 +1169,23 @@ export default function Header() {
   const cancelEdit = () => setEditingId(null);
 
   const saveEdit = async (userId) => {
+    // Validate work name is not empty
+    if (!tempWorkName.trim()) {
+      alert("Work Name cannot be empty");
+      return;
+    }
+
     setTeamMembers(
       teamMembers.map((member) =>
         member.id === userId
-          ? { ...member, work_name: tempWorkName, role: tempRole }
+          ? { ...member, work_name: tempWorkName.trim(), role: tempRole }
           : member,
       ),
     );
     setEditingId(null);
     await supabase
       .from("profiles")
-      .update({ work_name: tempWorkName, role: tempRole })
+      .update({ work_name: tempWorkName.trim(), role: tempRole })
       .eq("id", userId);
   };
 
@@ -1215,13 +1233,21 @@ export default function Header() {
     e.preventDefault();
     setIsCreating(true);
     setCreateMsg({ text: "", type: "" });
+    
+    // Validate that work name is not empty
+    if (!newWorkName.trim()) {
+      setCreateMsg({ text: "Work Name is required", type: "error" });
+      setIsCreating(false);
+      return;
+    }
+
     try {
       // Call Edge Function to invite user
       const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
           email: newEmail,
           role: newRole,
-          workName: newWorkName,
+          workName: newWorkName.trim(),
         },
       });
       if (error) {
@@ -1233,7 +1259,11 @@ export default function Header() {
       setNewEmail("");
       setNewWorkName("");
       setNewRole("User");
+      
+      // Wait a bit for database to sync, then fetch
+      await new Promise(resolve => setTimeout(resolve, 1000));
       fetchTeam();
+      
       setTimeout(() => {
         setActiveTab("list");
         setCreateMsg({ text: "", type: "" });
@@ -1592,7 +1622,7 @@ export default function Header() {
   }, []);
 
   const handleExportHistoryActionLog = useCallback(() => {
-    if (!isAdminOrLeader || isExportingHistoryLog) return;
+    if (!canViewAdminSections || isExportingHistoryLog) return;
 
     setIsExportingHistoryLog(true);
     try {
@@ -1675,7 +1705,7 @@ export default function Header() {
     historyFilterStatus,
     historySearchQuery,
     historyStartDate,
-    isAdminOrLeader,
+    canViewAdminSections,
     isExportingHistoryLog,
     user?.email,
     userRole,
@@ -1948,7 +1978,7 @@ export default function Header() {
 
         <div className="flex items-center gap-4">
           {/* --- CHANGE DUTY BUTTON (Only for Normal Users) --- */}
-          {!isAdminOrLeader && (
+          {!isAdminOrLeader && !isQcViewOnly && (
             <button
               onClick={() => setShowDutySwitchConfirm(true)}
               className="flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2 bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -2309,7 +2339,9 @@ export default function Header() {
                                     "Approved",
                                   )
                                 }
-                                className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded transition-colors"
+                                disabled={!canWriteData}
+                                className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={canWriteData ? "" : "QC users cannot approve requests"}
                               >
                                 Approve
                               </button>
@@ -2320,7 +2352,9 @@ export default function Header() {
                                     "Rejected",
                                   )
                                 }
-                                className="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded transition-colors"
+                                disabled={!canWriteData}
+                                className="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={canWriteData ? "" : "QC users cannot reject requests"}
                               >
                                 Reject
                               </button>
@@ -2348,7 +2382,9 @@ export default function Header() {
                                     notif.data.id,
                                   )
                                 }
-                                className="mt-2 w-full py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition-colors"
+                                disabled={!canWriteData}
+                                className="mt-2 w-full py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={canWriteData ? "" : "QC users cannot acknowledge alerts"}
                               >
                                 Acknowledge
                               </button>
@@ -2365,7 +2401,7 @@ export default function Header() {
           </div>
 
           {/* --- ADMIN TOOLBAR BUTTONS --- */}
-          {isAdminOrLeader && (
+          {canViewAdminSections && (
             <div className="relative flex items-center">
               <button
                 onClick={() => setShowHistoryModal(true)}
@@ -2486,7 +2522,7 @@ export default function Header() {
                       </>
                     )}
 
-                    {isAdminOrLeader && (
+                    {canViewAdminSections && (
                       <>
                         <div className="border-t border-slate-100 my-1" />
                         <div className="px-2 pb-2 text-[9px] text-slate-500 space-y-0.5">
@@ -2659,10 +2695,17 @@ export default function Header() {
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
           <div className="bg-white w-[1000px] h-[75vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
-                <CalendarDays size={16} className="text-indigo-600" /> Shift
-                Cycle Planner
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
+                  <CalendarDays size={16} className="text-indigo-600" /> Shift
+                  Cycle Planner
+                </h2>
+                {isQcViewOnly && (
+                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+                    <Eye size={10} /> QC View Only
+                  </span>
+                )}
+              </div>
               <button
                 onClick={() => setShowShiftModal(false)}
                 className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
@@ -2697,7 +2740,8 @@ export default function Header() {
                   </div>
                   <button
                     onClick={handleAddCycle}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                    disabled={!canWriteData}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-xs font-bold rounded-lg transition-colors shadow-sm disabled:cursor-not-allowed"
                   >
                     + Generate Next Cycle
                   </button>
@@ -2817,7 +2861,8 @@ export default function Header() {
                                             e.target.value,
                                           )
                                         }
-                                        className={`text-xs px-3 py-2 rounded-lg border outline-none cursor-pointer transition-colors shadow-sm ${selectColor}`}
+                                        disabled={!canWriteData}
+                                        className={`text-xs px-3 py-2 rounded-lg border outline-none transition-colors shadow-sm ${selectColor} ${!canWriteData ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
                                       >
                                         <option value="Morning">
                                           Morning (07:00 - 14:30)
@@ -2950,8 +2995,8 @@ export default function Header() {
 
       {/* --- OLD ADMIN MODAL (UNCHANGED) --- */}
       {showAdminModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-4">
-          <div className="bg-white w-[900px] max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200 p-2 sm:p-4">
+          <div className="bg-white w-full max-w-7xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
               <div className="flex items-center gap-6">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
@@ -2983,18 +3028,18 @@ export default function Header() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+            <div className="flex-1 overflow-y-auto bg-slate-50/50 p-4 sm:p-6">
               {activeTab === "list" && (
                 <div className="border border-slate-200 bg-white rounded-xl overflow-hidden shadow-sm">
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <th className="px-5 py-4">Reg. Date</th>
-                        <th className="px-5 py-4">Work Name</th>
-                        <th className="px-5 py-4">Email</th>
-                        <th className="px-5 py-4">Password</th>
-                        <th className="px-5 py-4 text-center">Role</th>
-                        <th className="px-5 py-4 text-right">Actions</th>
+                        <th className="px-3 py-3 min-w-max">Reg. Date</th>
+                        <th className="px-3 py-3 min-w-[120px]">Work Name</th>
+                        <th className="px-3 py-3 flex-1 min-w-[150px]">Email</th>
+                        <th className="px-3 py-3 min-w-max">Password</th>
+                        <th className="px-3 py-3 text-center min-w-[100px]">Role</th>
+                        <th className="px-3 py-3 text-right min-w-max">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -3014,7 +3059,7 @@ export default function Header() {
                             )}
                           </td>
 
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 min-w-[150px]">
                             {editingId === member.id ? (
                               <input
                                 type="text"
@@ -3022,7 +3067,7 @@ export default function Header() {
                                 onChange={(e) =>
                                   setTempWorkName(e.target.value)
                                 }
-                                className="w-28 px-2 py-1 text-xs font-bold text-slate-800 bg-white border-2 border-indigo-400 rounded outline-none shadow-sm"
+                                className="w-full px-2 py-1 text-xs font-bold text-slate-800 bg-white border-2 border-indigo-400 rounded outline-none shadow-sm"
                                 autoFocus
                                 onKeyDown={(e) =>
                                   e.key === "Enter" && saveEdit(member.id)
@@ -3103,6 +3148,7 @@ export default function Header() {
                               >
                                 <option value="Admin">Admin</option>
                                 <option value="Leader">Leader</option>
+                                <option value="QC">QC</option>
                                 <option value="User">Normal</option>
                               </select>
                             ) : (
@@ -3113,7 +3159,9 @@ export default function Header() {
                                     ? "bg-slate-900 text-white"
                                     : member.role === "Leader"
                                       ? "bg-indigo-100 text-indigo-700"
-                                      : "bg-slate-100 text-slate-600"
+                                      : member.role === "QC"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-slate-100 text-slate-600"
                                 }`}
                               >
                                 {member.role === "User"
@@ -3129,8 +3177,9 @@ export default function Header() {
                                 <>
                                   <button
                                     onClick={() => saveEdit(member.id)}
-                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                                    title="Save Changes"
+                                    disabled={!canWriteData}
+                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title={canWriteData ? "Save Changes" : "QC users cannot edit"}
                                   >
                                     <Check size={16} />
                                   </button>
@@ -3146,19 +3195,22 @@ export default function Header() {
                                 <>
                                   <button
                                     onClick={() => startEditing(member)}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                                    title="Edit User"
+                                    disabled={!canWriteData}
+                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title={canWriteData ? "Edit User" : "QC users cannot edit"}
                                   >
                                     <Edit2 size={16} />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteUser(member.id)}
-                                    disabled={member.id === user?.id}
-                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                                    disabled={member.id === user?.id || !canWriteData}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                     title={
-                                      member.id === user?.id
-                                        ? "Cannot delete yourself"
-                                        : "Delete User"
+                                      !canWriteData
+                                        ? "QC users cannot delete"
+                                        : member.id === user?.id
+                                          ? "Cannot delete yourself"
+                                          : "Delete User"
                                     }
                                   >
                                     <Trash2 size={16} />
@@ -3175,8 +3227,8 @@ export default function Header() {
               )}
 
               {activeTab === "create" && (
-                <div className="max-w-[500px] mx-auto bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
-                  <form onSubmit={handleCreateUser} className="space-y-6">
+                <div className="w-full max-w-[500px] mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                  <form onSubmit={handleCreateUser} className="space-y-5">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
                         Email Address <span className="text-red-500">*</span>
@@ -3187,7 +3239,7 @@ export default function Header() {
                         placeholder="newuser@example.com"
                         value={newEmail}
                         onChange={(e) => setNewEmail(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 transition-all text-slate-700 font-medium"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-all text-slate-700 font-medium"
                       />
                     </div>
 
@@ -3201,7 +3253,7 @@ export default function Header() {
                         placeholder="e.g. Chamiru"
                         value={newWorkName}
                         onChange={(e) => setNewWorkName(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 transition-all text-slate-700 font-medium"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-all text-slate-700 font-medium"
                       />
                     </div>
 
@@ -3212,10 +3264,11 @@ export default function Header() {
                       <select
                         value={newRole}
                         onChange={(e) => setNewRole(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 cursor-pointer transition-all text-slate-700 font-medium appearance-none"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 cursor-pointer transition-all text-slate-700 font-medium appearance-none"
                       >
                         <option value="User">Normal</option>
                         <option value="Leader">Leader</option>
+                        <option value="QC">QC(View Only)</option>
                         <option value="Admin">Admin</option>
                       </select>
                     </div>
@@ -3224,8 +3277,9 @@ export default function Header() {
 
                     <button
                       type="submit"
-                      disabled={isCreating}
-                      className="w-full py-3.5 bg-slate-400 hover:bg-slate-500 text-white text-sm font-bold rounded-lg transition-all shadow-sm disabled:opacity-50 mt-4"
+                      disabled={isCreating || !canWriteData}
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-sm font-bold rounded-lg transition-all shadow-sm disabled:cursor-not-allowed mt-1"
+                      title={canWriteData ? "" : "QC users cannot create accounts"}
                     >
                       {isCreating ? "Creating Account..." : "Create Account"}
                     </button>
@@ -3581,7 +3635,7 @@ export default function Header() {
                     </p>
                   </button>
 
-                  {isAdminOrLeader && (
+                  {canViewAdminSections && (
                     <button
                       onClick={() => setInfoView("logic")}
                       className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-sky-300 hover:bg-sky-50/40 transition-colors sm:col-span-2"
@@ -3755,7 +3809,7 @@ export default function Header() {
                 </div>
               )}
 
-              {infoView === "logic" && isAdminOrLeader && (
+              {infoView === "logic" && canViewAdminSections && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-bold text-slate-800">

@@ -206,6 +206,7 @@ export default function TicketTable({
     clearDutyMemory,
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+  const canWriteData = userRole === "Admin" || userRole === "Leader";
 
   // Helper function to check if a note can be edited (within 3 hours and authored by current user or admin/leader)
   const canEditNote = (note) => {
@@ -215,13 +216,13 @@ export default function TicketTable({
     const isWithinEditWindow = noteAge <= THREE_HOURS_MS;
     const isNoteAuthor = note.createdByUserId === user?.id;
 
-    return isWithinEditWindow && (isNoteAuthor || isAdminOrLeader);
+    return canWriteData && isWithinEditWindow && (isNoteAuthor || isAdminOrLeader);
   };
 
   // Helper function to check if a note can be deleted
   const canDeleteNote = (note) => {
     const isNoteAuthor = note.createdByUserId === user?.id;
-    return isNoteAuthor || isAdminOrLeader;
+    return canWriteData && (isNoteAuthor || isAdminOrLeader);
   };
 
   // --- FILTER SYSTEM STATES ---
@@ -2282,8 +2283,8 @@ export default function TicketTable({
                             </button>
                           )}
 
-                          {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS --- */}
-                          {!isLockedFromDeletion && (
+                          {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS OR USER IS QC --- */}
+                          {!isLockedFromDeletion && canWriteData && (
                             <button
                               onClick={() => {
                                 setDeletingRowId(ticket.id);

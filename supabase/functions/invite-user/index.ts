@@ -41,6 +41,22 @@ serve(async (req) => {
 
     if (inviteError) throw inviteError
 
+    // 5. Update the profiles table with role and work_name
+    if (data?.user?.id) {
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          role: role || 'User',
+          work_name: workName || ''
+        })
+        .eq('id', data.user.id)
+
+      if (profileError) {
+        console.error('Profile update error:', profileError)
+        // Don't throw - user invite succeeded even if profile update failed
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, user: data.user }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
