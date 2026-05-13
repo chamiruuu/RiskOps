@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.12";
+export const APP_VERSION = "1.0.13";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.13",
+    date: "2026-05",
+    notes:
+      "Added password reset feature; requests must be submitted to a Leader or Carmen.",
+  },
   {
     version: "1.0.12",
     date: "2026-05",

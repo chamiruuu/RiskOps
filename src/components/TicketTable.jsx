@@ -113,12 +113,14 @@ const getDutyHeaderBg = (dutyName) => {
 };
 
 // --- Reusable Click-to-Edit Component ---
+// --- Reusable Click-to-Edit Component ---
 const EditableField = ({
   ticket,
   fieldKey,
   placeholder,
   addText,
   onUpdateTicket,
+  readOnly // 👈 NEW: Accept readOnly prop
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(ticket[fieldKey] || "");
@@ -141,7 +143,7 @@ const EditableField = ({
     if (value !== (ticket[fieldKey] || "")) {
       onUpdateTicket(ticket.id, fieldKey, value);
       
-      // 👇 BUG FIX: Bump updated_at so the sweeper knows it's actively being worked on
+      // Bump updated_at so the sweeper knows it's actively being worked on
       onUpdateTicket(ticket.id, "updated_at", new Date().toISOString());
     }
   };
@@ -164,13 +166,19 @@ const EditableField = ({
   return value ? (
     <div className="group flex items-center gap-2 py-1">
       <span className="font-mono text-slate-700 font-medium">{value}</span>
-      <Edit2
-        size={12}
-        onClick={() => setIsEditing(true)}
-        title={`Click to edit ${placeholder}`}
-        className="cursor-pointer text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"
-      />
+      {/* 👈 NEW: Hide the edit pencil for QC */}
+      {!readOnly && (
+        <Edit2
+          size={12}
+          onClick={() => setIsEditing(true)}
+          title={`Click to edit ${placeholder}`}
+          className="cursor-pointer text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"
+        />
+      )}
     </div>
+  ) : readOnly ? (
+    /* 👈 NEW: Show a locked empty dash for QC instead of an "Add" button */
+    <span className="font-mono text-slate-400 italic text-xs">-</span>
   ) : (
     <button
       onClick={() => setIsEditing(true)}
@@ -206,6 +214,7 @@ export default function TicketTable({
     clearDutyMemory,
   } = useDuty();
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+  const isQC = userRole === "QC";
   const canWriteData = userRole === "Admin" || userRole === "Leader";
 
   // Helper function to check if a note can be edited (within 3 hours and authored by current user or admin/leader)
@@ -1408,7 +1417,7 @@ export default function TicketTable({
     handoverPair,
     isOutgoingTransitionViewer,
     isIncomingTransitionViewer,
-    canViewTickets,
+    canViewTickets: defaultCanViewTickets,
   } = computeTransitionViewState({
     transitionCtx,
     myAssignedShift,
@@ -1417,6 +1426,7 @@ export default function TicketTable({
     handoverCompletedForCurrentWindow,
   });
 
+  const canViewTickets = defaultCanViewTickets || isQC;
   const isActuallyInWindow = checkIsHandoverWindow();
   const currentHandoverMarker = buildHandoverMarker();
   const handedOverSetForMarker =
@@ -2175,6 +2185,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC} /* 👈 Add this */
                         ticket={ticket}
                         fieldKey="login_id"
                         placeholder="Login ID"
@@ -2184,6 +2195,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC} /* 👈 Add this */
                         ticket={ticket}
                         fieldKey="member_id"
                         placeholder="Player ID"
@@ -2193,6 +2205,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC} /* 👈 Add this */
                         ticket={ticket}
                         fieldKey="provider_account"
                         placeholder="Account"
@@ -2205,6 +2218,7 @@ export default function TicketTable({
                     </td>
                     <td className="px-4 py-2">
                       <EditableField
+                        readOnly={isQC} /* 👈 Add this */
                         ticket={ticket}
                         fieldKey="tracking_no"
                         placeholder="Track No."
@@ -2766,28 +2780,30 @@ export default function TicketTable({
                 })
               )}
             </div>
-            <div className="p-4 bg-white border-t border-slate-200">
-              <div className="relative flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Type a note..."
-                  value={newNoteText}
-                  onChange={(e) => setNewNoteText(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSendNote()}
-                  className={`flex-1 pl-4 pr-10 py-2.5 bg-slate-100 border border-slate-200 rounded-full text-xs outline-none focus:bg-white focus:ring-4 transition-all ${getDutyBorderRing(selectedTicketForNotes.ic_account)}`}
-                  autoFocus
-                />
-                <button
-                  onClick={handleSendNote}
-                  className={`absolute right-1.5 p-1.5 rounded-full transition-colors flex items-center justify-center ${newNoteText.trim() ? `${getDutyButton(selectedTicketForNotes.ic_account)} text-white shadow-md` : "bg-slate-200 text-slate-400"}`}
-                >
-                  <Send
-                    size={14}
-                    className={newNoteText.trim() ? "ml-0.5" : ""}
+            {!isQC && (
+              <div className="p-4 bg-white border-t border-slate-200">
+                <div className="relative flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Type a note..."
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendNote()}
+                    className={`flex-1 pl-4 pr-10 py-2.5 bg-slate-100 border border-slate-200 rounded-full text-xs outline-none focus:bg-white focus:ring-4 transition-all ${getDutyBorderRing(selectedTicketForNotes.ic_account)}`}
+                    autoFocus
                   />
-                </button>
+                  <button
+                    onClick={handleSendNote}
+                    className={`absolute right-1.5 p-1.5 rounded-full transition-colors flex items-center justify-center ${newNoteText.trim() ? `${getDutyButton(selectedTicketForNotes.ic_account)} text-white shadow-md` : "bg-slate-200 text-slate-400"}`}
+                  >
+                    <Send
+                      size={14}
+                      className={newNoteText.trim() ? "ml-0.5" : ""}
+                    />
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

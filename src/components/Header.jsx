@@ -32,6 +32,7 @@ import {
   ArchiveRestore,
   Download,
   Search,
+  Key,
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
@@ -1215,6 +1216,24 @@ export default function Header() {
     } catch (error) {
       console.error("Error deleting user:", error);
       alert("Failed to delete user: " + error.message);
+    }
+  };
+
+  const handleResetPassword = async (email) => {
+    if (!window.confirm(`Send a password reset email to ${email}?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/#/set-password`,
+      });
+
+      if (error) throw error;
+      alert(`Password reset email successfully sent to ${email}`);
+    } catch (error) {
+      console.error("Error sending reset email:", error);
+      alert("Failed to send reset email: " + error.message);
     }
   };
 
@@ -3025,12 +3044,14 @@ export default function Header() {
                   >
                     Users List
                   </button>
-                  <button
-                    onClick={() => setActiveTab("create")}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === "create" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-                  >
-                    Create New
-                  </button>
+                  {isAdminOrLeader && (
+                    <button
+                      onClick={() => setActiveTab("create")}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === "create" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                    >
+                      Create New
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -3198,17 +3219,17 @@ export default function Header() {
 
                           <td className="px-5 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              {editingId === member.id ? (
+                              {/* 👇 NEW: If the user is QC, hide all buttons and show "View Only" */}
+                              {isQC ? (
+                                <span className="text-[10px] font-bold text-slate-400 italic">
+                                  View Only
+                                </span>
+                              ) : editingId === member.id ? (
                                 <>
                                   <button
                                     onClick={() => saveEdit(member.id)}
-                                    disabled={!canWriteData}
-                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title={
-                                      canWriteData
-                                        ? "Save Changes"
-                                        : "QC users cannot edit"
-                                    }
+                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                                    title="Save Changes"
                                   >
                                     <Check size={16} />
                                   </button>
@@ -3223,29 +3244,29 @@ export default function Header() {
                               ) : (
                                 <>
                                   <button
-                                    onClick={() => startEditing(member)}
-                                    disabled={!canWriteData}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title={
-                                      canWriteData
-                                        ? "Edit User"
-                                        : "QC users cannot edit"
+                                    onClick={() =>
+                                      handleResetPassword(member.email)
                                     }
+                                    className="p-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700 rounded transition-colors"
+                                    title="Send Password Reset Email"
+                                  >
+                                    <Key size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => startEditing(member)}
+                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                    title="Edit User"
                                   >
                                     <Edit2 size={16} />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteUser(member.id)}
-                                    disabled={
-                                      member.id === user?.id || !canWriteData
-                                    }
-                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                    disabled={member.id === user?.id}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                                     title={
-                                      !canWriteData
-                                        ? "QC users cannot delete"
-                                        : member.id === user?.id
-                                          ? "Cannot delete yourself"
-                                          : "Delete User"
+                                      member.id === user?.id
+                                        ? "Cannot delete yourself"
+                                        : "Delete User"
                                     }
                                   >
                                     <Trash2 size={16} />
