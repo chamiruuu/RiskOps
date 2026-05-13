@@ -149,7 +149,9 @@ export default function Header() {
   const [logicHealthSearch, setLogicHealthSearch] = useState("");
 
   const isAdminOrLeader = userRole === "Admin" || userRole === "Leader";
+  const isQC = userRole === "QC";
   const isQcViewOnly = userRole === "QC";
+  const canViewAdminTools = isAdminOrLeader || isQC;
   const canViewAdminSections = isAdminOrLeader || isQcViewOnly;
   const canWriteData = userRole === "Admin" || userRole === "Leader";
 
@@ -401,8 +403,7 @@ export default function Header() {
         setManualUpdateStatus(
           payload?.message || "Error checking for updates.",
         );
-      else if (payload?.type === "installing")
-        setManualUpdateStatus("ready");
+      else if (payload?.type === "installing") setManualUpdateStatus("ready");
 
       // 2. Keep the existing Toast Notification ONLY when the download is 100% finished
       if (
@@ -1191,14 +1192,16 @@ export default function Header() {
 
   const handleDeleteUser = async (userId) => {
     // Standard confirmation prompt
-    if (!window.confirm("Are you sure you want to permanently delete this user?")) {
+    if (
+      !window.confirm("Are you sure you want to permanently delete this user?")
+    ) {
       return;
     }
 
     try {
       // 1. Call the secure Edge Function
-      const { data, error } = await supabase.functions.invoke('delete-user', {
-        body: { userId: userId }
+      const { data, error } = await supabase.functions.invoke("delete-user", {
+        body: { userId: userId },
       });
 
       if (error) throw error;
@@ -1206,10 +1209,9 @@ export default function Header() {
 
       // 2. Success! Remove them from your local screen/state
       alert("User successfully deleted.");
-      
+
       // If you have a state array of users, filter them out so the UI updates instantly:
       // setUsers(users.filter(u => u.id !== userId));
-
     } catch (error) {
       console.error("Error deleting user:", error);
       alert("Failed to delete user: " + error.message);
@@ -1233,7 +1235,7 @@ export default function Header() {
     e.preventDefault();
     setIsCreating(true);
     setCreateMsg({ text: "", type: "" });
-    
+
     // Validate that work name is not empty
     if (!newWorkName.trim()) {
       setCreateMsg({ text: "Work Name is required", type: "error" });
@@ -1243,7 +1245,7 @@ export default function Header() {
 
     try {
       // Call Edge Function to invite user
-      const { data, error } = await supabase.functions.invoke('invite-user', {
+      const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email: newEmail,
           role: newRole,
@@ -1259,11 +1261,11 @@ export default function Header() {
       setNewEmail("");
       setNewWorkName("");
       setNewRole("User");
-      
+
       // Wait a bit for database to sync, then fetch
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       fetchTeam();
-      
+
       setTimeout(() => {
         setActiveTab("list");
         setCreateMsg({ text: "", type: "" });
@@ -1890,7 +1892,7 @@ export default function Header() {
     window.open(
       "https://embed.figma.com/deck/XDTnPDB49qh8MOK4OjDWbb/RiskOps---Manual?node-id=1-9&embed-host=share",
       "RiskOpsManual",
-      "width=900,height=600,left=150,top=100,menubar=no,toolbar=no,location=no,status=no"
+      "width=900,height=600,left=150,top=100,menubar=no,toolbar=no,location=no,status=no",
     );
   };
 
@@ -2341,7 +2343,11 @@ export default function Header() {
                                 }
                                 disabled={!canWriteData}
                                 className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={canWriteData ? "" : "QC users cannot approve requests"}
+                                title={
+                                  canWriteData
+                                    ? ""
+                                    : "QC users cannot approve requests"
+                                }
                               >
                                 Approve
                               </button>
@@ -2354,7 +2360,11 @@ export default function Header() {
                                 }
                                 disabled={!canWriteData}
                                 className="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={canWriteData ? "" : "QC users cannot reject requests"}
+                                title={
+                                  canWriteData
+                                    ? ""
+                                    : "QC users cannot reject requests"
+                                }
                               >
                                 Reject
                               </button>
@@ -2384,7 +2394,11 @@ export default function Header() {
                                 }
                                 disabled={!canWriteData}
                                 className="mt-2 w-full py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title={canWriteData ? "" : "QC users cannot acknowledge alerts"}
+                                title={
+                                  canWriteData
+                                    ? ""
+                                    : "QC users cannot acknowledge alerts"
+                                }
                               >
                                 Acknowledge
                               </button>
@@ -3036,10 +3050,16 @@ export default function Header() {
                       <tr>
                         <th className="px-3 py-3 min-w-max">Reg. Date</th>
                         <th className="px-3 py-3 min-w-[120px]">Work Name</th>
-                        <th className="px-3 py-3 flex-1 min-w-[150px]">Email</th>
+                        <th className="px-3 py-3 flex-1 min-w-[150px]">
+                          Email
+                        </th>
                         <th className="px-3 py-3 min-w-max">Password</th>
-                        <th className="px-3 py-3 text-center min-w-[100px]">Role</th>
-                        <th className="px-3 py-3 text-right min-w-max">Actions</th>
+                        <th className="px-3 py-3 text-center min-w-[100px]">
+                          Role
+                        </th>
+                        <th className="px-3 py-3 text-right min-w-max">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -3086,7 +3106,12 @@ export default function Header() {
 
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2 text-slate-400">
-                              {member.visible_password ? (
+                              {/* NEW: Hide the entire password block from QC */}
+                              {isQC ? (
+                                <span className="text-[10px] text-slate-400 italic font-medium px-2 py-1 bg-slate-50 rounded">
+                                  Hidden for QC
+                                </span>
+                              ) : member.visible_password ? (
                                 <>
                                   <span className="font-mono text-xs tracking-widest text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md min-w-[90px] text-center">
                                     {revealedPasswords[member.id]
@@ -3179,7 +3204,11 @@ export default function Header() {
                                     onClick={() => saveEdit(member.id)}
                                     disabled={!canWriteData}
                                     className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title={canWriteData ? "Save Changes" : "QC users cannot edit"}
+                                    title={
+                                      canWriteData
+                                        ? "Save Changes"
+                                        : "QC users cannot edit"
+                                    }
                                   >
                                     <Check size={16} />
                                   </button>
@@ -3197,13 +3226,19 @@ export default function Header() {
                                     onClick={() => startEditing(member)}
                                     disabled={!canWriteData}
                                     className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title={canWriteData ? "Edit User" : "QC users cannot edit"}
+                                    title={
+                                      canWriteData
+                                        ? "Edit User"
+                                        : "QC users cannot edit"
+                                    }
                                   >
                                     <Edit2 size={16} />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteUser(member.id)}
-                                    disabled={member.id === user?.id || !canWriteData}
+                                    disabled={
+                                      member.id === user?.id || !canWriteData
+                                    }
                                     className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                     title={
                                       !canWriteData
@@ -3279,7 +3314,9 @@ export default function Header() {
                       type="submit"
                       disabled={isCreating || !canWriteData}
                       className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white text-sm font-bold rounded-lg transition-all shadow-sm disabled:cursor-not-allowed mt-1"
-                      title={canWriteData ? "" : "QC users cannot create accounts"}
+                      title={
+                        canWriteData ? "" : "QC users cannot create accounts"
+                      }
                     >
                       {isCreating ? "Creating Account..." : "Create Account"}
                     </button>
@@ -3553,7 +3590,9 @@ export default function Header() {
 
       {showInfoModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center animate-in fade-in duration-200 p-4">
-          <div className={`bg-white max-w-[95vw] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col ${infoView === "manual" ? "w-[900px] h-[80vh]" : "w-[520px]"}`}>
+          <div
+            className={`bg-white max-w-[95vw] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col ${infoView === "manual" ? "w-[900px] h-[80vh]" : "w-[520px]"}`}
+          >
             <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 text-slate-800 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold tracking-wide flex items-center gap-2">
@@ -3724,7 +3763,9 @@ export default function Header() {
                   {/* NEW: Manual Check for Updates Banner */}
                   <div className="mb-4 p-3 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-between shrink-0">
                     <div>
-                      <p className="text-xs font-bold text-indigo-900">App Updates</p>
+                      <p className="text-xs font-bold text-indigo-900">
+                        App Updates
+                      </p>
                       <p className="text-[11px] text-indigo-700 mt-0.5 font-medium">
                         {manualUpdateStatus === "idle"
                           ? "Automatically checks in background."
