@@ -2320,7 +2320,7 @@ export default function TicketTable({
                           )}
 
                           {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS OR USER IS QC --- */}
-                          {!isLockedFromDeletion && canWriteData && (
+                          {!isLockedFromDeletion && (canWriteData || canDeleteByShiftOrCreator) && (
                             <button
                               onClick={() => {
                                 setDeletingRowId(ticket.id);

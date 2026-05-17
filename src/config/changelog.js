@@ -1,10 +1,22 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.15";
+export const APP_VERSION = "1.0.16";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.16",
+    date: "2026-05",
+    notes:
+      "Implemented new feature for enhanced user experience.",
+  },
+  {
+    version: "1.0.15",
+    date: "2026-05",
+    notes:
+      "Ticket delete permissions updated to allow authenticated users to delete tickets they created, in addition to admins and leaders. This change enhances user control while maintaining necessary oversight.",
+  },
   {
     version: "1.0.15",
     date: "2026-05",
