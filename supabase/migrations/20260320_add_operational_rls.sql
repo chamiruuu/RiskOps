@@ -73,6 +73,7 @@ begin
     drop policy if exists "tickets_insert_authenticated" on public.tickets;
     drop policy if exists "tickets_update_authenticated" on public.tickets;
     drop policy if exists "tickets_delete_admin" on public.tickets;
+    drop policy if exists "tickets_delete_authenticated" on public.tickets;
     drop policy if exists "tickets_read_policy" on public.tickets;
     drop policy if exists "tickets_create_policy" on public.tickets;
     drop policy if exists "tickets_update_policy" on public.tickets;
@@ -111,7 +112,8 @@ begin
       'create policy "tickets_update_authenticated" on public.tickets for update to authenticated using (auth.uid() is not null) with check (%s)',
       tickets_update_check
     );
-    execute 'create policy "tickets_delete_admin" on public.tickets for delete to authenticated using (public.is_admin_or_leader())';
+    -- Allow deletes for admins/leaders or the original creator of the ticket.
+    execute 'create policy "tickets_delete_authenticated" on public.tickets for delete to authenticated using (public.is_admin_or_leader() or (created_by is not null and created_by = auth.uid()))';
   end if;
 end $$;
 

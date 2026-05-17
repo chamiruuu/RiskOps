@@ -2153,15 +2153,32 @@ export default function TicketTable({
                   (tTime >= 14.65 && tTime < 15.0) || // 14:39 - 15:00
                   (tTime >= 22.65 && tTime < 23.0);   // 22:39 - 23:00
 
-                // --- NEW: 2. Strict Delete Lock (Applies to EVERYONE, including Admins) ---
+                // --- Delete rules ---
+                // Block deletion when: completed, created in overlap window, or already handed over.
+                // Allow deletion when: ticket was created in the same shift as current user OR the ticket creator,
+                // but only if it has NOT been handed over yet. This enforces: morning users cannot delete
+                // night-created tickets, and once handed over nobody (including creator) can delete.
                 const lastShiftChange = getLastShiftChangeTime();
-                const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
                 const isHandedOverLocally = !isTicketNewSinceLastHandover(ticket);
-                
-                // If it meets ANY of these conditions, it is on the Sheet. 
-                // Because we don't include 'isAdminOrLeader' here, it strictly blocks Admins too!
+                const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
+
+                // Determine the shift the ticket was created in (based on its timestamp)
+                let ticketShift = null;
+                try {
+                  ticketShift = resolveActiveShiftFromTime(new Date(ticket.created_at));
+                } catch (e) {
+                  ticketShift = null;
+                }
+
+                const isCreator = ticket.created_by && user && ticket.created_by === user.id;
+
+                // Can delete if ticket is new since last handover AND (user is in same shift as ticket OR is the creator)
+                const canDeleteByShiftOrCreator =
+                  !isHandedOverLocally &&
+                  ((ticketShift && myAssignedShift && ticketShift === myAssignedShift) || isCreator);
+
                 const isLockedFromDeletion =
-                  isCompleted || createdInPastShift || isHandedOverLocally || isCreatedInOverlap;
+                  isCompleted || isCreatedInOverlap || isHandedOverLocally || !canDeleteByShiftOrCreator;
 
                 return (
                   <tr

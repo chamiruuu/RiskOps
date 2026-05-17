@@ -69,7 +69,7 @@ export const PROVIDER_CONFIG = {
     ],
     process: [
       "Check member details in BO.",
-      "Submit query to the Teams Group: [T1] PP - FP...", // Updated to "Teams Group"
+      "Submit query to the Teams Group: [T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS", // Updated to "Teams Group"
       "Wait for provider feedback.",
     ],
     reminder:
