@@ -1,10 +1,22 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.13";
+export const APP_VERSION = "1.0.14";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.14",
+    date: "2026-05",
+    notes:
+      "Fixed the auto ticket vanish behavior after completing a handover ticket and added a silent duty-memory clear to ensure the next shift selects duty fresh.",
+  },
+  {
+    version: "1.0.13",
+    date: "2026-05",
+    notes:
+      "Added password reset feature; requests must be submitted to a Leader or Carmen.",
+  },
   {
     version: "1.0.13",
     date: "2026-05",

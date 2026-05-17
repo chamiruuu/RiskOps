@@ -2002,7 +2002,7 @@ export default function Header() {
           {!isAdminOrLeader && !isQcViewOnly && (
             <button
               onClick={() => setShowDutySwitchConfirm(true)}
-              className="flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2 bg-slate-100 text-slate-600 hover:bg-slate-200"
+              className="flex items-center justify-center w-8 h-8 rounded-full transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200"
               title="Switch Duty"
             >
               <ArrowLeftRight size={16} strokeWidth={2.5} />
@@ -2025,7 +2025,7 @@ export default function Header() {
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${!isAdminOrLeader ? "" : "ml-2"} ${hasNotifications ? "bg-rose-50 text-rose-600 hover:bg-rose-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${hasNotifications ? "bg-rose-50 text-rose-600 hover:bg-rose-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
               title="Notifications"
             >
               <Bell size={16} strokeWidth={2.5} />
@@ -2435,10 +2435,10 @@ export default function Header() {
 
           {/* --- ADMIN TOOLBAR BUTTONS --- */}
           {canViewAdminSections && (
-            <div className="relative flex items-center">
+            <>
               <button
                 onClick={() => setShowHistoryModal(true)}
-                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors ml-1"
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors"
                 title="Archived Investigations"
               >
                 <ArchiveRestore size={16} strokeWidth={2.5} />
@@ -2446,7 +2446,7 @@ export default function Header() {
 
               <button
                 onClick={() => setShowShiftModal(true)}
-                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors ml-1 relative"
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors relative"
                 title="Shift Planner"
               >
                 <CalendarDays size={16} strokeWidth={2.5} />
@@ -2457,16 +2457,16 @@ export default function Header() {
 
               <button
                 onClick={() => setShowAdminModal(true)}
-                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors ml-1"
+                className="flex items-center justify-center w-8 h-8 bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 rounded-full transition-colors"
                 title="User Management"
               >
                 <Users size={16} strokeWidth={2.5} />
               </button>
-            </div>
+            </>
           )}
 
           {/* --- RESTORED ORIGINAL GREETING --- */}
-          <div className="text-xs font-medium text-slate-500 hidden md:block border-l border-slate-200 pl-4 ml-1">
+          <div className="text-xs font-medium text-slate-500 hidden md:block border-l border-slate-200 pl-4">
             {getGreeting()},{" "}
             <span className="text-slate-900 font-bold">
               {workName || user?.email?.split("@")[0]}
@@ -2664,7 +2664,7 @@ export default function Header() {
 
           <button
             onClick={() => supabase.auth.signOut()}
-            className="flex items-center justify-center w-8 h-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-1"
+            className="flex items-center justify-center w-8 h-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
             title="Log Out"
           >
             <LogOut size={16} />

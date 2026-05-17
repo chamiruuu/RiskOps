@@ -1554,17 +1554,22 @@ export default function TicketTable({
       completedTicketIdsByMarkerRef.current.set(marker, completedSet);
     }
 
-    // Update inside your RiskOps Database
-    onUpdateTicket(targetTicketId, "status", finalStatus);
-
-    // 👈 NEW FIX: Explicitly set updated_at so the sweeper knows it was completed *during this shift*!
+    // 👈 ATOMIC UPDATE: Update both status AND updated_at together to prevent race conditions
+    // that cause the ticket to disappear due to stale timestamp
     try {
+      const now = new Date().toISOString();
       await supabase
         .from("tickets")
-        .update({ updated_at: new Date().toISOString() })
+        .update({ 
+          status: finalStatus,
+          updated_at: now
+        })
         .eq("id", targetTicketId);
+      
+      // After DB sync completes, optimistically update UI
+      onUpdateTicket(targetTicketId, "status", finalStatus);
     } catch (e) {
-      console.error("Failed to sync timestamp", e);
+      console.error("Failed to complete ticket:", e);
     }
 
     setCompleteModal({
