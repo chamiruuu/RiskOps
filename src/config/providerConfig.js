@@ -1239,6 +1239,7 @@ Time period：${timeRange}`;
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: [T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS",
+      "Remember to tag RNG-CustomerSupport - Pragmatic Play™ in the chat.",
       "Wait for provider feedback in the group.",
     ],
 
@@ -1248,7 +1249,7 @@ Time period：${timeRange}`;
       const { providerAccount, timeRange } = data;
 
       if (providerAccount && timeRange) {
-        return `Hi team, this is ${workName} ，Please help us check member betting normal or not.Thank you.
+        return `@\nHi team, this is ${workName} ，Please help us check member betting normal or not.Thank you.
 
 Member ID：${providerAccount}
 Period：${timeRange}

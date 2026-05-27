@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.18";
+export const APP_VERSION = "1.0.19";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.19",
+    date: "2026-05",
+    notes:
+      "Add '@' for FatPanda for the script copy",
+  },
   {
     version: "1.0.18",
     date: "2026-05",
