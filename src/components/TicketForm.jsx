@@ -4,6 +4,7 @@ import {
   Plus,
   ChevronDown,
   Check,
+  AlertTriangle,
   BookOpen,
   FileText,
   AlertCircle,
@@ -144,6 +145,7 @@ export default function TicketForm({ onAddTicket }) {
     ipAddress: "",
     merchantInsists: false, // --- NEW: Toggle State
   });
+  const [sboConfirmed, setSboConfirmed] = useState(false);
 
   const isStrictProvider =
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
@@ -320,6 +322,7 @@ export default function TicketForm({ onAddTicket }) {
 
   const selectProvider = (providerKey) => {
     setFormData({ ...formData, provider: providerKey, merchantInsists: false });
+    if (providerKey !== "SBO") setSboConfirmed(false);
     setProviderSearch(providerKey);
     setIsProviderOpen(false);
 
@@ -694,6 +697,8 @@ export default function TicketForm({ onAddTicket }) {
     proceedWithCreation();
   };
 
+  const isSboBlocked = formData.provider === "SBO" && !sboConfirmed;
+
   return (
     <aside className="w-[380px] bg-white rounded-2xl shadow-xl border border-slate-100 flex flex-col shrink-0 overflow-hidden relative">
       {showSuccessToast && (
@@ -870,6 +875,31 @@ export default function TicketForm({ onAddTicket }) {
                 </div>
               )}
             </div>
+
+            {/* --- NEW: SBO QUERY TOGGLE --- */}
+            {formData.provider === "SBO" && (
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4 animate-in fade-in slide-in-from-top-2">
+                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <AlertTriangle size={14} /> SBO Query Policy
+                </h4>
+                <ul className="text-[11px] text-amber-700 space-y-1.5 ml-4 list-disc mb-3 font-medium">
+                  <li><strong>Within 7 days (incl. today):</strong> Use the provider's BO for the query.</li>
+                  <li><strong>Older than 7 days:</strong> Directly ask the provider's group chat.</li>
+                  <li><strong>Note:</strong> The provider can only query records from the past month.</li>
+                </ul>
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 bg-white rounded-lg border border-amber-100 hover:bg-amber-100/50 transition-colors shadow-sm">
+                  <input
+                    type="checkbox"
+                    checked={sboConfirmed}
+                    onChange={(e) => setSboConfirmed(e.target.checked)}
+                    className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer shrink-0"
+                  />
+                  <span className="text-xs font-bold text-amber-900 leading-snug">
+                    I confirm this record is <strong>older than 7 days</strong> and within the past month.
+                  </span>
+                </label>
+              </div>
+            )}
 
             {/* --- NEW: MERCHANT INSISTS TOGGLE --- */}
             {currentConfig?.allowMerchantInsist && (
@@ -1292,11 +1322,11 @@ export default function TicketForm({ onAddTicket }) {
                 )}
 
                 <button
-                  disabled={!isFormValid() || !canCreate || isCheckingPgSoft}
+                    disabled={!isFormValid() || !canCreate || isCheckingPgSoft || isSboBlocked}
                   onClick={handleCreateClick}
                   className={`w-full py-2.5 font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 mt-4 
                     ${
-                      isQcViewOnly
+                        isQcViewOnly || isSboBlocked
                         ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed"
                         : !canCreate
                         ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
@@ -1307,6 +1337,8 @@ export default function TicketForm({ onAddTicket }) {
                 >
                   {isQcViewOnly ? (
                     <Eye size={16} />
+                  ) : isSboBlocked ? (
+                    <AlertTriangle size={16} />
                   ) : !canCreate ? (
                     <Lock size={16} />
                   ) : isCheckingPgSoft ? (
@@ -1319,11 +1351,13 @@ export default function TicketForm({ onAddTicket }) {
                   )}
                   {isQcViewOnly
                     ? "QC View Only"
-                    : !canCreate
-                    ? "Shift Locked"
-                    : isCheckingPgSoft
-                      ? "Checking Database..."
-                      : "Create Ticket"}
+                    : isSboBlocked
+                      ? "Confirm SBO Policy to Generate"
+                      : !canCreate
+                        ? "Shift Locked"
+                        : isCheckingPgSoft
+                          ? "Checking Database..."
+                          : "Create Ticket"}
                 </button>
 
                 {validationNotice.text && (

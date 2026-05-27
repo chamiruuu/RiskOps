@@ -70,6 +70,7 @@ export const PROVIDER_CONFIG = {
     process: [
       "Check member details in BO.",
       "Submit query to the Teams Group: [T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS", // Updated to "Teams Group"
+      "Remember to tag RNG-CustomerSupport - Pragmatic Play™ in the chat.",
       "Wait for provider feedback.",
     ],
     reminder:
@@ -78,7 +79,7 @@ export const PROVIDER_CONFIG = {
     generateScript: (data, workName) => {
       const { memberId, timeRange } = data;
       if (memberId && timeRange) {
-        return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${memberId}\nTime period：${timeRange}\nProvider name：Pragmatic Play`;
+        return `@\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${memberId}\nTime period：${timeRange}\nProvider name：Pragmatic Play`;
       }
       return "// Waiting for Member ID and Time Period...";
     },
