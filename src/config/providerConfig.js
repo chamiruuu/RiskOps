@@ -79,7 +79,7 @@ export const PROVIDER_CONFIG = {
     generateScript: (data, workName) => {
       const { memberId, timeRange } = data;
       if (memberId && timeRange) {
-        return `@\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${memberId}\nTime period：${timeRange}\nProvider name：Pragmatic Play`;
+        return `@RNG-CustomerSupport - Pragmatic Play™\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${memberId}\nTime period：${timeRange}\nProvider name：Pragmatic Play`;
       }
       return "// Waiting for Member ID and Time Period...";
     },
@@ -423,7 +423,7 @@ export const PROVIDER_CONFIG = {
       const { providerAccount, gameName, timeRange } = data;
 
       if (providerAccount && gameName && timeRange) {
-        return `@\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nproduct category ：Casino\nRound ID：ALL\nPeriod：${timeRange}\nGame name：${gameName}`;
+        return `@Live Casino Customer Support\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nproduct category ：Casino\nRound ID：ALL\nPeriod：${timeRange}\nGame name：${gameName}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Period...";
     },
@@ -1249,7 +1249,7 @@ Time period：${timeRange}`;
       const { providerAccount, timeRange } = data;
 
       if (providerAccount && timeRange) {
-        return `@\nHi team, this is ${workName} ，Please help us check member betting normal or not.Thank you.
+        return `@RNG-CustomerSupport - Pragmatic Play™\nHi team, this is ${workName} ，\nPlease help us check member betting normal or not.Thank you.
 
 Member ID：${providerAccount}
 Period：${timeRange}
