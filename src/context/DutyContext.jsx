@@ -1,7 +1,72 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import notificationSoundCommon from "../assets/notification sound common.mp3";
-import { resolveActiveShiftFromTime } from "../lib/shiftLogic";
+import {
+  getFormattedDate,
+  getLastShiftChangeTime,
+  getTransitionContext,
+  resolveActiveShiftFromTime,
+} from "../lib/shiftLogic";
+
+const DUTY_STORAGE_KEY = "riskops_duty_role";
+const LEGACY_DUTY_STORAGE_KEY = "riskops_duty_account";
+
+const getDutySessionMarker = (inputNow = getGMT8Time()) => {
+  const activeShift = resolveActiveShiftFromTime(inputNow);
+  const shiftStart = getLastShiftChangeTime(inputNow);
+  return `${getFormattedDate(shiftStart)}|${activeShift}`;
+};
+
+const normalizeSavedDutyState = (saved) => {
+  if (!saved) return { duties: [], marker: null };
+
+  try {
+    const parsed = JSON.parse(saved);
+
+    if (Array.isArray(parsed)) {
+      return { duties: parsed, marker: null };
+    }
+
+    if (parsed && Array.isArray(parsed.duties)) {
+      return { duties: parsed.duties, marker: parsed.marker || null };
+    }
+  } catch {
+    return { duties: [saved], marker: null };
+  }
+
+  return { duties: [], marker: null };
+};
+
+const readStoredDutyForCurrentShift = () => {
+  const saved = localStorage.getItem(DUTY_STORAGE_KEY);
+  const { duties, marker } = normalizeSavedDutyState(saved);
+  const currentMarker = getDutySessionMarker();
+
+  if (marker && marker === currentMarker) {
+    return duties;
+  }
+
+  localStorage.removeItem(DUTY_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_DUTY_STORAGE_KEY);
+  return [];
+};
+
+const writeStoredDutyForCurrentShift = (duties) => {
+  if (!Array.isArray(duties) || duties.length === 0) {
+    localStorage.removeItem(DUTY_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_DUTY_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(
+    DUTY_STORAGE_KEY,
+    JSON.stringify({
+      duties,
+      marker: getDutySessionMarker(),
+    }),
+  );
+  localStorage.removeItem(LEGACY_DUTY_STORAGE_KEY);
+};
 
 // --- HELPER: Get Current GMT+8 Time ---
 const getGMT8Time = () => {
@@ -48,17 +113,7 @@ export const DutyProvider = ({ children }) => {
   const presenceLastSeenRef = useRef(new Map());
   const lastPresenceStatusRef = useRef("IDLE");
 
-  const [selectedDuty, setSelectedDuty] = useState(() => {
-    const saved = localStorage.getItem("riskops_duty_role");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [saved];
-      }
-    }
-    return [];
-  });
+  const [selectedDuty, setSelectedDuty] = useState(readStoredDutyForCurrentShift);
 
   // --- NEW: Connection Refresh Trigger ---
   const onlineUsersRef = useRef([]);
@@ -80,7 +135,7 @@ export const DutyProvider = ({ children }) => {
             if (prev && prev.length > 0 && prev.includes("IC0")) return prev;
             return ["IC0"];
           });
-          localStorage.setItem("riskops_duty_role", JSON.stringify(["IC0"]));
+          writeStoredDutyForCurrentShift(["IC0"]);
         }
       }
     } catch (error) {
@@ -270,7 +325,8 @@ export const DutyProvider = ({ children }) => {
         setUserRole(null);
         setWorkName("");
         setSelectedDuty([]);
-        localStorage.removeItem("riskops_duty_role");
+        localStorage.removeItem(DUTY_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_DUTY_STORAGE_KEY);
         setRecentlyOfflineUsers([]);
         presenceLastSeenRef.current.clear();
         setPresenceDebug({
@@ -294,12 +350,52 @@ export const DutyProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (selectedDuty && selectedDuty.length > 0) {
-      localStorage.setItem("riskops_duty_role", JSON.stringify(selectedDuty));
-    } else {
-      localStorage.removeItem("riskops_duty_role");
-    }
+    writeStoredDutyForCurrentShift(selectedDuty);
   }, [selectedDuty]);
+
+  useEffect(() => {
+    if (
+      !user?.id ||
+      !userRole ||
+      userRole === "Admin" ||
+      userRole === "Leader" ||
+      userRole === "QC" ||
+      !selectedDuty ||
+      selectedDuty.length === 0 ||
+      !myAssignedShift ||
+      myAssignedShift === "Off" ||
+      !currentActiveShift ||
+      myAssignedShift === currentActiveShift
+    ) {
+      return;
+    }
+
+    const transitionCtx = getTransitionContext();
+    const canRemainInTransition =
+      !!transitionCtx &&
+      (myAssignedShift === transitionCtx.pair.outgoing ||
+        myAssignedShift === transitionCtx.pair.incoming);
+
+    if (canRemainInTransition) {
+      return;
+    }
+
+    localStorage.setItem(
+      "riskops_duty_notice",
+      "Your previous shift is locked. Please select the duty account for this shift.",
+    );
+    const redirectTimer = setTimeout(() => {
+      setSelectedDuty([]);
+    }, 0);
+
+    return () => clearTimeout(redirectTimer);
+  }, [
+    currentActiveShift,
+    myAssignedShift,
+    selectedDuty,
+    user?.id,
+    userRole,
+  ]);
 
   // --- 3. STATIC PRESENCE TRACKING ARCHITECTURE (Golden Pattern) ---
   useEffect(() => {
@@ -489,8 +585,8 @@ export const DutyProvider = ({ children }) => {
 
   // NEW: Ghost Mode - Clears local storage for the next shift, but keeps current session active
   const clearDutyMemory = () => {
-    localStorage.removeItem("riskops_duty_account");
-    // Note: Make sure "riskops_duty_account" perfectly matches the key you use in this file!
+    localStorage.removeItem(DUTY_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_DUTY_STORAGE_KEY);
   };
 
   return (

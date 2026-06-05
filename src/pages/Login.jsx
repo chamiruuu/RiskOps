@@ -11,18 +11,23 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const authNotice = localStorage.getItem('riskops_auth_notice');
+    if (authNotice) {
+      localStorage.removeItem('riskops_auth_notice');
+    }
+    return authNotice || '';
+  });
+  const [dutyNotice, setDutyNotice] = useState(() => {
+    const savedDutyNotice = localStorage.getItem('riskops_duty_notice');
+    if (savedDutyNotice) {
+      localStorage.removeItem('riskops_duty_notice');
+    }
+    return savedDutyNotice || '';
+  });
 
   // --- NEW: Local state to hold multiple selections ---
   const [localDutySelection, setLocalDutySelection] = useState([]);
-
-  useEffect(() => {
-    const authNotice = localStorage.getItem('riskops_auth_notice');
-    if (authNotice) {
-      setError(authNotice);
-      localStorage.removeItem('riskops_auth_notice');
-    }
-  }, []);
 
   useEffect(() => {
     if (user && (userRole === 'Admin' || userRole === 'Leader' || userRole === 'QC')) {
@@ -94,6 +99,7 @@ export default function Login() {
   const handleSubmitDuties = () => {
     if (localDutySelection.length > 0) {
       setDuty(localDutySelection);
+      setDutyNotice('');
       navigate('/dashboard');
     }
   };
@@ -200,6 +206,12 @@ export default function Login() {
         <h2 className="text-3xl font-bold text-slate-900">Select Duty Profiles</h2>
         <p className="text-slate-500 mt-2">Choose one or more active roles for this session.</p>
       </div>
+
+      {dutyNotice && (
+        <div className="mb-6 w-full max-w-4xl p-3 bg-amber-50 border border-amber-100 text-amber-700 text-sm rounded-lg">
+          {dutyNotice}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-4xl">
         {['IC1', 'IC2', 'IC3', 'IC5'].map((role) => {

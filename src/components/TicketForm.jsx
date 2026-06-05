@@ -65,9 +65,6 @@ export default function TicketForm({ onAddTicket }) {
   const [copiedStrictLoss, setCopiedStrictLoss] = useState(false);
   const [copiedHold, setCopiedHold] = useState(false);
   const [copiedField, setCopiedField] = useState(null);
-  const [stickyStrictScriptEnabled, setStickyStrictScriptEnabled] =
-    useState(false);
-
   const handleCopyField = (text, fieldId) => {
     navigator.clipboard.writeText(text);
     setCopiedField(fieldId);
@@ -75,6 +72,8 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const [crossDutySelect, setCrossDutySelect] = useState("");
+  const [qq288CrossDutyConfirmed, setQq288CrossDutyConfirmed] =
+    useState(false);
 
   // --- Searchable Provider Dropdown States ---
   const [isProviderOpen, setIsProviderOpen] = useState(false);
@@ -149,16 +148,6 @@ export default function TicketForm({ onAddTicket }) {
 
   const isStrictProvider =
     formData.provider === "PG Soft" || formData.provider === "PA Casino";
-
-  useEffect(() => {
-    if (!canCreate && !isQcViewOnly) {
-      setStickyStrictScriptEnabled(false);
-      return;
-    }
-    if (isStrictProvider) {
-      setStickyStrictScriptEnabled(true);
-    }
-  }, [canCreate, isQcViewOnly, isStrictProvider]);
 
   useEffect(() => {
     setProviderSearch(formData.provider);
@@ -243,6 +232,8 @@ export default function TicketForm({ onAddTicket }) {
 
   useEffect(() => {
     setValidationNotice((prev) => (prev.text ? { type: "", text: "" } : prev));
+    setQq288CrossDutyConfirmed(false);
+    setCrossDutySelect("");
   }, [formData.provider, formData.memberId, formData.providerAccount]);
 
   useEffect(() => {
@@ -385,6 +376,29 @@ export default function TicketForm({ onAddTicket }) {
     error: dutyError,
   } = useMerchantData(formData.memberId, selectedDuty);
 
+  const dutyArray = Array.isArray(selectedDuty) ? selectedDuty : [];
+  const isAdminDuty = dutyArray.includes("IC0");
+  const extractedMerchantId = formData.memberId.includes("@")
+    ? formData.memberId.split("@")[1].trim()
+    : "";
+  const normalizedMerchantId = extractedMerchantId
+    ? extractedMerchantId.padStart(3, "0")
+    : "";
+  const isSpecialCrossDutyMerchant = ["262", "232", "135"].includes(
+    normalizedMerchantId,
+  );
+  const hasIC3Duty = dutyArray.includes("IC3");
+  const canUseQq288CrossDutyOverride =
+    hasIC3Duty &&
+    !isAdminDuty &&
+    !!extractedMerchantId &&
+    !!merchantDuty &&
+    !dutyArray.includes(merchantDuty);
+  const isQq288CrossDutyApproved =
+    canUseQq288CrossDutyOverride && qq288CrossDutyConfirmed;
+  const blockingDutyError =
+    dutyError && !isQq288CrossDutyApproved ? dutyError : "";
+
   const currentConfig = PROVIDER_CONFIG[formData.provider];
 
   // --- NEW: DYNAMIC OVERRIDE LOGIC ---
@@ -412,16 +426,10 @@ export default function TicketForm({ onAddTicket }) {
   const isFormValid = () => {
     if (!currentConfig) return false;
     if (isActuallyManualOnly) return false;
-    if (!formData.memberId || dutyError) return false;
+    if (!formData.memberId || blockingDutyError) return false;
 
     // --- NEW: Force duty selection for special cross-duty merchants ---
-    const extractedMerchantId = formData.memberId.includes("@")
-      ? formData.memberId.split("@")[1].trim()
-      : "";
-    if (
-      ["262", "232", "135"].includes(extractedMerchantId) &&
-      !crossDutySelect
-    ) {
+    if (isSpecialCrossDutyMerchant && !crossDutySelect) {
       return false;
     }
 
@@ -536,22 +544,16 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const proceedWithCreation = () => {
-    const extractedMerchantId = formData.memberId.includes("@")
-      ? formData.memberId.split("@")[1].trim()
-      : "-";
-
-    // --- NEW: Check if it's a special cross-duty merchant ---
-    const isSpecialMerchant = ["262", "232", "135"].includes(
-      extractedMerchantId,
-    );
+    const ticketMerchantId = extractedMerchantId || "-";
+    const ticketDuty = isQq288CrossDutyApproved
+      ? "IC3"
+      : isSpecialCrossDutyMerchant && crossDutySelect
+        ? crossDutySelect
+        : merchantDuty || "IC3";
 
     const newTicket = {
-      merchant_name: extractedMerchantId || "-",
-      // --- NEW: Use the toggled duty if it's special, otherwise use default ---
-      ic_account:
-        isSpecialMerchant && crossDutySelect
-          ? crossDutySelect
-          : merchantDuty || "IC3",
+      merchant_name: ticketMerchantId,
+      ic_account: ticketDuty,
       login_id: formData.loginId || "-",
       member_id: formData.memberId,
       provider_account: formData.providerAccount || "-",
@@ -581,6 +583,7 @@ export default function TicketForm({ onAddTicket }) {
       merchantInsists: false,
     });
     setCrossDutySelect("");
+    setQq288CrossDutyConfirmed(false);
 
     const audio = new Audio(notificationTicketCreation);
     audio.play().catch(() => console.log("Audio blocked by browser"));
@@ -591,6 +594,15 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const handleCreateClick = async () => {
+    if (
+      isQq288CrossDutyApproved &&
+      !window.confirm(
+        `Confirm QQ288 requested this ${merchantDuty} member inquiry and the ticket should be created under IC3?`,
+      )
+    ) {
+      return;
+    }
+
     if (formData.provider === "PG Soft") {
       const correlationId = createCorrelationId("PV");
       window.dispatchEvent(
@@ -1058,11 +1070,7 @@ export default function TicketForm({ onAddTicket }) {
                         Merchant Group
                       </label>
                       {/* --- NEW: CROSS-DUTY SELECTOR FOR 262, 232, 135 --- */}
-                      {["262", "232", "135"].includes(
-                        formData.memberId.includes("@")
-                          ? formData.memberId.split("@")[1].trim()
-                          : "",
-                      ) && (
+                      {isSpecialCrossDutyMerchant && (
                         <div className="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-xl animate-in fade-in zoom-in-95">
                           <label className="block text-[10px] font-bold text-indigo-900 uppercase mb-2">
                             Which Duty Account asked this?{" "}
@@ -1089,12 +1097,55 @@ export default function TicketForm({ onAddTicket }) {
                       <input
                         type="text"
                         readOnly
-                        className={`w-full px-3 py-2 border rounded-lg text-sm italic transition-all ${dutyError ? "bg-red-50 border-red-200 text-red-600 shadow-[0_0_0_2px_rgba(239,68,68,0.1)]" : "bg-slate-100 border-slate-200 text-slate-500"}`}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm italic transition-all ${isQq288CrossDutyApproved ? "bg-emerald-50 border-emerald-200 text-emerald-700" : canUseQq288CrossDutyOverride ? "bg-amber-50 border-amber-200 text-amber-800" : blockingDutyError ? "bg-red-50 border-red-200 text-red-600 shadow-[0_0_0_2px_rgba(239,68,68,0.1)]" : "bg-slate-100 border-slate-200 text-slate-500"}`}
                         value={merchantName || "Auto-detecting..."}
                       />
-                      {dutyError && (
+                      {blockingDutyError && !canUseQq288CrossDutyOverride && (
                         <p className="text-[10px] font-bold text-red-500 mt-1 flex items-center gap-1">
-                          ⚠️ {dutyError}
+                          <AlertTriangle size={11} /> {dutyError}
+                        </p>
+                      )}
+                      {canUseQq288CrossDutyOverride &&
+                        !isQq288CrossDutyApproved && (
+                          <p className="text-[10px] font-bold text-amber-600 mt-1 flex items-center gap-1">
+                            <AlertTriangle size={11} /> Member belongs to{" "}
+                            {merchantDuty}. Confirm QQ288 request to continue
+                            under IC3.
+                          </p>
+                        )}
+                      {canUseQq288CrossDutyOverride &&
+                        !isSpecialCrossDutyMerchant && (
+                          <label
+                            className={`mt-3 flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all ${
+                              qq288CrossDutyConfirmed
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                : "bg-white border-amber-200 text-amber-800 hover:bg-amber-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={qq288CrossDutyConfirmed}
+                              onChange={(e) =>
+                                setQq288CrossDutyConfirmed(e.target.checked)
+                              }
+                              className="mt-0.5 h-4 w-4 rounded border-amber-300 accent-emerald-600"
+                            />
+                            <span>
+                              <span className="block text-[10px] font-bold uppercase">
+                                QQ288 requested this inquiry
+                              </span>
+                              <span className="block text-[11px] font-semibold mt-0.5 leading-relaxed">
+                                I confirm QQ288 asked IC3 to handle this{" "}
+                                {merchantDuty} member. File the ticket under
+                                IC3.
+                              </span>
+                            </span>
+                          </label>
+                        )}
+                      {isQq288CrossDutyApproved && (
+                        <p className="text-[10px] font-bold text-emerald-600 mt-1 flex items-center gap-1">
+                          <CheckCircle2 size={11} /> QQ288 override confirmed.
+                          Ticket will be created under IC3.
                         </p>
                       )}
                     </div>

@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.20";
+export const APP_VERSION = "1.0.21";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.21",
+    date: "2026-06",
+    notes:
+      "Shift Duty Reset and QQ288 IC3 Override: added automatic duty selector redirect after shift hard lock or stale saved duty, fixed duty memory clearing, and added an IC3-only QQ288 cross-duty confirmation flow with cleaner warning and confirmed states.",
+  },
   {
     version: "1.0.20",
     date: "2026-05",
