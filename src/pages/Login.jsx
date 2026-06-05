@@ -2,10 +2,87 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDuty } from '../context/DutyContext';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Shield, ChevronRight, LogOut, LayoutDashboard, Check } from 'lucide-react';
+import { Clock, Lock, Mail, Shield, ChevronRight, LogOut, LayoutDashboard, Check } from 'lucide-react';
+
+const getGMT8Time = () => {
+  const d = new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3600000 * 8);
+};
+
+const setTime = (date, hour, minute) => {
+  const next = new Date(date);
+  next.setHours(hour, minute, 0, 0);
+  return next;
+};
+
+const formatGmt8Time = (date) =>
+  date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+const formatCountdown = (target, now) => {
+  const diffSeconds = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
+  const hours = Math.floor(diffSeconds / 3600);
+  const minutes = Math.floor((diffSeconds % 3600) / 60);
+  const seconds = diffSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+};
+
+const getDutyAccessState = (assignedShift, inputNow = getGMT8Time()) => {
+  if (!assignedShift || assignedShift === 'Off') {
+    return { isOpen: false, nextOpen: null, label: 'No assigned shift' };
+  }
+
+  const now = new Date(inputNow);
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const buildTodayWindow = (startHour, startMinute, endHour, endMinute) => {
+    const start = setTime(now, startHour, startMinute);
+    const end = setTime(now, endHour, endMinute);
+
+    if (now >= start && now < end) {
+      return { isOpen: true, nextOpen: null, closeAt: end };
+    }
+    if (now < start) {
+      return { isOpen: false, nextOpen: start, closeAt: end };
+    }
+
+    const tomorrowStart = new Date(start);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    return { isOpen: false, nextOpen: tomorrowStart, closeAt: end };
+  };
+
+  if (assignedShift === 'Morning') {
+    return { label: 'Morning', ...buildTodayWindow(6, 45, 15, 0) };
+  }
+  if (assignedShift === 'Afternoon') {
+    return { label: 'Afternoon', ...buildTodayWindow(14, 15, 23, 0) };
+  }
+  if (assignedShift === 'Night') {
+    const nightStart = setTime(now, 22, 15);
+    const nextMorningLock = setTime(now, 7, 30);
+
+    if (minutes < 450) {
+      return { label: 'Night', isOpen: true, nextOpen: null, closeAt: nextMorningLock };
+    }
+    if (now >= nightStart) {
+      const closeAt = setTime(now, 7, 30);
+      closeAt.setDate(closeAt.getDate() + 1);
+      return { label: 'Night', isOpen: true, nextOpen: null, closeAt };
+    }
+    return { label: 'Night', isOpen: false, nextOpen: nightStart, closeAt: nextMorningLock };
+  }
+
+  return { isOpen: false, nextOpen: null, label: assignedShift };
+};
 
 export default function Login() {
-  const { user, userRole, setDuty, loading } = useDuty();
+  const { user, userRole, setDuty, loading, myAssignedShift } = useDuty();
   const navigate = useNavigate();
   
   const [email, setEmail] = useState('');
@@ -28,6 +105,12 @@ export default function Login() {
 
   // --- NEW: Local state to hold multiple selections ---
   const [localDutySelection, setLocalDutySelection] = useState([]);
+  const [currentTime, setCurrentTime] = useState(getGMT8Time);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(getGMT8Time()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (user && (userRole === 'Admin' || userRole === 'Leader' || userRole === 'QC')) {
@@ -97,7 +180,7 @@ export default function Login() {
 
   // --- NEW: Submit selections to context ---
   const handleSubmitDuties = () => {
-    if (localDutySelection.length > 0) {
+    if (localDutySelection.length > 0 && canEnterDutySelection) {
       setDuty(localDutySelection);
       setDutyNotice('');
       navigate('/dashboard');
@@ -111,6 +194,22 @@ export default function Login() {
       </div>
     );
   }
+
+  const isNormalDutyUser = user && userRole !== 'Admin' && userRole !== 'Leader' && userRole !== 'QC';
+  const dutyAccess = getDutyAccessState(myAssignedShift, currentTime);
+  const canEnterDutySelection = !isNormalDutyUser || dutyAccess.isOpen;
+  const dutyCountdownText =
+    isNormalDutyUser && !dutyAccess.isOpen && dutyAccess.nextOpen
+      ? `${dutyAccess.label} duty access opens in ${formatCountdown(dutyAccess.nextOpen, currentTime)} at ${formatGmt8Time(dutyAccess.nextOpen)} GMT+8.`
+      : '';
+  const dutyUnavailableText =
+    isNormalDutyUser && !dutyAccess.isOpen && !dutyAccess.nextOpen
+      ? 'No active duty access window is available for your account.'
+      : '';
+  const dutyOpenText =
+    isNormalDutyUser && dutyAccess.isOpen && dutyAccess.closeAt
+      ? `${dutyAccess.label} duty access is open until ${formatGmt8Time(dutyAccess.closeAt)} GMT+8.`
+      : '';
 
   // 1. Modern Login Form
   if (!user) {
@@ -207,9 +306,28 @@ export default function Login() {
         <p className="text-slate-500 mt-2">Choose one or more active roles for this session.</p>
       </div>
 
-      {dutyNotice && (
-        <div className="mb-6 w-full max-w-4xl p-3 bg-amber-50 border border-amber-100 text-amber-700 text-sm rounded-lg">
-          {dutyNotice}
+      {(dutyCountdownText || dutyUnavailableText || dutyOpenText || dutyNotice) && (
+        <div className={`mb-6 w-full max-w-4xl p-3 border text-sm rounded-lg flex items-center justify-center gap-2 text-center ${
+          dutyCountdownText || dutyUnavailableText
+            ? 'bg-amber-50 border-amber-100 text-amber-700'
+            : 'bg-emerald-50 border-emerald-100 text-emerald-700'
+        }`}>
+          <Clock size={16} className="shrink-0" />
+          <div>
+            <div className="font-bold">
+              {dutyCountdownText || dutyUnavailableText || dutyOpenText || 'Select the duty account for this shift.'}
+            </div>
+            {dutyNotice && !dutyCountdownText && (
+              <div className="text-xs font-semibold opacity-80 mt-0.5">
+                {dutyNotice}
+              </div>
+            )}
+            {isNormalDutyUser && myAssignedShift === 'Off' && (
+              <div className="text-xs font-semibold opacity-80 mt-0.5">
+                No roster assignment is active for your account. Please contact a Leader.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -257,9 +375,16 @@ export default function Login() {
         {localDutySelection.length > 0 ? (
           <button 
             onClick={handleSubmitDuties}
-            className="flex items-center gap-2 px-8 py-3.5 bg-slate-900 hover:bg-black text-white rounded-full font-bold shadow-lg shadow-slate-900/20 transition-all hover:scale-105 animate-in slide-in-from-bottom-4 duration-300"
+            disabled={!canEnterDutySelection}
+            className={`flex items-center gap-2 px-8 py-3.5 rounded-full font-bold shadow-lg transition-all animate-in slide-in-from-bottom-4 duration-300 ${
+              canEnterDutySelection
+                ? 'bg-slate-900 hover:bg-black text-white shadow-slate-900/20 hover:scale-105'
+                : 'bg-slate-200 text-slate-500 shadow-transparent cursor-not-allowed'
+            }`}
           >
-            Continue to Dashboard ({localDutySelection.length} selected) <ChevronRight size={18} />
+            {canEnterDutySelection
+              ? `Continue to Dashboard (${localDutySelection.length} selected)`
+              : 'Shift Access Locked'} <ChevronRight size={18} />
           </button>
         ) : (
           <span className="text-sm font-medium text-slate-400 animate-in fade-in">Please select at least one duty</span>

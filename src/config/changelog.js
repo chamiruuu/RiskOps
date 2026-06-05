@@ -9,7 +9,7 @@ export const VERSION_HISTORY_ITEMS = [
     version: "1.0.21",
     date: "2026-06",
     notes:
-      "Shift Duty Reset and QQ288 IC3 Override: added automatic duty selector redirect after shift hard lock or stale saved duty, fixed duty memory clearing, and added an IC3-only QQ288 cross-duty confirmation flow with cleaner warning and confirmed states.",
+      "Shift Duty Reset and QQ288 IC3 Override: added automatic duty selector redirect after shift hard lock or stale saved duty, fixed duty memory clearing, added a centered duty access countdown on the selector screen, and added an IC3-only QQ288 cross-duty confirmation flow with cleaner warning and confirmed states.",
   },
   {
     version: "1.0.20",
