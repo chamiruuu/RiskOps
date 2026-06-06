@@ -47,6 +47,20 @@ const MAX_RECENT_PROVIDERS = 6;
 const FAVORITE_PROVIDER_STORAGE_KEY = "riskops_favorite_providers";
 const MAX_FAVORITE_PROVIDERS = 3;
 const USER_PROVIDER_PREFERENCES_TABLE = "user_provider_preferences";
+const PROVIDER_SCOPED_FORM_RESET = {
+  loginId: "",
+  memberId: "",
+  providerAccount: "",
+  trackingId: "",
+  timeRange: "",
+  currency: "",
+  reasonToCheck: "",
+  gameName: "",
+  betTicket: "",
+  roundId: "",
+  ipAddress: "",
+  merchantInsists: false,
+};
 
 export default function TicketForm({ onAddTicket }) {
   const { selectedDuty, workName, userRole, myAssignedShift, user } = useDuty();
@@ -312,8 +326,19 @@ export default function TicketForm({ onAddTicket }) {
   };
 
   const selectProvider = (providerKey) => {
-    setFormData({ ...formData, provider: providerKey, merchantInsists: false });
+    const isChangingProvider = formData.provider !== providerKey;
+
+    setFormData({
+      ...formData,
+      ...(isChangingProvider ? PROVIDER_SCOPED_FORM_RESET : {}),
+      provider: providerKey,
+      merchantInsists: false,
+    });
     if (providerKey !== "SBO") setSboConfirmed(false);
+    if (isChangingProvider) {
+      setCustomFrom("");
+      setCustomTo("");
+    }
     setProviderSearch(providerKey);
     setIsProviderOpen(false);
 

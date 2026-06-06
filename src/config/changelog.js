@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.21";
+export const APP_VERSION = "1.0.22";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.22",
+    date: "2026-06",
+    notes:
+      "Ticket Tracking and Form Cleanup: kept handed-over tickets visible after completion until the next shift cleanup, separated tracking follow-up scripts by duty account and provider, blocked duplicate tracking numbers within the same provider, and cleared ticket form inputs when switching providers.",
+  },
   {
     version: "1.0.21",
     date: "2026-06",

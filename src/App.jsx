@@ -4,7 +4,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useNavigate,
 } from "react-router-dom";
 import { DutyProvider, useDuty } from "./context/DutyContext";
 import Login from "./pages/Login";
@@ -556,18 +555,57 @@ function Dashboard() {
 
   // 3. Update existing ticket (Tracking No or Status)
   const handleUpdateTicket = async (id, field, value) => {
+    const currentTicket = tickets.find((t) => t.id === id);
+
+    if (field === "tracking_no") {
+      const normalizedTrackingNo = String(value || "").trim().toLowerCase();
+      const currentProvider = String(currentTicket?.provider || "")
+        .trim()
+        .toLowerCase();
+      const shouldValidateTrackingNo =
+        normalizedTrackingNo && normalizedTrackingNo !== "-";
+
+      if (shouldValidateTrackingNo && currentProvider) {
+        const duplicateTicket = tickets.find((ticket) => {
+          if (ticket.id === id) return false;
+          const ticketProvider = String(ticket.provider || "")
+            .trim()
+            .toLowerCase();
+          const ticketTrackingNo = String(ticket.tracking_no || "")
+            .trim()
+            .toLowerCase();
+
+          return (
+            ticketProvider === currentProvider &&
+            ticketTrackingNo === normalizedTrackingNo
+          );
+        });
+
+        if (duplicateTicket) {
+          alert(
+            `Tracking No. "${value}" is already used for ${currentTicket?.provider || "this provider"} on ticket ${duplicateTicket.id}. Please enter a unique Tracking No. for this provider.`,
+          );
+          return false;
+        }
+      }
+    }
+
     registerLocalEdit(id, field);
     broadcastEditActivity(id, field);
+    const updatePayload =
+      field === "status" || field === "tracking_no"
+        ? { [field]: value, updated_at: new Date().toISOString() }
+        : { [field]: value };
 
     // Optimistic UI update (makes the UI feel instantly fast)
     setTickets(
-      tickets.map((t) => (t.id === id ? { ...t, [field]: value } : t)),
+      tickets.map((t) => (t.id === id ? { ...t, ...updatePayload } : t)),
     );
 
     // Background DB update
     const { error } = await supabase
       .from("tickets")
-      .update({ [field]: value })
+      .update(updatePayload)
       .eq("id", id);
 
     // Check if Supabase rejected the update
@@ -577,7 +615,7 @@ function Dashboard() {
         `Could not save changes to ${field}. Please refresh and try again.`,
       );
       fetchTickets(); // Revert the UI if it failed to save
-      return;
+      return false;
     }
 
     const sheetFieldMap = {
@@ -592,6 +630,8 @@ function Dashboard() {
       const rowHint = tickets.find((t) => t.id === id);
       syncTicketFieldsToSheet(id, { [field]: sheetFieldMap[field] }, rowHint);
     }
+
+    return true;
   };
 
   // --- NEW: 4. Delete Ticket ---
