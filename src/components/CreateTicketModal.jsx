@@ -179,7 +179,7 @@ export default function CreateTicketModal({ isOpen, onClose, onSuccess }) {
               }
             >
               <option value="PG Soft">PG Soft</option>
-              <option value="PA Casino">PA Casino</option>
+              <option value="Choice Casino">Choice Casino</option>
               <option value="Pragmatic Play">Pragmatic Play</option>
               <option value="JILI">JILI</option>
             </select>

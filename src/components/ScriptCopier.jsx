@@ -4,7 +4,7 @@ export default function ScriptCopier({ ticket, currentUser }) {
   const [copied, setCopied] = useState(false);
 
   const generateScript = () => {
-    const isBlockedProvider = ['PG Soft', 'PA Casino'].includes(ticket.provider);
+    const isBlockedProvider = ['PG Soft', 'Choice Casino'].includes(ticket.provider);
     
     // We assume current user name is passed down or fetched from context
     const userName = currentUser?.email?.split('@')[0] || "RiskOps";

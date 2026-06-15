@@ -332,8 +332,8 @@ export const PROVIDER_CONFIG = {
     },
   },
 
-  // --- 12. PA CASINO ---
-  "PA Casino": {
+  // --- 12. CHOICE CASINO ---
+  "Choice Casino": {
     channel: "Manual BO Check (No Teams Group)",
     sla: "Immediate (Manual)",
     conditions: [
@@ -353,7 +353,7 @@ export const PROVIDER_CONFIG = {
     isManualCheckOnly: true, // Hides inputs and disables the Create Ticket button
 
     generateScript: () => {
-      return `// NO SCRIPT REQUIRED FOR PA CASINO.\n// \n// Please perform the check manually via the Provider Back Office.\n// Reference the SOP Guide tab for instructions.\n//\n// BO Path: Setting > Hedge Check`;
+      return `// NO SCRIPT REQUIRED FOR CHOICE CASINO.\n// \n// Please perform the check manually via the Provider Back Office.\n// Reference the SOP Guide tab for instructions.\n//\n// BO Path: Setting > Hedge Check`;
     },
   },
 

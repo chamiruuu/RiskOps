@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.22";
+export const APP_VERSION = "1.0.23";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.23",
+    date: "2026-06",
+    notes:
+      "Provider Rename: updated PA Casino to Choice Casino across provider selection, strict provider checks, manual BO check guidance, and script copy behavior.",
+  },
   {
     version: "1.0.22",
     date: "2026-06",

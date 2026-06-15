@@ -161,7 +161,7 @@ export default function TicketForm({ onAddTicket }) {
   const [sboConfirmed, setSboConfirmed] = useState(false);
 
   const isStrictProvider =
-    formData.provider === "PG Soft" || formData.provider === "PA Casino";
+    formData.provider === "PG Soft" || formData.provider === "Choice Casino";
 
   useEffect(() => {
     setProviderSearch(formData.provider);
