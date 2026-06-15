@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, createReadStream, statSync } from 'fs';
+import { request } from 'https';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -95,9 +96,61 @@ async function deleteExistingAsset(releaseId, fileName) {
   return true;
 }
 
+async function uploadAssetWithHttps(releaseId, file) {
+  const uploadUrl = new URL(
+    `https://uploads.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/${releaseId}/assets?name=${encodeURIComponent(file.name)}`
+  );
+  const fileSize = statSync(file.path).size;
+
+  return new Promise((resolveUpload, rejectUpload) => {
+    const req = request(
+      uploadUrl,
+      {
+        method: 'POST',
+        headers: {
+          ...GITHUB_HEADERS,
+          'User-Agent': 'RiskOps-release-publisher',
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fileSize
+        },
+        timeout: 15 * 60 * 1000
+      },
+      response => {
+        const chunks = [];
+
+        response.on('data', chunk => chunks.push(chunk));
+        response.on('end', () => {
+          const bodyText = Buffer.concat(chunks).toString('utf-8');
+          let payload = {};
+          try {
+            payload = bodyText ? JSON.parse(bodyText) : {};
+          } catch {
+            payload = bodyText ? { message: bodyText } : {};
+          }
+
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            resolveUpload(payload);
+            return;
+          }
+
+          rejectUpload(new Error(`Failed to upload ${file.name}: ${formatGithubError(payload)}`));
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error(`Timed out uploading ${file.name}`));
+    });
+    req.on('error', rejectUpload);
+
+    createReadStream(file.path)
+      .on('error', rejectUpload)
+      .pipe(req);
+  });
+}
+
 async function uploadReleaseAsset(releaseId, file) {
   const maxAttempts = 3;
-  const fileContent = readFileSync(file.path);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -106,24 +159,7 @@ async function uploadReleaseAsset(releaseId, file) {
         console.log(`Replaced existing ${file.name}`);
       }
 
-      const uploadResponse = await fetch(
-        `https://uploads.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/${releaseId}/assets?name=${encodeURIComponent(file.name)}`,
-        {
-          method: 'POST',
-          headers: {
-            ...GITHUB_HEADERS,
-            'Content-Type': 'application/octet-stream',
-            'Content-Length': String(fileContent.length)
-          },
-          body: fileContent
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        const error = await parseResponseBody(uploadResponse);
-        throw new Error(`Failed to upload ${file.name}: ${formatGithubError(error)}`);
-      }
-
+      await uploadAssetWithHttps(releaseId, file);
       console.log(`Uploaded ${file.name}`);
       return;
     } catch (error) {
