@@ -1,10 +1,28 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.23";
+export const APP_VERSION = "1.0.26";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.26",
+    date: "2026-07",
+    notes:
+      "SOP Update: PP Casino inquiries now use the PP CASINO ticket system Player Activity Check flow instead of Teams group submission.",
+  },
+  {
+    version: "1.0.25",
+    date: "2026-07",
+    notes:
+      "Provider Added: added FC Gaming with FC Service Group query workflow and generated script support.",
+  },
+  {
+    version: "1.0.24",
+    date: "2026-07",
+    notes:
+      "Provider Rename: updated FatPanda to PP POP across provider selection and generated script provider naming.",
+  },
   {
     version: "1.0.23",
     date: "2026-06",
@@ -27,13 +45,13 @@ export const VERSION_HISTORY_ITEMS = [
     version: "1.0.20",
     date: "2026-05",
     notes:
-      "Updated scripts for providers FatPanda, Pragmatic Play and PP Casino",
+      "Updated scripts for providers PP POP, Pragmatic Play and PP Casino",
   },
   {
     version: "1.0.19",
     date: "2026-05",
     notes:
-      "Add '@' for FatPanda for the script copy",
+      "Add '@' for PP POP for the script copy",
   },
   {
     version: "1.0.18",

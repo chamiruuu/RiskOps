@@ -402,30 +402,45 @@ export const PROVIDER_CONFIG = {
 
   // --- 15. PP CASINO ---
   "PP Casino": {
-    channel: "[T1] PP - QQ288[A-BT-R2-LC-S] Live Casino support",
+    channel: "PP CASINO Ticket System",
     sla: "Standard",
     conditions: [
       "Ensure member has betting records in the specified time period.",
+      "Use Player Activity Check for abnormal member status inquiries.",
+      "Only one Player ID should be submitted per Player Activity Check.",
+      "The maximum date range for a Player Activity Check is 30 days.",
     ],
     process: [
       "Check member details in BO.",
-      "Submit query to the Teams Group: [T1] PP - QQ288[A-BT-R2-LC-S] Live Casino support.",
-      "Remember to tag Customer Support or CS Live Pragmatic Play in the chat.",
+      "Open the PP CASINO ticket system and select Live Casino Player Activity Check.",
+      "Confirm the whitelisted email address is auto-populated, or manually input the whitelisted email.",
+      "Enter the Player ID, select the request date range, and choose the Risk Request Topic.",
+      "Submit the request and copy the returned ticket ID into the RiskOps ticket tracking field.",
+      "Results will be sent to the whitelisted email and can also be reviewed from View All Tickets in the PP CASINO ticket system.",
       "If abnormal betting is confirmed and merchant is notified, record it in the IP Provisional Logsheet【IC PP Casino Opposite betting】.",
     ],
     reminder:
-      "Always tag Customer Support when submitting. Log confirmed abnormal bets in the IP Provisional Logsheet.",
+      "Do not submit this query to a Teams group. It must go through the PP CASINO ticket system.",
 
-    // We added gameName and timeRange here!
-    requiredFields: ["memberId", "providerAccount", "gameName", "timeRange"],
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
 
     generateScript: (data, workName) => {
-      const { providerAccount, gameName, timeRange } = data;
+      const { providerAccount, timeRange } = data;
 
-      if (providerAccount && gameName && timeRange) {
-        return `@Live Casino Customer Support\nHello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember ID：${providerAccount}\nproduct category ：Casino\nRound ID：ALL\nPeriod：${timeRange}\nGame name：${gameName}`;
+      if (providerAccount && timeRange) {
+        return `// PP CASINO TICKET SYSTEM PAYLOAD
+//
+// Submit this through the PP CASINO ticket system, not Teams.
+//
+// Check Type: Player Activity Check
+// Requestor: ${workName}
+// Player ID: ${providerAccount}
+// Date Range: ${timeRange}
+// Risk Request Topic: Select in the PP CASINO ticket system
+//
+// After submission, copy the returned ticket ID into RiskOps tracking.`;
       }
-      return "// Waiting for Provider Account, Game Name, and Time Period...";
+      return "// Waiting for Provider Account and Time Period...";
     },
   },
 
@@ -1231,8 +1246,8 @@ Time period：${timeRange}`;
     },
   },
 
-  // --- 42. FatPanda ---
-  FatPanda: {
+  // --- 42. PP POP ---
+  "PP POP": {
     channel: "[T1] PP - FP [A-BT-LC-S] & QQ288 TECH SUPPORT SLOTS",
     sla: "Standard",
     conditions: ["Ensure member has betting records in the specified period."],
@@ -1253,7 +1268,7 @@ Time period：${timeRange}`;
 
 Member ID：${providerAccount}
 Period：${timeRange}
-Provider name：FatPanda`;
+Provider name：PP POP`;
       }
       return "// Waiting for Provider Account and Period...";
     },
@@ -1870,6 +1885,34 @@ Duration of player's gaining : ${timeRange}
 Reason for request investigation : suspect member got cross bet activities`;
       }
       return "// Waiting for Provider Account, Currency, IP Address, and Time Range...";
+    },
+  },
+
+  // --- 59. FC Gaming ---
+  "FC Gaming": {
+    channel: "FC Service Group - QQ GROUP",
+    sla: "Standard",
+    conditions: [
+      "Ensure member has betting records in the specified time period.",
+    ],
+    process: [
+      "Check member details in BO.",
+      "Submit query to FC Service Group - QQ GROUP.",
+    ],
+
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+
+    generateScript: (data, workName) => {
+      const { providerAccount, timeRange } = data;
+
+      if (providerAccount && timeRange) {
+        return `Hello sir this is ${workName},
+Please help us check member betting normal or not. Thank you.
+
+Member ID：${providerAccount}
+Time period：${timeRange}`;
+      }
+      return "// Waiting for Provider Account and Time Period...";
     },
   },
 };
