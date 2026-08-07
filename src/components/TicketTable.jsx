@@ -78,7 +78,30 @@ const appendHandoverStep = (history, name) => {
   return next;
 };
 
-const getHandoverTrail = (ticket) => normalizeHandoverHistory(ticket?.handover_history);
+const getHandoverTrail = (ticket) => {
+  const storedTrail = normalizeHandoverHistory(ticket?.handover_history);
+  if (storedTrail.length > 0) return storedTrail;
+  if (isCreatedDuringPostHandoverLockWindow(ticket?.created_at)) {
+    return [getCleanHandoverName(ticket?.recorder)];
+  }
+  return [];
+};
+
+const isCreatedDuringPostHandoverLockWindow = (createdAt) => {
+  const timestamp = Date.parse(createdAt || "");
+  if (Number.isNaN(timestamp)) return false;
+
+  const d = new Date(timestamp);
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  const gmt8 = new Date(utc + 3600000 * 8);
+  const time = gmt8.getHours() + gmt8.getMinutes() / 60;
+
+  return (
+    (time >= 7.15 && time < 7.5) ||
+    (time >= 14.65 && time < 15.0) ||
+    (time >= 22.65 && time < 23.0)
+  );
+};
 
 const HandoverTrailButton = ({ ticket }) => {
   const trail = getHandoverTrail(ticket);
@@ -1595,7 +1618,8 @@ export default function TicketTable({
       const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
       const isHandedOverLocally =
         !isTicketNewSinceLastHandover(ticket) ||
-        handedOverSetForMarker.has(ticket.id);
+        handedOverSetForMarker.has(ticket.id) ||
+        isCreatedDuringPostHandoverLockWindow(ticket.created_at);
       const isActuallyHandedOver = createdInPastShift || isHandedOverLocally;
 
       if (tableFilters.handover === "handed_over" && !isActuallyHandedOver)
@@ -2238,7 +2262,9 @@ export default function TicketTable({
               filteredTickets.map((ticket) => {
                 const isCompleted = ticket.status !== "Pending";
 
-                const isHandedOverLocally = !isTicketNewSinceLastHandover(ticket);
+                const isHandedOverLocally =
+                  !isTicketNewSinceLastHandover(ticket) ||
+                  isCreatedDuringPostHandoverLockWindow(ticket.created_at);
                 const isCreator = ticket.created_by && user && ticket.created_by === user.id;
                 const canDeleteTicket =
                   !isQC &&

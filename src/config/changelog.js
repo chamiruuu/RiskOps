@@ -1,12 +1,12 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.29";
+export const APP_VERSION = "1.0.30";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
   {
-    version: "1.0.29",
+    version: "1.0.30",
     date: "2026-08",
     notes:
       "Updated audit note shift labels to use the Morning, Afternoon, and Night ranges of 07:10-14:39, 14:40-22:39, and 22:40-07:09.",

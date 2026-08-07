@@ -579,9 +579,17 @@ function Dashboard() {
     // Since TicketForm.jsx now pulls the exact merchant_name and ic_account
     // straight from the live Google Sheet, we completely bypass the database lookup!
     // We just save the exact ticket payload directly to Supabase.
+    const createdDuringOutgoingHandoverWindow = isOutgoingHandoverWindow();
+    const ticketToInsert = createdDuringOutgoingHandoverWindow
+      ? {
+          ...newTicket,
+          handover_history: [getCleanHandoverName(workName)],
+        }
+      : newTicket;
+
     const { data, error } = await supabase
       .from("tickets")
-      .insert([newTicket])
+      .insert([ticketToInsert])
       .select();
 
     if (error) {
@@ -603,7 +611,7 @@ function Dashboard() {
       setTickets([data[0], ...tickets]); // Instantly update the UI
 
       // Send to Google Sheet if created by outgoing shift during handover.
-      if (isOutgoingHandoverWindow()) {
+      if (createdDuringOutgoingHandoverWindow) {
         console.log("Pushing NEW ticket to Google Sheet Handover:", data[0]);
 
         // Edge function expects an array of tickets even for a single insert
