@@ -747,16 +747,22 @@ function Dashboard() {
       day: "numeric",
     });
 
-    // Shift logic (A, M, N) based on time
+    // Shift logic based on the requested time windows
     const hour = now.getHours();
-    const shift =
-      hour >= 6 && hour < 14 ? "M" : hour >= 14 && hour < 22 ? "A" : "N";
+    const minute = now.getMinutes();
+    const currentMinutes = hour * 60 + minute;
+    const shiftLabel =
+      currentMinutes >= 7 * 60 + 10 && currentMinutes < 14 * 60 + 40
+        ? "Morning"
+        : currentMinutes >= 14 * 60 + 40 && currentMinutes < 22 * 60 + 40
+          ? "Afternoon"
+          : "Night";
 
     // Create the new note object with edit tracking
     const newNote = {
       text: noteText,
       author: workName,
-      timestamp: `${dateStr} ${shift}`,
+      timestamp: `${dateStr} ${shiftLabel}`,
       createdAt: Date.now(), // Exact timestamp for 3-hour edit window
       createdByUserId: user?.id, // Track who created it
       isEdited: false, // Flag to show if note has been edited
