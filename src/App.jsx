@@ -50,6 +50,30 @@ const formatNotesSummaryForSheet = (notes) => {
   return notes?.length > 0 ? `${notes.length} Messages` : "No Notes";
 };
 
+const formatTicketCode = (ticket) => {
+  if (ticket?.ticket_code) return ticket.ticket_code;
+  const rawId = String(ticket?.id || "");
+  const digits = rawId.replace(/\D/g, "");
+  return digits ? `RO${digits.slice(-4).padStart(4, "0")}` : "RO----";
+};
+
+const isDuplicateTrackingError = (error) =>
+  error?.code === "23505" &&
+  String(error?.message || error?.details || "")
+    .toLowerCase()
+    .includes("tracking");
+
+const showTicketValidationAlert = (text) => {
+  window.dispatchEvent(
+    new CustomEvent("ticket-validation-alert", {
+      detail: {
+        text,
+        time: Date.now(),
+      },
+    }),
+  );
+};
+
 function Dashboard() {
   // FIX: Grab workName from Context
   const { selectedDuty, user, workName, myAssignedShift } = useDuty();
@@ -514,8 +538,42 @@ function Dashboard() {
   const handleAddTicket = async (newTicket) => {
     // --- STRICT RULE: Player ID is absolutely required ---
     if (!newTicket.member_id || newTicket.member_id.trim() === "") {
-      alert("⚠️ Cannot proceed: Player ID is required to create a ticket!");
-      return;
+      return {
+        success: false,
+        type: "error",
+        message: "Cannot proceed: Player ID is required to create a ticket.",
+      };
+    }
+
+    const normalizedTrackingNo = String(newTicket.tracking_no || "")
+      .trim()
+      .toLowerCase();
+    const normalizedProvider = String(newTicket.provider || "")
+      .trim()
+      .toLowerCase();
+    const shouldValidateTrackingNo =
+      normalizedTrackingNo && normalizedTrackingNo !== "-";
+
+    if (shouldValidateTrackingNo && normalizedProvider) {
+      const duplicateTicket = tickets.find((ticket) => {
+        const ticketProvider = String(ticket.provider || "").trim().toLowerCase();
+        const ticketTrackingNo = String(ticket.tracking_no || "")
+          .trim()
+          .toLowerCase();
+
+        return (
+          ticketProvider === normalizedProvider &&
+          ticketTrackingNo === normalizedTrackingNo
+        );
+      });
+
+      if (duplicateTicket) {
+        return {
+          success: false,
+          type: "error",
+          message: `Tracking number "${newTicket.tracking_no}" is duplicate. It is already used on ${formatTicketCode(duplicateTicket)} for ${newTicket.provider}.`,
+        };
+      }
     }
 
     // Since TicketForm.jsx now pulls the exact merchant_name and ic_account
@@ -528,7 +586,19 @@ function Dashboard() {
 
     if (error) {
       console.error("Supabase Insert Error:", error);
-      alert("DATABASE ERROR: " + error.message);
+      if (isDuplicateTrackingError(error)) {
+        return {
+          success: false,
+          type: "error",
+          message: `Tracking number "${newTicket.tracking_no}" is duplicate. Please enter a unique tracking number for ${newTicket.provider}.`,
+        };
+      }
+
+      return {
+        success: false,
+        type: "error",
+        message: "Database error: " + error.message,
+      };
     } else if (data) {
       setTickets([data[0], ...tickets]); // Instantly update the UI
 
@@ -550,7 +620,15 @@ function Dashboard() {
         })
         .catch((err) => console.error("Sheet sync error on new ticket:", err));
       }
+
+      return { success: true, ticket: data[0] };
     }
+
+    return {
+      success: false,
+      type: "error",
+      message: "Ticket was not created. Please try again.",
+    };
   };
 
   // 3. Update existing ticket (Tracking No or Status)
@@ -582,8 +660,8 @@ function Dashboard() {
         });
 
         if (duplicateTicket) {
-          alert(
-            `Tracking No. "${value}" is already used for ${currentTicket?.provider || "this provider"} on ticket ${duplicateTicket.id}. Please enter a unique Tracking No. for this provider.`,
+          showTicketValidationAlert(
+            `Tracking number "${value}" is duplicate. It is already used on ${formatTicketCode(duplicateTicket)} for ${currentTicket?.provider || "this provider"}.`,
           );
           return false;
         }
@@ -611,9 +689,15 @@ function Dashboard() {
     // Check if Supabase rejected the update
     if (error) {
       console.error(`Failed to update ${field} in Supabase:`, error);
-      alert(
-        `Could not save changes to ${field}. Please refresh and try again.`,
-      );
+      if (field === "tracking_no" && isDuplicateTrackingError(error)) {
+        showTicketValidationAlert(
+          `Tracking number "${value}" is duplicate. Please enter a unique tracking number for ${currentTicket?.provider || "this provider"}.`,
+        );
+      } else {
+        alert(
+          `Could not save changes to ${field}. Please refresh and try again.`,
+        );
+      }
       fetchTickets(); // Revert the UI if it failed to save
       return false;
     }

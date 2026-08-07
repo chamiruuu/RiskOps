@@ -42,6 +42,71 @@ const getCleanHandoverName = (rawName) => {
   return rawName.replace(/ IPCS/gi, "").trim();
 };
 
+const formatTicketCode = (ticket) => {
+  if (ticket?.ticket_code) return ticket.ticket_code;
+  if (typeof ticket?.riskops_id === "string") return ticket.riskops_id;
+  if (typeof ticket?.display_id === "string") return ticket.display_id;
+
+  const rawId = String(ticket?.id || "");
+  const digits = rawId.replace(/\D/g, "");
+  if (digits) return `RO${digits.slice(-4).padStart(4, "0")}`;
+
+  return "RO----";
+};
+
+const normalizeHandoverHistory = (value) => {
+  if (!value) return [];
+  const rawItems = Array.isArray(value) ? value : [value];
+
+  return rawItems
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        return item.name || item.by || item.user || item.workName || "";
+      }
+      return "";
+    })
+    .map(getCleanHandoverName)
+    .filter(Boolean);
+};
+
+const appendHandoverStep = (history, name) => {
+  const cleanName = getCleanHandoverName(name);
+  const next = normalizeHandoverHistory(history);
+  if (!cleanName) return next;
+  if (next[next.length - 1] !== cleanName) next.push(cleanName);
+  return next;
+};
+
+const getHandoverTrail = (ticket) => normalizeHandoverHistory(ticket?.handover_history);
+
+const HandoverTrailButton = ({ ticket }) => {
+  const trail = getHandoverTrail(ticket);
+  const label = trail.length > 0 ? trail.join(" > ") : "No handover history yet";
+
+  return (
+    <div className="relative inline-flex group/handover">
+      <button
+        type="button"
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
+          trail.length > 0
+            ? "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"
+            : "bg-slate-50 text-slate-300 border-slate-100 cursor-default"
+        }`}
+        aria-label={`Handover order: ${label}`}
+      >
+        <ArrowRightLeft size={14} />
+      </button>
+      <div className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden min-w-[220px] max-w-[320px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold text-slate-700 shadow-xl group-hover/handover:block">
+        <div className="mb-1 text-[9px] font-bold uppercase text-slate-400">
+          Handover Flow
+        </div>
+        <div className="whitespace-normal leading-relaxed">{label}</div>
+      </div>
+    </div>
+  );
+};
+
 // --- Duty Text Color Mapping ---
 const getDutyTextColor = (dutyName) => {
   switch (dutyName) {
@@ -1031,6 +1096,16 @@ export default function TicketTable({
         marker,
       });
 
+      await Promise.all(
+        uniquePendingTix.map((ticket) =>
+          onUpdateTicket(
+            ticket.id,
+            "handover_history",
+            appendHandoverStep(ticket.handover_history, shortWorkName),
+          ),
+        ),
+      );
+
       // Shift lock is confirmed; clear stored duty account memory for the next shift.
       clearDutyMemory();
 
@@ -1071,6 +1146,7 @@ export default function TicketTable({
       persistHandoverState,
       queueSheetRetryJob,
       isTicketNewSinceLastHandover,
+      onUpdateTicket,
       shortWorkName,
       clearDutyMemory,
     ],
@@ -1547,6 +1623,10 @@ export default function TicketTable({
           : completeModal.abnormalType.toUpperCase();
 
     const targetTicketId = completeModal.ticket.id;
+    const completedHandoverHistory = appendHandoverStep(
+      completeModal.ticket.handover_history,
+      shortWorkName,
+    );
 
     if (completeModal.ticket?.status === "Pending") {
       const marker = buildHandoverMarker();
@@ -1564,12 +1644,14 @@ export default function TicketTable({
         .from("tickets")
         .update({ 
           status: finalStatus,
-          updated_at: now
+          updated_at: now,
+          handover_history: completedHandoverHistory,
         })
         .eq("id", targetTicketId);
       
       // After DB sync completes, optimistically update UI
       onUpdateTicket(targetTicketId, "status", finalStatus);
+      onUpdateTicket(targetTicketId, "handover_history", completedHandoverHistory);
     } catch (e) {
       console.error("Failed to complete ticket:", e);
     }
@@ -2109,19 +2191,21 @@ export default function TicketTable({
       )}
 
       <div className="flex-1 overflow-auto bg-slate-50 mt-4">
-        <table className="w-full text-left border-collapse whitespace-nowrap">
+        <table className="w-full min-w-[1240px] text-left border-collapse whitespace-nowrap">
           <thead className="bg-white sticky top-0 z-10 font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
             <tr className="border-b border-slate-200">
+              <th className="px-3 py-3 w-[86px]">ID</th>
               {showDutyColumn && <th className="px-4 py-3">Duty</th>}
               <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Merchant ID</th>
+              <th className="px-4 py-3" title="Merchant ID">M. ID</th>
               <th className="px-4 py-3">Login ID</th>
               <th className="px-4 py-3">Player ID</th>
               <th className="px-4 py-3">Provider Account</th>
               <th className="px-4 py-3">Provider</th>
               <th className="px-4 py-3">Tracking No.</th>
+              <th className="px-3 py-3 text-center w-[72px]" title="Handover Flow">H.F</th>
               <th className="px-4 py-3">Recorder</th>
-              <th className="px-4 py-3 text-center">Audit Notes</th>
+              <th className="px-3 py-3 text-center w-[72px]" title="Audit Notes">A.N</th>
               <th className="px-4 py-3 text-center">Status</th>
               <th className="px-4 py-3 text-center">Actions</th>
             </tr>
@@ -2130,7 +2214,7 @@ export default function TicketTable({
             {filteredTickets.length === 0 ? (
               <tr>
                 <td
-                  colSpan={showDutyColumn ? "12" : "11"}
+                  colSpan={showDutyColumn ? "14" : "13"}
                   className="px-6 py-12 text-center text-slate-400"
                 >
                   {!canViewTickets
@@ -2144,49 +2228,21 @@ export default function TicketTable({
               filteredTickets.map((ticket) => {
                 const isCompleted = ticket.status !== "Pending";
 
-                // --- NEW: 1. Check if created in the 20-min Sheet Handover overlap ---
-                const d = new Date(ticket.created_at);
-                const utc = d.getTime() + d.getTimezoneOffset() * 60000;
-                const gmt8 = new Date(utc + 3600000 * 8);
-                const tTime = gmt8.getHours() + gmt8.getMinutes() / 60;
-                
-                const isCreatedInOverlap = 
-                  (tTime >= 7.15 && tTime < 7.5) ||   // 07:09 - 07:30
-                  (tTime >= 14.65 && tTime < 15.0) || // 14:39 - 15:00
-                  (tTime >= 22.65 && tTime < 23.0);   // 22:39 - 23:00
-
-                // --- Delete rules ---
-                // Block deletion when: completed, created in overlap window, or already handed over.
-                // Allow deletion when: ticket was created in the same shift as current user OR the ticket creator,
-                // but only if it has NOT been handed over yet. This enforces: morning users cannot delete
-                // night-created tickets, and once handed over nobody (including creator) can delete.
-                const lastShiftChange = getLastShiftChangeTime();
                 const isHandedOverLocally = !isTicketNewSinceLastHandover(ticket);
-                const createdInPastShift = new Date(ticket.created_at) < lastShiftChange;
-
-                // Determine the shift the ticket was created in (based on its timestamp)
-                let ticketShift = null;
-                try {
-                  ticketShift = resolveActiveShiftFromTime(new Date(ticket.created_at));
-                } catch (e) {
-                  ticketShift = null;
-                }
-
                 const isCreator = ticket.created_by && user && ticket.created_by === user.id;
-
-                // Can delete if ticket is new since last handover AND (user is in same shift as ticket OR is the creator)
-                const canDeleteByShiftOrCreator =
+                const canDeleteTicket =
+                  !isQC &&
                   !isHandedOverLocally &&
-                  ((ticketShift && myAssignedShift && ticketShift === myAssignedShift) || isCreator);
-
-                const isLockedFromDeletion =
-                  isCompleted || isCreatedInOverlap || isHandedOverLocally || !canDeleteByShiftOrCreator;
+                  (isAdminOrLeader || isCreator);
 
                 return (
                   <tr
                     key={ticket.id}
                     className="hover:bg-slate-50 group transition-colors"
                   >
+                    <td className="px-3 py-3 font-mono text-[11px] font-bold text-slate-700">
+                      {formatTicketCode(ticket)}
+                    </td>
                     {showDutyColumn && (
                       <td className="px-4 py-3">
                         <span
@@ -2250,13 +2306,17 @@ export default function TicketTable({
                         onUpdateTicket={onUpdateTicket}
                       />
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      <HandoverTrailButton ticket={ticket} />
+                    </td>
                     <td className="px-4 py-3 text-slate-500">
                       {ticket.recorder}
                     </td>
-                    <td className="px-4 py-2 text-center">
+                    <td className="px-3 py-2 text-center">
                       <button
                         onClick={() => setSelectedTicketForNotes(ticket)}
-                        className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all shadow-sm border ${ticket.notes && ticket.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                        className={`inline-flex h-7 min-w-11 items-center justify-center gap-1.5 px-2 rounded-lg text-[11px] font-bold transition-all shadow-sm border ${ticket.notes && ticket.notes.length > 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100" : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}
+                        title="Audit Notes"
                       >
                         <MessageCircle
                           size={14}
@@ -2266,9 +2326,7 @@ export default function TicketTable({
                               : "text-slate-400"
                           }
                         />
-                        {ticket.notes && ticket.notes.length > 0
-                          ? `${ticket.notes.length} Messages`
-                          : "Open Chat"}
+                        <span>{ticket.notes?.length || 0}</span>
                       </button>
                     </td>
                     <td className="px-4 py-2 text-center">
@@ -2321,8 +2379,8 @@ export default function TicketTable({
                             </button>
                           )}
 
-                          {/* --- HIDES DELETE BUTTON IF PUSHED TO SHEETS OR USER IS QC --- */}
-                          {!isLockedFromDeletion && (canWriteData || canDeleteByShiftOrCreator) && (
+                          {/* Admin/Leader can delete any non-handed-over ticket. Users can delete only their own non-handed-over tickets. */}
+                          {canDeleteTicket && (
                             <button
                               onClick={() => {
                                 setDeletingRowId(ticket.id);

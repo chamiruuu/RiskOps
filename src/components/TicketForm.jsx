@@ -248,7 +248,12 @@ export default function TicketForm({ onAddTicket }) {
     setValidationNotice((prev) => (prev.text ? { type: "", text: "" } : prev));
     setQq288CrossDutyConfirmed(false);
     setCrossDutySelect("");
-  }, [formData.provider, formData.memberId, formData.providerAccount]);
+  }, [
+    formData.provider,
+    formData.memberId,
+    formData.providerAccount,
+    formData.trackingId,
+  ]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -568,7 +573,7 @@ export default function TicketForm({ onAddTicket }) {
     setIsDateOpen(false);
   };
 
-  const proceedWithCreation = () => {
+  const proceedWithCreation = async () => {
     const ticketMerchantId = extractedMerchantId || "-";
     const ticketDuty = isQq288CrossDutyApproved
       ? "IC3"
@@ -584,13 +589,20 @@ export default function TicketForm({ onAddTicket }) {
       provider_account: formData.providerAccount || "-",
       provider: formData.provider,
       time_range: formData.timeRange || "-",
-      tracking_no: "",
+      tracking_no: formData.trackingId || "",
       recorder: workName || "RiskOps",
       status: "Pending",
       notes: [],
     };
 
-    onAddTicket(newTicket);
+    const result = await onAddTicket(newTicket);
+    if (result?.success === false) {
+      setValidationNotice({
+        type: result.type || "error",
+        text: result.message || "Ticket was not created. Please try again.",
+      });
+      return;
+    }
 
     setFormData({
       loginId: "",
@@ -731,7 +743,7 @@ export default function TicketForm({ onAddTicket }) {
       setIsCheckingPgSoft(false);
     }
 
-    proceedWithCreation();
+    await proceedWithCreation();
   };
 
   const isSboBlocked = formData.provider === "SBO" && !sboConfirmed;

@@ -754,6 +754,24 @@ export default function Header() {
       );
     };
 
+    const handleTicketValidation = (e) => {
+      const text =
+        e.detail?.text || "Ticket validation failed. Please review the entry.";
+      const notification = {
+        id: `ticket-validation-${e.detail?.time || Date.now()}`,
+        type: "ticket-validation",
+        text,
+        time: e.detail?.time || Date.now(),
+      };
+
+      if (!shouldEmitNotification("ticket-validation", text, 5000)) return;
+
+      setOpsNotification(notification);
+      setShowOpsToast(true);
+      playAlertSound();
+      maybeShowSystemNotification("Ticket Validation", text);
+    };
+
     window.addEventListener("tracking-reminder-alert", handleReminder);
     window.addEventListener("clear-tracking-reminder", clearReminder);
     window.addEventListener("tickets-realtime-error", handleRealtimeError);
@@ -774,6 +792,7 @@ export default function Header() {
       "provider-validation-event",
       handleProviderValidation,
     );
+    window.addEventListener("ticket-validation-alert", handleTicketValidation);
 
     return () => {
       window.removeEventListener("tracking-reminder-alert", handleReminder);
@@ -795,6 +814,10 @@ export default function Header() {
       window.removeEventListener(
         "provider-validation-event",
         handleProviderValidation,
+      );
+      window.removeEventListener(
+        "ticket-validation-alert",
+        handleTicketValidation,
       );
     };
   }, [
@@ -2993,13 +3016,26 @@ export default function Header() {
 
       {showOpsToast && opsNotification && (
         <div
-          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${opsNotification.type === "ownership-conflict" ? "border-orange-200" : "border-blue-200"}`}
+          className={`fixed right-4 z-120 w-85 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-xl ${showUpdaterToast || showConnectionToast ? "bottom-28" : "bottom-4"} ${
+            opsNotification.type === "ownership-conflict"
+              ? "border-orange-200"
+              : opsNotification.type === "ticket-validation"
+                ? "border-rose-200"
+                : "border-blue-200"
+          }`}
         >
           <div className="p-3 flex items-start gap-2">
             <div
-              className={`mt-0.5 ${opsNotification.type === "ownership-conflict" ? "text-orange-600" : "text-blue-600"}`}
+              className={`mt-0.5 ${
+                opsNotification.type === "ownership-conflict"
+                  ? "text-orange-600"
+                  : opsNotification.type === "ticket-validation"
+                    ? "text-rose-600"
+                    : "text-blue-600"
+              }`}
             >
-              {opsNotification.type === "ownership-conflict" ? (
+              {opsNotification.type === "ownership-conflict" ||
+              opsNotification.type === "ticket-validation" ? (
                 <AlertTriangle size={16} />
               ) : (
                 <Clock size={16} />
@@ -3009,6 +3045,8 @@ export default function Header() {
               <p className="text-xs font-bold text-slate-900">
                 {opsNotification.type === "ownership-conflict"
                   ? "Ownership Conflict"
+                  : opsNotification.type === "ticket-validation"
+                    ? "Ticket Validation"
                   : "Shift Started"}
               </p>
               <p className="text-xs text-slate-600 leading-relaxed mt-0.5">

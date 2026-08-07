@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.26";
+export const APP_VERSION = "1.0.27";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.27",
+    date: "2026-07",
+    notes:
+      "Added ticket indexing and handover history tracking for better ticket traceability and shift handover visibility.",
+  },
   {
     version: "1.0.26",
     date: "2026-07",
