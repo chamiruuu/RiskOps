@@ -1535,6 +1535,7 @@ export default function TicketTable({
     // 1. Search Logic
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
+      const ticketIdSearchValue = formatTicketCode(ticket);
       const matches =
         (ticket.member_id &&
           ticket.member_id.toLowerCase().includes(lowerSearch)) ||
@@ -1543,7 +1544,16 @@ export default function TicketTable({
         (ticket.tracking_no &&
           ticket.tracking_no.toLowerCase().includes(lowerSearch)) ||
         (ticket.login_id &&
-          ticket.login_id.toLowerCase().includes(lowerSearch));
+          ticket.login_id.toLowerCase().includes(lowerSearch)) ||
+        (ticket.ticket_code &&
+          ticket.ticket_code.toLowerCase().includes(lowerSearch)) ||
+        (ticket.riskops_id &&
+          ticket.riskops_id.toLowerCase().includes(lowerSearch)) ||
+        (ticket.display_id &&
+          ticket.display_id.toLowerCase().includes(lowerSearch)) ||
+        (ticketIdSearchValue &&
+          ticketIdSearchValue.toLowerCase().includes(lowerSearch)) ||
+        (ticket.id && String(ticket.id).toLowerCase().includes(lowerSearch));
 
       if (!matches) return false;
     }
