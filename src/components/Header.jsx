@@ -19,6 +19,7 @@ import {
   Bell,
   MessageCircle,
   ArrowLeftRight,
+  ArrowRightLeft,
   CircleHelp,
   BookOpen,
   Bug,
@@ -51,6 +52,68 @@ import {
 import { APP_VERSION, VERSION_HISTORY_ITEMS } from "../config/changelog";
 
 const LOGIC_HEALTH_HISTORY_HOURS = 24;
+
+const getCleanHandoverName = (rawName) => {
+  if (!rawName) return "Agent";
+  return rawName.replace(/ IPCS/gi, "").trim();
+};
+
+const normalizeHandoverHistory = (value) => {
+  if (!value) return [];
+  const rawItems = Array.isArray(value) ? value : [value];
+
+  return rawItems
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        return item.name || item.by || item.user || item.workName || "";
+      }
+      return "";
+    })
+    .map(getCleanHandoverName)
+    .filter(Boolean);
+};
+
+const getHandoverTrail = (ticket) => normalizeHandoverHistory(ticket?.handover_history);
+
+const formatTicketCode = (ticket) => {
+  if (ticket?.ticket_code) return ticket.ticket_code;
+  if (typeof ticket?.riskops_id === "string") return ticket.riskops_id;
+  if (typeof ticket?.display_id === "string") return ticket.display_id;
+
+  const rawId = String(ticket?.id || "");
+  const digits = rawId.replace(/\D/g, "");
+  if (digits) return `RO${digits.slice(-4).padStart(4, "0")}`;
+
+  return "RO----";
+};
+
+const HandoverTrailButton = ({ ticket }) => {
+  const trail = getHandoverTrail(ticket);
+  const label = trail.length > 0 ? trail.join(" > ") : "No handover history yet";
+
+  return (
+    <div className="relative inline-flex group/handover">
+      <button
+        type="button"
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
+          trail.length > 0
+            ? "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"
+            : "bg-slate-50 text-slate-300 border-slate-100 cursor-default"
+        }`}
+        aria-label={`Handover order: ${label}`}
+      >
+        <ArrowRightLeft size={14} />
+      </button>
+      <div className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden min-w-[220px] max-w-[320px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold text-slate-700 shadow-xl group-hover/handover:block">
+        <div className="mb-1 text-[9px] font-bold uppercase text-slate-400">
+          Handover Flow
+        </div>
+        <div className="whitespace-normal leading-relaxed">{label}</div>
+      </div>
+    </div>
+  );
+};
 
 export default function Header() {
   const {
@@ -1491,6 +1554,8 @@ export default function Header() {
     return archivedTickets.filter((t) => {
       // search
       const query = historySearchQuery.toLowerCase();
+      const ticketIdValue = formatTicketCode(t);
+      const handoverTrailValue = getHandoverTrail(t).join(" ").toLowerCase();
       const matchesSearch =
         query === "" ||
         (t.member_id && t.member_id.toLowerCase().includes(query)) ||
@@ -1499,7 +1564,12 @@ export default function Header() {
           t.provider_account.toLowerCase().includes(query)) ||
         (t.provider && t.provider.toLowerCase().includes(query)) ||
         (t.recorder && t.recorder.toLowerCase().includes(query)) ||
-        (t.login_id && t.login_id.toLowerCase().includes(query));
+        (t.login_id && t.login_id.toLowerCase().includes(query)) ||
+        (ticketIdValue && ticketIdValue.toLowerCase().includes(query)) ||
+        (t.ticket_code && t.ticket_code.toLowerCase().includes(query)) ||
+        (t.riskops_id && t.riskops_id.toLowerCase().includes(query)) ||
+        (t.display_id && t.display_id.toLowerCase().includes(query)) ||
+        (handoverTrailValue && handoverTrailValue.includes(query));
 
       const matchesDuty =
         historyFilterDuty === "All" || t.ic_account === historyFilterDuty;
@@ -3523,14 +3593,16 @@ export default function Header() {
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead className="bg-slate-50 sticky top-0 z-10 font-bold text-slate-500 uppercase tracking-wide text-[10px]">
                     <tr className="border-b border-slate-200">
-                      <th className="px-4 py-3">Date Completed</th>
+                      <th className="px-4 py-3">ID</th>
                       <th className="px-4 py-3">Duty</th>
+                      <th className="px-4 py-3">Date Completed</th>
                       <th className="px-4 py-3">Merchant ID</th>
                       <th className="px-4 py-3">Login ID</th>
                       <th className="px-4 py-3">Player ID</th>
                       <th className="px-4 py-3">Provider Account</th>
                       <th className="px-4 py-3">Provider</th>
                       <th className="px-4 py-3">Tracking No.</th>
+                      <th className="px-3 py-3 text-center w-[72px]" title="Handover Flow">H.F</th>
                       <th className="px-4 py-3">Recorder</th>
                       <th className="px-4 py-3 text-center">Audit Notes</th>
                       <th className="px-4 py-3 text-center">Status</th>
@@ -3540,7 +3612,7 @@ export default function Header() {
                     {isFetchingHistory ? (
                       <tr>
                         <td
-                          colSpan="11"
+                          colSpan="13"
                           className="px-6 py-12 text-center text-slate-400 font-medium"
                         >
                           <div className="flex items-center justify-center gap-2">
@@ -3555,7 +3627,7 @@ export default function Header() {
                     ) : filteredArchivedTickets.length === 0 ? (
                       <tr>
                         <td
-                          colSpan="11"
+                          colSpan="13"
                           className="px-6 py-12 text-center text-slate-400 font-medium italic"
                         >
                           No archived tickets found matching your filters.
@@ -3570,6 +3642,12 @@ export default function Header() {
                             key={t.id}
                             className="hover:bg-slate-50 transition-colors"
                           >
+                            <td className="px-4 py-3 font-mono text-[11px] font-bold text-slate-700">
+                              {formatTicketCode(t)}
+                            </td>
+                            <td className="px-4 py-3 font-bold text-slate-700">
+                              {t.ic_account}
+                            </td>
                             <td className="px-4 py-3 text-slate-500 font-medium">
                               {new Date(t.created_at).toLocaleDateString(
                                 "en-GB",
@@ -3581,9 +3659,6 @@ export default function Header() {
                                   minute: "2-digit",
                                 })}
                               </span>
-                            </td>
-                            <td className="px-4 py-3 font-bold text-slate-700">
-                              {t.ic_account}
                             </td>
                             <td className="px-4 py-3 font-mono font-semibold text-slate-700">
                               {t.member_id && t.member_id.includes("@")
@@ -3604,6 +3679,9 @@ export default function Header() {
                             </td>
                             <td className="px-4 py-3 font-mono text-slate-600">
                               {t.tracking_no || "-"}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <HandoverTrailButton ticket={t} />
                             </td>
                             <td className="px-4 py-3 text-slate-500 font-medium">
                               {t.recorder}
