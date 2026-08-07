@@ -1657,10 +1657,21 @@ export default function TicketTable({
           : completeModal.abnormalType.toUpperCase();
 
     const targetTicketId = completeModal.ticket.id;
-    const completedHandoverHistory = appendHandoverStep(
+    const existingHandoverHistory = normalizeHandoverHistory(
       completeModal.ticket.handover_history,
-      shortWorkName,
     );
+    const wasHandedOverBeforeCompletion =
+      existingHandoverHistory.length > 0 ||
+      !isTicketNewSinceLastHandover(completeModal.ticket) ||
+      isCreatedDuringPostHandoverLockWindow(completeModal.ticket.created_at);
+    const completedHandoverHistory = wasHandedOverBeforeCompletion
+      ? appendHandoverStep(
+          existingHandoverHistory.length > 0
+            ? existingHandoverHistory
+            : getHandoverTrail(completeModal.ticket),
+          shortWorkName,
+        )
+      : existingHandoverHistory;
 
     if (completeModal.ticket?.status === "Pending") {
       const marker = buildHandoverMarker();
@@ -1674,18 +1685,25 @@ export default function TicketTable({
     // that cause the ticket to disappear due to stale timestamp
     try {
       const now = new Date().toISOString();
-      await supabase
-        .from("tickets")
-        .update({ 
-          status: finalStatus,
-          updated_at: now,
-          handover_history: completedHandoverHistory,
-        })
-        .eq("id", targetTicketId);
+      const updatePayload = {
+        status: finalStatus,
+        updated_at: now,
+      };
+      if (wasHandedOverBeforeCompletion) {
+        updatePayload.handover_history = completedHandoverHistory;
+      }
+
+      await supabase.from("tickets").update(updatePayload).eq("id", targetTicketId);
       
       // After DB sync completes, optimistically update UI
       onUpdateTicket(targetTicketId, "status", finalStatus);
-      onUpdateTicket(targetTicketId, "handover_history", completedHandoverHistory);
+      if (wasHandedOverBeforeCompletion) {
+        onUpdateTicket(
+          targetTicketId,
+          "handover_history",
+          completedHandoverHistory,
+        );
+      }
     } catch (e) {
       console.error("Failed to complete ticket:", e);
     }
