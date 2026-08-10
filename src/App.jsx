@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { createCorrelationId, LOGIC_CODES } from "./lib/logicHealth";
+import { isTicketHandedOver } from "./lib/handover";
 
 import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
@@ -728,6 +729,17 @@ function Dashboard() {
 
   // --- NEW: 4. Delete Ticket ---
   const handleDeleteTicket = async (id) => {
+    const currentTicket = tickets.find((ticket) => ticket.id === id);
+
+    if (!currentTicket) return false;
+
+    if (isTicketHandedOver(currentTicket)) {
+      showTicketValidationAlert(
+        "This ticket has already been written to Google Sheets. Void it instead of deleting it.",
+      );
+      return false;
+    }
+
     // Optimistic UI update: instantly remove it from the screen
     setTickets(tickets.filter((t) => t.id !== id));
 

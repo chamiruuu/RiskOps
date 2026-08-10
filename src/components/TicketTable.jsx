@@ -32,6 +32,7 @@ import {
   computeTransitionViewState,
 } from "../lib/shiftLogic";
 import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
+import { isTicketHandedOver } from "../lib/handover";
 
 // --- NEW: Directly import the sound for guaranteed playback ---
 import notificationSound from "../assets/notification sound common.mp3";
@@ -2279,14 +2280,10 @@ export default function TicketTable({
             ) : (
               filteredTickets.map((ticket) => {
                 const isCompleted = ticket.status !== "Pending";
-
-                const isHandedOverLocally =
-                  !isTicketNewSinceLastHandover(ticket) ||
-                  isCreatedDuringPostHandoverLockWindow(ticket.created_at);
                 const isCreator = ticket.created_by && user && ticket.created_by === user.id;
                 const canDeleteTicket =
                   !isQC &&
-                  !isHandedOverLocally &&
+                  !isTicketHandedOver(ticket) &&
                   (isAdminOrLeader || isCreator);
 
                 return (
@@ -2433,7 +2430,7 @@ export default function TicketTable({
                             </button>
                           )}
 
-                          {/* Admin/Leader can delete any non-handed-over ticket. Users can delete only their own non-handed-over tickets. */}
+                          {/* Only tickets that have not been written to Google Sheets can be deleted. */}
                           {canDeleteTicket && (
                             <button
                               onClick={() => {
