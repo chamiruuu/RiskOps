@@ -20,6 +20,7 @@ import {
   MessageCircle,
   ArrowLeftRight,
   ArrowRightLeft,
+  ArrowRight,
   CircleHelp,
   BookOpen,
   Bug,
@@ -74,6 +75,20 @@ const normalizeHandoverHistory = (value) => {
     .filter(Boolean);
 };
 
+const getRosterShiftForName = (activeRoster, name) => {
+  if (!activeRoster || !name) return null;
+
+  const cleanName = getCleanHandoverName(name);
+  const normalizedName = cleanName.toLowerCase();
+
+  for (const [rosterName, shift] of Object.entries(activeRoster)) {
+    const normalizedRosterName = getCleanHandoverName(rosterName).toLowerCase();
+    if (normalizedRosterName === normalizedName) return shift;
+  }
+
+  return activeRoster[cleanName] || activeRoster[name.trim()] || null;
+};
+
 const getHandoverTrail = (ticket) => normalizeHandoverHistory(ticket?.handover_history);
 
 const formatTicketCode = (ticket) => {
@@ -88,28 +103,76 @@ const formatTicketCode = (ticket) => {
   return "RO----";
 };
 
-const HandoverTrailButton = ({ ticket }) => {
-  const trail = getHandoverTrail(ticket);
-  const label = trail.length > 0 ? trail.join(" > ") : "No handover history yet";
+const HandoverTrailButton = ({ ticket, activeRoster }) => {
+  // 👇 Safely extract the trail to prevent crashes from legacy objects
+  const safeTrail = getHandoverTrail(ticket);
+
+  if (!safeTrail || safeTrail.length === 0) {
+    return <span className="text-slate-300 font-mono text-xs italic">-</span>;
+  }
+
+  const isCompleted = ticket.status && ticket.status !== "Pending";
 
   return (
-    <div className="relative inline-flex group/handover">
-      <button
-        type="button"
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-          trail.length > 0
-            ? "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"
-            : "bg-slate-50 text-slate-300 border-slate-100 cursor-default"
-        }`}
-        aria-label={`Handover order: ${label}`}
-      >
-        <ArrowRightLeft size={14} />
+    <div className="relative inline-flex items-center justify-center">
+      <button className="peer p-1 flex items-center justify-center rounded text-slate-400 border border-transparent hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">
+        <History size={14} strokeWidth={2.5} />
       </button>
-      <div className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden min-w-[220px] max-w-[320px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold text-slate-700 shadow-xl group-hover/handover:block">
-        <div className="mb-1 text-[9px] font-bold uppercase text-slate-400">
-          Handover Flow
+
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 invisible peer-hover:opacity-100 peer-hover:visible transition-all duration-200 z-[100] w-max pointer-events-none">
+        <div className="bg-white rounded-md shadow-lg py-1.5 px-2.5 border border-slate-100 flex items-center gap-1.5">
+          {/* 👇 Iterate over the safe strings instead of raw data */}
+          {safeTrail.map((cleanName, index) => {
+            const isStart = index === 0;
+            const isLast = index === safeTrail.length - 1;
+            const isMiddle = !isStart && !isLast;
+
+            // 1. Determine Name Color
+            let nameColor = "text-slate-800"; // Default to black/gray for middle
+
+            if (isStart) {
+              nameColor = "text-emerald-600"; // First person is always green
+            }
+
+            if (isLast && safeTrail.length > 1) {
+              if (isCompleted) {
+                nameColor = "text-rose-600"; // Only Red if the ticket is FINISHED
+              } else {
+                nameColor = "text-slate-800"; // Black if they are just the current holder
+              }
+            }
+
+            if (safeTrail.length === 1) {
+              nameColor = "text-slate-800"; // Single Name
+            }
+
+            // 2. Determine Shift Letter (M/A/N)
+            const userShift = getRosterShiftForName(activeRoster, cleanName);
+            let ShiftLetter = null;
+            
+            if (userShift === "Morning") {
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Morning Shift">M</span>;
+            } else if (userShift === "Afternoon") {
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Afternoon Shift">A</span>;
+            } else if (userShift === "Night") {
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Night Shift">N</span>;
+            }
+
+            return (
+              <div key={index} className="flex items-center gap-1.5">
+                {index > 0 && <ArrowRight size={10} className="text-slate-500" />}
+                <div className="flex items-center gap-1">
+                  {ShiftLetter}
+                  <span className={`text-[10px] font-bold tracking-wide ${nameColor}`}>
+                    {cleanName}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="whitespace-normal leading-relaxed">{label}</div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-[4px] border-transparent border-t-slate-100"></div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[2px] border-[3px] border-transparent border-t-white"></div>
       </div>
     </div>
   );
@@ -128,6 +191,7 @@ export default function Header() {
     respondToTransferRequest,
     setDuty,
     clearDutyMemory,
+    activeRoster,
   } = useDuty();
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -3681,7 +3745,7 @@ export default function Header() {
                               {t.tracking_no || "-"}
                             </td>
                             <td className="px-3 py-2 text-center">
-                              <HandoverTrailButton ticket={t} />
+                              <HandoverTrailButton ticket={t} activeRoster={activeRoster} />
                             </td>
                             <td className="px-4 py-3 text-slate-500 font-medium">
                               {t.recorder}

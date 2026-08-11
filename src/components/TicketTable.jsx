@@ -124,6 +124,9 @@ const HandoverTrailButton = ({ ticket, activeRoster }) => {
     return <span className="text-slate-300 font-mono text-xs italic">-</span>;
   }
 
+  // 👇 NEW: Check if the ticket is actually completed
+  const isCompleted = ticket.status && ticket.status !== "Pending";
+
   return (
     <div className="relative inline-flex items-center justify-center">
       <button className="peer flex items-center justify-center rounded text-slate-400 border border-transparent hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">
@@ -134,14 +137,22 @@ const HandoverTrailButton = ({ ticket, activeRoster }) => {
         <div className="bg-white rounded-md shadow-lg py-1.5 px-2.5 border border-slate-100 flex items-center gap-1.5">
           {ticket.handover_history.map((name, index) => {
             const isStart = index === 0;
-            const isEnd =
-              index === ticket.handover_history.length - 1 &&
-              ticket.handover_history.length > 1;
-            const isMiddle = !isStart && !isEnd;
+            const isLast = index === ticket.handover_history.length - 1;
 
-            let nameColor = "text-emerald-600";
-            if (isEnd) nameColor = "text-rose-600";
-            else if (isMiddle) nameColor = "text-slate-800";
+            // 1. Determine Name Color
+            let nameColor = "text-slate-800"; // Default to black/gray
+
+            if (isStart) {
+              nameColor = "text-emerald-600"; // First person is always green
+            }
+
+            if (isLast && ticket.handover_history.length > 1) {
+              if (isCompleted) {
+                nameColor = "text-rose-600"; // 👇 Only Red if the ticket is FINISHED
+              } else {
+                nameColor = "text-slate-800"; // 👇 Black if they are just the current holder
+              }
+            }
 
             if (ticket.handover_history.length === 1) {
               nameColor = "text-slate-800";
@@ -150,17 +161,18 @@ const HandoverTrailButton = ({ ticket, activeRoster }) => {
             const cleanName = getCleanHandoverName(name);
             const userShift = getRosterShiftForName(activeRoster, cleanName);
             let ShiftLetter = null;
+            
             if (userShift === "Morning") {
-              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Morning Shift">M</span>;
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Morning Shift">M</span>;
             } else if (userShift === "Afternoon") {
-              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Afternoon Shift">A</span>;
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Afternoon Shift">A</span>;
             } else if (userShift === "Night") {
-              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Night Shift">N</span>;
+              ShiftLetter = <span className="text-slate-500 font-black text-[10px]" title="Night Shift">N</span>;
             }
 
             return (
               <div key={index} className="flex items-center gap-1.5">
-                {index > 0 && <ArrowRight size={10} className="text-slate-400" />}
+                {index > 0 && <ArrowRight size={10} className="text-slate-500" />}
                 <div className="flex items-center gap-1">
                   {ShiftLetter}
                   <span className={`text-[10px] font-bold tracking-wide ${nameColor}`}>
