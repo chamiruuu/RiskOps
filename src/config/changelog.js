@@ -1,10 +1,16 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.30";
+export const APP_VERSION = "1.0.31";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.31",
+    date: "2026-08",
+    notes:
+      "Fixed handover tooltip: ensured activeRoster is passed and trimmed handover names so shift letters (M/A/N) display correctly.",
+  },
   {
     version: "1.0.30",
     date: "2026-08",

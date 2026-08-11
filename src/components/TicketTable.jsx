@@ -19,6 +19,7 @@ import {
   Megaphone,
   FileWarning,
   Filter,
+  History,
 } from "lucide-react";
 import { supabase, isMissingSupabaseRelationError } from "../lib/supabase";
 import { useDuty } from "../context/DutyContext";
@@ -104,28 +105,60 @@ const isCreatedDuringPostHandoverLockWindow = (createdAt) => {
   );
 };
 
-const HandoverTrailButton = ({ ticket }) => {
-  const trail = getHandoverTrail(ticket);
-  const label = trail.length > 0 ? trail.join(" > ") : "No handover history yet";
+const HandoverTrailButton = ({ ticket, activeRoster }) => {
+  if (!ticket.handover_history || ticket.handover_history.length === 0) {
+    return <span className="text-slate-300 font-mono text-xs italic">-</span>;
+  }
 
   return (
-    <div className="relative inline-flex group/handover">
-      <button
-        type="button"
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors ${
-          trail.length > 0
-            ? "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"
-            : "bg-slate-50 text-slate-300 border-slate-100 cursor-default"
-        }`}
-        aria-label={`Handover order: ${label}`}
-      >
-        <ArrowRightLeft size={14} />
+    <div className="relative inline-flex items-center justify-center">
+      <button className="peer flex items-center justify-center rounded text-slate-400 border border-transparent hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">
+        <History size={14} strokeWidth={2.5} />
       </button>
-      <div className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden min-w-[220px] max-w-[320px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold text-slate-700 shadow-xl group-hover/handover:block">
-        <div className="mb-1 text-[9px] font-bold uppercase text-slate-400">
-          Handover Flow
+
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 invisible peer-hover:opacity-100 peer-hover:visible transition-all duration-200 z-[100] w-max pointer-events-none">
+        <div className="bg-white rounded-md shadow-lg py-1.5 px-2.5 border border-slate-100 flex items-center gap-1.5">
+          {ticket.handover_history.map((name, index) => {
+            const isStart = index === 0;
+            const isEnd =
+              index === ticket.handover_history.length - 1 &&
+              ticket.handover_history.length > 1;
+            const isMiddle = !isStart && !isEnd;
+
+            let nameColor = "text-emerald-600";
+            if (isEnd) nameColor = "text-rose-600";
+            else if (isMiddle) nameColor = "text-slate-800";
+
+            if (ticket.handover_history.length === 1) {
+              nameColor = "text-slate-800";
+            }
+
+            const cleanName = name.trim();
+            const userShift = activeRoster?.[cleanName];
+            let ShiftLetter = null;
+            if (userShift === "Morning") {
+              ShiftLetter = <span className="text-amber-500 font-black text-[10px]" title="Morning Shift">M</span>;
+            } else if (userShift === "Afternoon") {
+              ShiftLetter = <span className="text-sky-500 font-black text-[10px]" title="Afternoon Shift">A</span>;
+            } else if (userShift === "Night") {
+              ShiftLetter = <span className="text-indigo-500 font-black text-[10px]" title="Night Shift">N</span>;
+            }
+
+            return (
+              <div key={index} className="flex items-center gap-1.5">
+                {index > 0 && <ArrowRight size={10} className="text-slate-300" />}
+                <div className="flex items-center gap-1">
+                  {ShiftLetter}
+                  <span className={`text-[10px] font-bold tracking-wide ${nameColor}`}>
+                    {cleanName}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="whitespace-normal leading-relaxed">{label}</div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-[4px] border-transparent border-t-slate-100"></div>
+        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[2px] border-[3px] border-transparent border-t-white"></div>
       </div>
     </div>
   );
@@ -2364,9 +2397,9 @@ export default function TicketTable({
                       />
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <HandoverTrailButton ticket={ticket} />
+                      <HandoverTrailButton ticket={ticket} activeRoster={activeRoster} />
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
+                    <td className="px-4 py-3 text-slate-500 font-medium">
                       {ticket.recorder}
                     </td>
                     <td className="px-3 py-2 text-center">
