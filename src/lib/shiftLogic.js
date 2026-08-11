@@ -125,6 +125,9 @@ export const getNextShift = (current) => {
   return "Morning";
 };
 
+export const hasHandoverHistory = (ticket) =>
+  Array.isArray(ticket?.handover_history) && ticket.handover_history.length > 0;
+
 export const computeTransitionViewState = ({
   transitionCtx,
   myAssignedShift,

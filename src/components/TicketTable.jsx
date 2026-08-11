@@ -30,6 +30,7 @@ import {
   checkIsHandoverWindow,
   getNextShift,
   computeTransitionViewState,
+  hasHandoverHistory,
 } from "../lib/shiftLogic";
 import { createCorrelationId, LOGIC_CODES } from "../lib/logicHealth";
 
@@ -2283,10 +2284,12 @@ export default function TicketTable({
                 const isHandedOverLocally =
                   !isTicketNewSinceLastHandover(ticket) ||
                   isCreatedDuringPostHandoverLockWindow(ticket.created_at);
+                const isHandedOverPersisted = hasHandoverHistory(ticket);
                 const isCreator = ticket.created_by && user && ticket.created_by === user.id;
                 const canDeleteTicket =
                   !isQC &&
                   !isHandedOverLocally &&
+                  !isHandedOverPersisted &&
                   (isAdminOrLeader || isCreator);
 
                 return (

@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./lib/supabase";
 import { createCorrelationId, LOGIC_CODES } from "./lib/logicHealth";
+import { hasHandoverHistory } from "./lib/shiftLogic";
 
 import Header from "./components/Header";
 import TicketForm from "./components/TicketForm";
@@ -728,15 +729,28 @@ function Dashboard() {
 
   // --- NEW: 4. Delete Ticket ---
   const handleDeleteTicket = async (id) => {
+    const targetTicket = tickets.find((ticket) => ticket.id === id);
+    if (hasHandoverHistory(targetTicket)) {
+      alert("This ticket has already been handed over. Void it instead of deleting it.");
+      return;
+    }
+
     // Optimistic UI update: instantly remove it from the screen
-    setTickets(tickets.filter((t) => t.id !== id));
+    const nextTickets = tickets.filter((ticket) => ticket.id !== id);
+    setTickets(nextTickets);
 
     // Tell Supabase to permanently delete it
-    const { error } = await supabase.from("tickets").delete().eq("id", id);
+    const { data, error } = await supabase
+      .from("tickets")
+      .delete()
+      .eq("id", id)
+      .select("id");
 
-    if (error) {
+    if (error || !data || data.length === 0) {
       console.error("Failed to delete ticket in Supabase:", error);
-      alert("Could not delete ticket. Please check your connection.");
+      alert(
+        "Could not delete ticket. Handed-over tickets must be voided instead.",
+      );
       fetchTickets(); // Revert the UI to bring the ticket back if it failed
     }
   };
