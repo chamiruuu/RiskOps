@@ -44,6 +44,20 @@ const getCleanHandoverName = (rawName) => {
   return rawName.replace(/ IPCS/gi, "").trim();
 };
 
+const getRosterShiftForName = (activeRoster, name) => {
+  if (!activeRoster || !name) return null;
+
+  const cleanName = getCleanHandoverName(name);
+  const normalizedName = cleanName.toLowerCase();
+
+  for (const [rosterName, shift] of Object.entries(activeRoster)) {
+    const normalizedRosterName = getCleanHandoverName(rosterName).toLowerCase();
+    if (normalizedRosterName === normalizedName) return shift;
+  }
+
+  return activeRoster[cleanName] || activeRoster[name.trim()] || null;
+};
+
 const formatTicketCode = (ticket) => {
   if (ticket?.ticket_code) return ticket.ticket_code;
   if (typeof ticket?.riskops_id === "string") return ticket.riskops_id;
@@ -133,20 +147,20 @@ const HandoverTrailButton = ({ ticket, activeRoster }) => {
               nameColor = "text-slate-800";
             }
 
-            const cleanName = name.trim();
-            const userShift = activeRoster?.[cleanName];
+            const cleanName = getCleanHandoverName(name);
+            const userShift = getRosterShiftForName(activeRoster, cleanName);
             let ShiftLetter = null;
             if (userShift === "Morning") {
-              ShiftLetter = <span className="text-amber-500 font-black text-[10px]" title="Morning Shift">M</span>;
+              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Morning Shift">M</span>;
             } else if (userShift === "Afternoon") {
-              ShiftLetter = <span className="text-sky-500 font-black text-[10px]" title="Afternoon Shift">A</span>;
+              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Afternoon Shift">A</span>;
             } else if (userShift === "Night") {
-              ShiftLetter = <span className="text-indigo-500 font-black text-[10px]" title="Night Shift">N</span>;
+              ShiftLetter = <span className="text-slate-600 font-black text-[10px]" title="Night Shift">N</span>;
             }
 
             return (
               <div key={index} className="flex items-center gap-1.5">
-                {index > 0 && <ArrowRight size={10} className="text-slate-300" />}
+                {index > 0 && <ArrowRight size={10} className="text-slate-400" />}
                 <div className="flex items-center gap-1">
                   {ShiftLetter}
                   <span className={`text-[10px] font-bold tracking-wide ${nameColor}`}>
