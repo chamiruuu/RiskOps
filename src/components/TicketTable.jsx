@@ -2306,7 +2306,7 @@ export default function TicketTable({
         <table className="w-full min-w-[1240px] text-left border-collapse whitespace-nowrap">
           <thead className="bg-white sticky top-0 z-10 font-semibold text-slate-500 uppercase tracking-wide text-[10px]">
             <tr className="border-b border-slate-200">
-              <th className="px-3 py-3 w-[86px]">ID</th>
+              <th className="px-3 py-3 w-[86px]">RiskOps ID</th>
               {showDutyColumn && <th className="px-4 py-3">Duty</th>}
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3" title="Merchant ID">M. ID</th>

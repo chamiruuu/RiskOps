@@ -9,7 +9,7 @@ export const VERSION_HISTORY_ITEMS = [
     version: "1.0.31",
     date: "2026-08",
     notes:
-      "Fixed handover tooltip: ensured activeRoster is passed and trimmed handover names so shift letters (M/A/N) display correctly.",
+      "Fixed handove tooltip: ensured activeRoster is passed and trimmed handover names so shift letters (M/A/N) display correctly.",
   },
   {
     version: "1.0.30",
