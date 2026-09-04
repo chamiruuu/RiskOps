@@ -1,10 +1,22 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.31";
+export const APP_VERSION = "1.0.33";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.33",
+    date: "04 Sep 2026",
+    notes: [
+      "UI: Upgraded the Handover Flow (H.F) column to use a clean History icon with a strict, minimal hover tooltip.",
+      "Feature: Added Roster-synced Shift Indicators (M/A/N) to both the H.F tooltip and the Audit Notes.",
+      "Logic: Fixed Night Shift tracking in Audit Notes by moving the 'Midnight Rollover' to 07:00 AM.",
+      "Logic: Extended Audit Note edit/delete window to 6 hours with strict Handover Lockout for normal users (Admins/Leaders bypass).",
+      "UI: Added intelligent color-coding to the Handover Trail (Start=Green, Middle=Black, End=Red only if completed).",
+      "Fix: Synchronized the new H.F tooltip UI flawlessly into the Archived Investigations table."
+    ].join(" "),
+  },
   {
     version: "1.0.31",
     date: "2026-08",

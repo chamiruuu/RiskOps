@@ -177,7 +177,7 @@ export const PROVIDER_CONFIG = {
       if (providerAccount && currency && timeRange) {
         return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nLobby Code：${lobbyCode}\nMember ID：${providerAccount}\nTime period：${timeRange}`;
       }
-      return "// Waiting for Provider Account, Currency, and Time Range...";
+      return "// Do not submit queries for dates older than 7 days from today.";
     },
   },
 

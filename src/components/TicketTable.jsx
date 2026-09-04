@@ -44,6 +44,40 @@ const getCleanHandoverName = (rawName) => {
   return rawName.replace(/ IPCS/gi, "").trim();
 };
 
+// --- NEW: Strictly for Audit Notes to handle Night Shift Midnight Rollover ---
+const getAuditNoteShiftInfo = (createdAt) => {
+  if (!createdAt) return { shiftLetter: "-", businessDate: "" };
+
+  // Convert timestamp to GMT+8
+  const d = new Date(createdAt);
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  const gmt8 = new Date(utc + 3600000 * 8);
+
+  const h = gmt8.getHours();
+  const m = gmt8.getMinutes();
+  const timeInHours = h + m / 60;
+
+  // Calculate strict shift block
+  let shiftLetter = "N";
+  if (timeInHours >= 7 && timeInHours < 14.5) shiftLetter = "M";
+  else if (timeInHours >= 14.5 && timeInHours < 22.5) shiftLetter = "A";
+  else shiftLetter = "N";
+
+  // Business Day Logic: If it's between Midnight (00:00) and 07:00 AM,
+  // it mathematically belongs to YESTERDAY'S Night shift.
+  const businessDateObj = new Date(gmt8);
+  if (timeInHours < 7) {
+    businessDateObj.setDate(businessDateObj.getDate() - 1);
+  }
+
+  const businessDate = businessDateObj.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short"
+  });
+
+  return { shiftLetter, businessDate };
+};
+
 const getRosterShiftForName = (activeRoster, name) => {
   if (!activeRoster || !name) return null;
 
@@ -367,21 +401,58 @@ export default function TicketTable({
   const isQC = userRole === "QC";
   const canWriteData = userRole === "Admin" || userRole === "Leader";
 
-  // Helper function to check if a note can be edited (within 3 hours and authored by current user or admin/leader)
+  // Helper function to check if a note can be edited
   const canEditNote = (note) => {
-    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    if (isQC) return false; // Rule 5: QC can never edit
+
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000; // Rule 1: 6 hour window
     const now = Date.now();
     const noteAge = now - (note.createdAt || 0);
-    const isWithinEditWindow = noteAge <= THREE_HOURS_MS;
+    const isWithinEditWindow = noteAge <= SIX_HOURS_MS;
+    
     const isNoteAuthor = note.createdByUserId === user?.id;
 
-    return canWriteData && isWithinEditWindow && (isNoteAuthor || isAdminOrLeader);
+    if (isAdminOrLeader) {
+      return isWithinEditWindow; // Admins/Leaders can edit any note within 6 hours
+    }
+
+    // Rule 4: Check if the ticket has been handed over
+    let isHandedOver = false;
+    if (selectedTicketForNotes) {
+      const isHandedOverLocally = !isTicketNewSinceLastHandover(selectedTicketForNotes) || isCreatedDuringPostHandoverLockWindow(selectedTicketForNotes.created_at);
+      const isHandedOverPersisted = hasHandoverHistory(selectedTicketForNotes);
+      isHandedOver = isHandedOverLocally || isHandedOverPersisted;
+    }
+
+    // Rule 3 & 4: Normal users must be the author, within 6 hours, AND the ticket cannot be handed over
+    return isWithinEditWindow && isNoteAuthor && !isHandedOver;
   };
 
   // Helper function to check if a note can be deleted
   const canDeleteNote = (note) => {
+    if (isQC) return false; // Rule 5: QC can never delete
+
+    if (isAdminOrLeader) {
+      return true; // Rule 2: Admins/Leaders can delete ANY note at ANY time (bypasses 6 hours)
+    }
+
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+    const noteAge = now - (note.createdAt || 0);
+    const isWithinEditWindow = noteAge <= SIX_HOURS_MS;
+    
     const isNoteAuthor = note.createdByUserId === user?.id;
-    return canWriteData && (isNoteAuthor || isAdminOrLeader);
+
+    // Rule 4: Check if the ticket has been handed over
+    let isHandedOver = false;
+    if (selectedTicketForNotes) {
+      const isHandedOverLocally = !isTicketNewSinceLastHandover(selectedTicketForNotes) || isCreatedDuringPostHandoverLockWindow(selectedTicketForNotes.created_at);
+      const isHandedOverPersisted = hasHandoverHistory(selectedTicketForNotes);
+      isHandedOver = isHandedOverLocally || isHandedOverPersisted;
+    }
+
+    // Rule 2, 3, & 4: Normal users must be the author, within 6 hours, AND not handed over
+    return isWithinEditWindow && isNoteAuthor && !isHandedOver;
   };
 
   // --- FILTER SYSTEM STATES ---
@@ -2865,17 +2936,35 @@ export default function TicketTable({
                   const canEdit = canEditNote(note);
                   const canDelete = canDeleteNote(note);
 
+                  // 1. Get the business date for the timestamp (fixing the midnight rollover)
+                  const { businessDate } = getAuditNoteShiftInfo(note.createdAt);
+
+                  // 2. Get the OFFICIAL shift letter from the month's planner
+                  const userShift = getRosterShiftForName(activeRoster, note.author);
+                  let ShiftLetterBadge = null;
+                  if (userShift === "Morning") {
+                    ShiftLetterBadge = <span className="text-slate-500 font-black text-[10px]" title="Morning Shift">M</span>;
+                  } else if (userShift === "Afternoon") {
+                    ShiftLetterBadge = <span className="text-slate-500 font-black text-[10px]" title="Afternoon Shift">A</span>;
+                  } else if (userShift === "Night") {
+                    ShiftLetterBadge = <span className="text-slate-500 font-black text-[10px]" title="Night Shift">N</span>;
+                  }
+
                   return (
                     <div
                       key={idx}
                       className="flex flex-col items-start w-full animate-in slide-in-from-bottom-2 duration-300"
                     >
                       <div className="flex items-center gap-2 mb-1 ml-2">
+                        {/* 👇 NEW: Inject the Shift Letter badge */}
+                        {ShiftLetterBadge}
+
                         <span className="text-[10px] font-bold text-slate-600">
                           {note.author}
                         </span>
                         <span className="text-[9px] font-medium text-slate-400">
-                          {note.timestamp}
+                          {/* 👇 NEW: Inject the isolated Business Date */}
+                          {businessDate ? `${businessDate} • ` : ""}{note.timestamp}
                         </span>
                         {note.isEdited && (
                           <span className="text-[8px] text-slate-400 italic">
