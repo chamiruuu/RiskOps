@@ -1051,7 +1051,7 @@ ${betInfo}`;
 Please help us check member betting normal or not. Thank you.
 
 Member ID：${providerAccount}
-Time period：${timeRange}
+Time period(GMT+8)：${timeRange}
 Game name：${gameName}`;
       }
       return "// Waiting for Provider Account, Game Name, and Time Range...";

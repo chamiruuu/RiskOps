@@ -1,10 +1,15 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.33";
+export const APP_VERSION = "1.0.34";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.34",
+    date: "28 Sep 2026",
+    notes: "Feature: Added an explicit GMT+8 label to the provider time-period script.",
+  },
   {
     version: "1.0.33",
     date: "04 Sep 2026",

@@ -1,7 +1,7 @@
 {
   "name": "riskops-tms",
   "private": true,
-  "version": "1.0.33",
+  "version": "1.0.34",
   "type": "module",
   "main": "electron/main.cjs",
   "author": "RiskOps",
