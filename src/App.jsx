@@ -77,7 +77,7 @@ const showTicketValidationAlert = (text) => {
 
 function Dashboard() {
   // FIX: Grab workName from Context
-  const { selectedDuty, user, workName, myAssignedShift } = useDuty();
+  const { selectedDuty, user, userRole, workName, myAssignedShift } = useDuty();
   const dutyNumber = selectedDuty || [];
 
   // FIX: This takes "Fernando IPCS" and just keeps "Fernando" for your scripts
@@ -784,10 +784,10 @@ function Dashboard() {
     const newNote = {
       text: noteText,
       author: workName,
+      role: userRole,
+      created_at: new Date().toISOString(),
       timestamp: `${dateStr} ${shiftLabel}`,
-      createdAt: Date.now(), // Exact timestamp for 3-hour edit window
       createdByUserId: user?.id, // Track who created it
-      isEdited: false, // Flag to show if note has been edited
     };
 
     const updatedNotes = [...(ticket.notes || []), newNote];
@@ -821,8 +821,7 @@ function Dashboard() {
     updatedNotes[noteIndex] = {
       ...updatedNotes[noteIndex],
       text: newText,
-      isEdited: true,
-      editedAt: Date.now(),
+      updated_at: new Date().toISOString(),
     };
 
     // Update UI and DB
@@ -836,12 +835,15 @@ function Dashboard() {
       .update({ notes: updatedNotes })
       .eq("id", ticketId);
 
-    if (!error) {
-      const rowHint = tickets.find((t) => t.id === ticketId);
-      syncTicketFieldsToSheet(ticketId, {
-        notes: formatNotesSummaryForSheet(updatedNotes),
-      }, rowHint);
+    if (error) {
+      console.error("Failed to update note:", error);
+      return;
     }
+
+    const rowHint = tickets.find((t) => t.id === ticketId);
+    syncTicketFieldsToSheet(ticketId, {
+      notes: formatNotesSummaryForSheet(updatedNotes),
+    }, rowHint);
   };
 
   // 7. Delete a note

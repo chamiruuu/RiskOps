@@ -386,6 +386,7 @@ export default function TicketTable({
   const {
     user,
     userRole,
+    workName,
     onlineUsers,
     myAssignedShift,
     isMyShiftActive,
@@ -405,27 +406,27 @@ export default function TicketTable({
   const canEditNote = (note) => {
     if (isQC) return false; // Rule 5: QC can never edit
 
-    const SIX_HOURS_MS = 6 * 60 * 60 * 1000; // Rule 1: 6 hour window
-    const now = Date.now();
-    const noteAge = now - (note.createdAt || 0);
-    const isWithinEditWindow = noteAge <= SIX_HOURS_MS;
-    
-    const isNoteAuthor = note.createdByUserId === user?.id;
-
     if (isAdminOrLeader) {
-      return isWithinEditWindow; // Admins/Leaders can edit any note within 6 hours
+      return true;
     }
 
-    // Rule 4: Check if the ticket has been handed over
+    const createdTime = note.created_at ? new Date(note.created_at).getTime() : 0;
+    const withinThreeHours = Date.now() - createdTime <= 3 * 60 * 60 * 1000;
+    const isAuthor = workName === note.author;
+
+    // Check if the ticket has been handed over (matching the robust deletion logic)
     let isHandedOver = false;
     if (selectedTicketForNotes) {
-      const isHandedOverLocally = !isTicketNewSinceLastHandover(selectedTicketForNotes) || isCreatedDuringPostHandoverLockWindow(selectedTicketForNotes.created_at);
+      const isHandedOverLocally =
+        !isTicketNewSinceLastHandover(selectedTicketForNotes) ||
+        isCreatedDuringPostHandoverLockWindow(
+          selectedTicketForNotes.created_at,
+        );
       const isHandedOverPersisted = hasHandoverHistory(selectedTicketForNotes);
       isHandedOver = isHandedOverLocally || isHandedOverPersisted;
     }
 
-    // Rule 3 & 4: Normal users must be the author, within 6 hours, AND the ticket cannot be handed over
-    return isWithinEditWindow && isNoteAuthor && !isHandedOver;
+    return isAuthor && withinThreeHours && !isHandedOver;
   };
 
   // Helper function to check if a note can be deleted
@@ -2937,7 +2938,7 @@ export default function TicketTable({
                   const canDelete = canDeleteNote(note);
 
                   // 1. Get the business date for the timestamp (fixing the midnight rollover)
-                  const { businessDate } = getAuditNoteShiftInfo(note.createdAt);
+                  const { businessDate } = getAuditNoteShiftInfo(note.created_at);
 
                   // 2. Get the OFFICIAL shift letter from the month's planner
                   const userShift = getRosterShiftForName(activeRoster, note.author);
@@ -2964,11 +2965,21 @@ export default function TicketTable({
                         </span>
                         <span className="text-[9px] font-medium text-slate-400">
                           {/* 👇 NEW: Inject the isolated Business Date */}
-                          {businessDate ? `${businessDate} • ` : ""}{note.timestamp}
+                          {businessDate ? `${businessDate} • ` : ""}
+                          {note.created_at
+                            ? new Date(note.created_at).toLocaleString()
+                            : note.timestamp || ""}
                         </span>
-                        {note.isEdited && (
-                          <span className="text-[8px] text-slate-400 italic">
-                            (edited)
+                        {note.updated_at && (
+                          <span
+                            className="text-[8px] text-slate-400 italic"
+                            title={
+                              note.updated_at
+                                ? `Edited: ${new Date(note.updated_at).toLocaleString()}`
+                                : undefined
+                            }
+                          >
+                            (Edited)
                           </span>
                         )}
                       </div>
@@ -3037,7 +3048,7 @@ export default function TicketTable({
                                     })
                                   }
                                   className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded transition-colors"
-                                  title="Edit note (3 hours window)"
+                                  title="Edit note"
                                 >
                                   <Edit2 size={12} />
                                 </button>
