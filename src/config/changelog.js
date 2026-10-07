@@ -1,10 +1,15 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.36";
+export const APP_VERSION = "1.0.37";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.37",
+    date: "07 Oct 2026",
+    notes: "Provider Added: Added AskMeSlot with AskMeSlot | 368Cash | TMG CW submission guidance, mandatory Provider Account ID, Game Name, Round ID, and bet date/time fields, plus a generated query script.",
+  },
   {
     version: "1.0.36",
     date: "07 Oct 2026",

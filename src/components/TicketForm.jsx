@@ -482,7 +482,11 @@ export default function TicketForm({ onAddTicket }) {
     }
 
     // Special logic for Round ID OR Time Range
-    if (required.includes("roundId") && required.includes("timeRange")) {
+    if (
+      required.includes("roundId") &&
+      required.includes("timeRange") &&
+      !currentConfig.requireAllFields
+    ) {
       const hasEitherRoundOrTime =
         (formData.roundId && String(formData.roundId).trim() !== "") ||
         (formData.timeRange && String(formData.timeRange).trim() !== "");
@@ -991,7 +995,7 @@ export default function TicketForm({ onAddTicket }) {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. user@017"
+                        placeholder="e.g. 1234@017"
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
                         value={formData.memberId}
                         onChange={(e) =>
@@ -1011,7 +1015,7 @@ export default function TicketForm({ onAddTicket }) {
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. gapi_12345"
+                          placeholder="e.g. S12345"
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
                           value={formData.providerAccount}
                           onChange={(e) =>
@@ -1349,10 +1353,17 @@ export default function TicketForm({ onAddTicket }) {
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                           Round ID
+                          {currentConfig.requireAllFields && (
+                            <span className="text-red-500"> *</span>
+                          )}
                         </label>
                         <input
                           type="text"
-                          placeholder="Leave blank if using Time Period"
+                          placeholder={
+                            currentConfig.requireAllFields
+                              ? "e.g. 12345"
+                              : "Leave blank if using Time Period"
+                          }
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none"
                           value={formData.roundId || ""}
                           onChange={(e) =>

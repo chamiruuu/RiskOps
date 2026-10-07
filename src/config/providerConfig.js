@@ -1915,4 +1915,40 @@ Time period：${timeRange}`;
       return "// Waiting for Provider Account and Time Period...";
     },
   },
+
+  // --- 60. ASK-ME-SLOT ---
+  AskMeSlot: {
+    channel: "AskMeSlot | 368Cash | TMG CW",
+    sla: "Standard",
+    conditions: [
+      "Ensure the provider account, game name, round ID, and bet date and time are complete before submitting.",
+    ],
+    process: [
+      "Check the member details in BO1.13.",
+      "Submit the generated script to AskMeSlot | 368Cash | TMG CW.",
+    ],
+    requiredFields: [
+      "memberId",
+      "providerAccount",
+      "gameName",
+      "roundId",
+      "timeRange",
+    ],
+    requireAllFields: true,
+
+    generateScript: (data, workName) => {
+      const { providerAccount, gameName, roundId, timeRange } = data;
+
+      if (providerAccount && gameName && roundId && timeRange) {
+        return `Hello sir this is ${workName},
+Please help us check member betting normal or not. Thank you.
+
+Username：${providerAccount}
+Game name：${gameName}
+Round ID：${roundId}
+Bet date and time：${timeRange}`;
+      }
+      return "// Waiting for Provider Account, Game Name, Round ID, and Bet Date and Time...";
+    },
+  },
 };
