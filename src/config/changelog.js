@@ -1,10 +1,15 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.35";
+export const APP_VERSION = "1.0.36";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.36",
+    date: "07 Oct 2026",
+    notes: "Update Audit Notes: Synchronized edit and delete lockouts with shift boundaries and manual or automatic handover timestamps, while keeping the six-hour window and role-based permissions intact.",
+  },
   {
     version: "1.0.35",
     date: "05 Oct 2026",

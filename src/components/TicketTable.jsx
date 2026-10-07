@@ -386,7 +386,6 @@ export default function TicketTable({
   const {
     user,
     userRole,
-    workName,
     onlineUsers,
     myAssignedShift,
     isMyShiftActive,
@@ -404,56 +403,82 @@ export default function TicketTable({
 
   // Helper function to check if a note can be edited
   const canEditNote = (note) => {
-    if (isQC) return false; // Rule 5: QC can never edit
+    if (isQC) return false; // Rule: QC can never edit
 
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+    const noteCreatedAt =
+      typeof note.createdAt === "number"
+        ? note.createdAt
+        : Date.parse(note.createdAt || note.created_at || "") || 0;
+    const noteAge = now - noteCreatedAt;
+    const isWithinEditWindow = noteAge <= SIX_HOURS_MS;
+
+    const isNoteAuthor = note.createdByUserId === user?.id;
+
+    // Rule: Admins/Leaders can edit ANY note within 6 hours
     if (isAdminOrLeader) {
-      return true;
+      return isWithinEditWindow;
     }
 
-    const createdTime = note.created_at ? new Date(note.created_at).getTime() : 0;
-    const withinThreeHours = Date.now() - createdTime <= 3 * 60 * 60 * 1000;
-    const isAuthor = workName === note.author;
+    // Rule: Check if a handover (Manual or Auto) crossed over this note
+    let hasHandoverPassedNote = false;
 
-    // Check if the ticket has been handed over (matching the robust deletion logic)
-    let isHandedOver = false;
-    if (selectedTicketForNotes) {
-      const isHandedOverLocally =
-        !isTicketNewSinceLastHandover(selectedTicketForNotes) ||
-        isCreatedDuringPostHandoverLockWindow(
-          selectedTicketForNotes.created_at,
-        );
-      const isHandedOverPersisted = hasHandoverHistory(selectedTicketForNotes);
-      isHandedOver = isHandedOverLocally || isHandedOverPersisted;
+    // 1. Did the note happen before the current shift even started?
+    const lastShiftStart = getLastShiftChangeTime().getTime();
+    if (noteCreatedAt < lastShiftStart) {
+      hasHandoverPassedNote = true;
     }
 
-    return isAuthor && withinThreeHours && !isHandedOver;
+    // 2. Did the note happen before the current shift's handover (manual or auto)?
+    if (lastHandoverTimestamp) {
+      const handoverTime = Date.parse(lastHandoverTimestamp);
+      if (!Number.isNaN(handoverTime) && noteCreatedAt <= handoverTime) {
+        hasHandoverPassedNote = true;
+      }
+    }
+
+    // Normal users must be the author, within 6 hours, AND no handover has passed the note
+    return isWithinEditWindow && isNoteAuthor && !hasHandoverPassedNote;
   };
 
   // Helper function to check if a note can be deleted
   const canDeleteNote = (note) => {
-    if (isQC) return false; // Rule 5: QC can never delete
+    if (isQC) return false; // Rule: QC can never delete
 
+    // Rule: Admins/Leaders can delete ANY note at ANY time (bypasses 6 hours)
     if (isAdminOrLeader) {
-      return true; // Rule 2: Admins/Leaders can delete ANY note at ANY time (bypasses 6 hours)
+      return true;
     }
 
     const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
     const now = Date.now();
-    const noteAge = now - (note.createdAt || 0);
+    const noteCreatedAt =
+      typeof note.createdAt === "number"
+        ? note.createdAt
+        : Date.parse(note.createdAt || note.created_at || "") || 0;
+    const noteAge = now - noteCreatedAt;
     const isWithinEditWindow = noteAge <= SIX_HOURS_MS;
-    
+
     const isNoteAuthor = note.createdByUserId === user?.id;
 
-    // Rule 4: Check if the ticket has been handed over
-    let isHandedOver = false;
-    if (selectedTicketForNotes) {
-      const isHandedOverLocally = !isTicketNewSinceLastHandover(selectedTicketForNotes) || isCreatedDuringPostHandoverLockWindow(selectedTicketForNotes.created_at);
-      const isHandedOverPersisted = hasHandoverHistory(selectedTicketForNotes);
-      isHandedOver = isHandedOverLocally || isHandedOverPersisted;
+    // Rule: Check if a handover (Manual or Auto) crossed over this note
+    let hasHandoverPassedNote = false;
+
+    const lastShiftStart = getLastShiftChangeTime().getTime();
+    if (noteCreatedAt < lastShiftStart) {
+      hasHandoverPassedNote = true;
     }
 
-    // Rule 2, 3, & 4: Normal users must be the author, within 6 hours, AND not handed over
-    return isWithinEditWindow && isNoteAuthor && !isHandedOver;
+    if (lastHandoverTimestamp) {
+      const handoverTime = Date.parse(lastHandoverTimestamp);
+      if (!Number.isNaN(handoverTime) && noteCreatedAt <= handoverTime) {
+        hasHandoverPassedNote = true;
+      }
+    }
+
+    // Normal users must be the author, within 6 hours, AND no handover has passed the note
+    return isWithinEditWindow && isNoteAuthor && !hasHandoverPassedNote;
   };
 
   // --- FILTER SYSTEM STATES ---
