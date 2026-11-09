@@ -1,10 +1,15 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.37";
+export const APP_VERSION = "1.0.38";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.38",
+    date: "27 Oct 2026",
+    notes: "PG Soft Update: Removed the Time Period field from the PG Soft query form and generated script.",
+  },
   {
     version: "1.0.37",
     date: "07 Oct 2026",

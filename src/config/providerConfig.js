@@ -23,13 +23,13 @@ export const PROVIDER_CONFIG = {
     reminder:
       "Do not copy the provider's tracking number and signature to merchant.",
 
-    requiredFields: ["memberId", "providerAccount", "timeRange"],
+    requiredFields: ["memberId", "providerAccount"],
 
     generateScript: (data, workName) => {
-      const { providerAccount, timeRange } = data;
+      const { providerAccount } = data;
 
-      if (providerAccount && timeRange) {
-        return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nAgent Name：QQ288\nMember ID：${providerAccount}\nTime period：${timeRange}`;
+      if (providerAccount) {
+        return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nAgent Name：QQ288\nMember ID：${providerAccount}`;
       }
       return "// fill in the required input feilds..";
     },
