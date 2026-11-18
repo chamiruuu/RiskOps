@@ -1,10 +1,15 @@
 // src/config/changelog.js
 
 // Change this single line whenever you release a new update!
-export const APP_VERSION = "1.0.38";
+export const APP_VERSION = "1.0.39";
 
 // Add your newest updates to the TOP of this list
 export const VERSION_HISTORY_ITEMS = [
+  {
+    version: "1.0.39",
+    date: "18 Nov 2026",
+    notes: "Providers Added: Added Gemini(GMS) and PG Soft (Z) with their integration groups and generated query scripts.",
+  },
   {
     version: "1.0.38",
     date: "27 Oct 2026",

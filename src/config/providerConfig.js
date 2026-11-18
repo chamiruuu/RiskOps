@@ -35,6 +35,46 @@ export const PROVIDER_CONFIG = {
     },
   },
 
+  "Gemini(GMS)": {
+    channel: "QQ288 / FA ( Gemini ) Integration Group",
+    sla: "Standard",
+    conditions: [
+      "Ensure the member account and time period are included in the query.",
+    ],
+    process: [
+      "Submit the generated script to QQ288 / FA ( Gemini ) Integration Group.",
+    ],
+    requiredFields: ["memberId", "providerAccount", "timeRange"],
+    generateScript: (data, workName) => {
+      const { providerAccount, timeRange } = data;
+
+      if (providerAccount && timeRange) {
+        return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMerchant Name: QQ288\nMember Account：${providerAccount}\nTime Period：${timeRange}`;
+      }
+      return "// fill in the required input fields.";
+    },
+  },
+
+  "PG Soft (Z)": {
+    channel: "ZF1832(C)/ ZA/ PG对接群",
+    sla: "Standard",
+    conditions: [
+      "Ensure the member account is included in the query.",
+    ],
+    process: [
+      "Submit the generated script to ZF1832(C)/ ZA/ PG对接群.",
+    ],
+    requiredFields: ["memberId", "providerAccount"],
+    generateScript: (data, workName) => {
+      const { providerAccount } = data;
+
+      if (providerAccount) {
+        return `Hello sir this is ${workName},\nPlease help us check member betting normal or not. Thank you.\n\nMember Account：${providerAccount}\nOperator Token ：acf5843097aa4e35b2ba72b75f7b1853`;
+      }
+      return "// fill in the required input fields.";
+    },
+  },
+
   // --- 2. EVOLUTION GAMING (UPDATED) ---
   "Evolution Gaming": {
     channel: "(v88_qq) Evolution [QQi] #EVD",
